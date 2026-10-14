@@ -57,13 +57,23 @@ fn gun(e: &Engine) -> bool { rw(e, 0x7972) != 0 }
 fn kills_t(e: &Engine) -> u8 { tb(e, if gun(e) { T_KILLS_GUN } else { T_KILLS_PAD }, stage(e)) }
 fn active_t(e: &Engine) -> u8 { tb(e, if gun(e) { T_ACTIVE_GUN } else { T_ACTIVE_PAD }, stage(e)) }
 fn rand_tab(e: &mut Engine) -> u16 { let r = e.disp.sub.rand() & 0x1F; tb(e, T_RAND, r) as u16 }
-/// `subfn_06(n, -1)` (S:0x1530E): PCM effect from the current bank (no mute test here, only cmd 0x0C tests `$7890`); sets `$1511E`
-/// bit 3 until the sample has been played (cleared by the PCM driver S:0x15998), modelled with the sample length (HYPOTHESIS: a
-/// later effect on the same channel restarts the timer; lengths from the audio manifest, `Engine::ix.sfx_len`).
+/// `subfn_06(n, -1)` (S:0x1530E): PCM effect from the current bank (no mute test here, only cmd 0x0C tests `$7890`). It sets `$1511E`
+/// bit 3, which the PCM driver clears (S:0x15998) when an effect channel has played to its end. Oracle (stage 4, bank 33): an effect on
+/// channel 1 started at f37 (77 frames) cleared the bit at f118 although a later channel-0 effect (179 frames) was still playing, so the
+/// bit is cleared by the FIRST channel that finishes. Lengths = sample length from the audio manifest (`Engine::ix.sfx_len`).
 fn pcm(e: &mut Engine, n: u8) {
     if e.voice_left == 0 { e.out.push(Out::PcmSfx { id: n as u16, bank: e.pcm_bank }); }
-    let len = e.ix.sfx_len.get(&(e.pcm_bank, n as u16)).copied().unwrap_or(0) as u64;
-    e.ix.pcm_busy_until = e.frame + len;
+    if let Some(&(len, ch)) = e.ix.sfx_len.get(&(e.pcm_bank, n as u16)) {
+        e.ix.pcm_ch_until[(ch & 1) as usize] = e.frame + len as u64;
+    }
+    e.ix.pcm_busy = true;
+}
+/// Per frame: the PCM driver clears bit 3 when a channel's effect ended.
+fn pcm_poll(e: &mut Engine) {
+    for c in 0..2 {
+        let u = e.ix.pcm_ch_until[c];
+        if u != 0 && e.frame >= u { e.ix.pcm_ch_until[c] = 0; e.ix.pcm_busy = false; }
+    }
 }
 /// `subfn_12(n, 0)`: FM effect with done flag `$980F` (0xFF / 0x3D = stop).
 fn snd(e: &mut Engine, n: u8) { e.fm_cmd(n as u16, false); }
@@ -84,7 +94,8 @@ pub fn cmd18(e: &mut Engine) -> bool {
 
 /// `shoot_tick` S:0x1208E.
 fn tick(e: &mut Engine, s: &mut Shoot) {
-    ww(e, 0x1511E, if e.frame < e.ix.pcm_busy_until { 0x0800 } else { 0 });
+    pcm_poll(e);
+    ww(e, 0x1511E, if e.ix.pcm_busy { 0x0800 } else { 0 });
     match rw(e, 0x78E8) {
         0 => phase_setup(e, s),
         1 => {
@@ -131,7 +142,7 @@ fn tick(e: &mut Engine, s: &mut Shoot) {
         4 => match rw(e, 0x78EA) {
             0 => {
                 // S:0x13072: wait while the PCM driver reports an effect playing ($1511E bit 3)
-                if e.frame < e.ix.pcm_busy_until { return; }
+                if e.ix.pcm_busy { return; }
                 if active_t(e) == 1 { inc(e, 0x78EA); return; }
                 inc(e, 0x78E4);
                 if rw(e, 0x78E4) >= 0x40 { inc(e, 0x78EA); return; }

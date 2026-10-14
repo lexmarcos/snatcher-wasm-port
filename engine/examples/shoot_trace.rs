@@ -35,35 +35,40 @@ fn main() {
     let shots: Vec<u64> = a.get(6).map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_default();
     let mut guns: Vec<(u64, i32, i32, u8)> = vec![];
     if let Ok(g) = std::env::var("GUNS") {
+        // "frame:x:y:trig:aux,.." or "@file.json" = [[frame,x,y,trig,aux],..] (shoot_rec.py --gun)
+        let g = if let Some(f) = g.strip_prefix('@') {
+            let t = std::fs::read_to_string(f).unwrap();
+            t.replace("[[", "").replace("]]", "").split("], [").map(|x| x.replace(", ", ":")).collect::<Vec<_>>().join(",")
+        } else { g };
         for p in g.split(',').filter(|s| !s.is_empty()) {
             let f: Vec<i64> = p.split(':').map(|x| x.parse().unwrap()).collect();
             let b = (f.get(3).copied().unwrap_or(0) as u8) << 5 | (f.get(4).copied().unwrap_or(0) as u8) << 6;
             guns.push((f[0] as u64, f[1] as i32, f[2] as i32, b));
         }
     }
-
     // SCHED=oracle.jsonl.sched: per frame the logical pad bytes ($7990/$7991/$7992) of every sub handler run that frame (shoot_rec.py).
     // PCM sample copies (S:0x15C32) overrun a frame, so a frame has 0, 1 or 2 runs and a run can see a pad sampled in an earlier frame;
     // this reproduces that schedule so the logic can be compared frame-exact (it is not part of the engine).
-    let mut sched: Vec<Vec<(u8, u8, u8)>> = vec![];
+    let mut sched: Vec<Vec<[u8; 6]>> = vec![];
     if let Ok(sp) = std::env::var("SCHED") {
         for l in std::fs::read_to_string(sp).unwrap().lines() {
             let v: Vec<u32> = l.split_whitespace().filter_map(|x| x.parse().ok()).collect();
             let n = v[1] as usize;
-            sched.push((0..n).map(|k| (v[2 + 3 * k] as u8, v[3 + 3 * k] as u8, v[4 + 3 * k] as u8)).collect());
+            sched.push((0..n).map(|k| { let mut r = [0u8; 6]; for j in 0..6 { r[j] = v[2 + 6 * k + j] as u8; } r }).collect());
         }
     }
+    let gun_force = std::env::var("GUNFORCE").is_ok();
     let raw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/raw/files");
     let mut e = Engine::new();
     for n in FILE_NAMES.iter() {
         if *n == "PCMLD_01.BIN" { continue; }
         if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); }
     }
-    // SFXLEN=file: lines "bank id frames" (re/oracle/shoot_sfxlen.py writes it from assets/audio/web/pcm.json)
+    // SFXLEN=file: lines "bank id frames chan" (re/oracle/shoot_sfxlen.py writes it from assets/audio/web/pcm.json)
     if let Ok(f) = std::env::var("SFXLEN") {
         for l in std::fs::read_to_string(f).unwrap().lines() {
             let v: Vec<u32> = l.split_whitespace().filter_map(|x| x.parse().ok()).collect();
-            if v.len() == 3 { e.ix.sfx_len.insert((v[0] as u16, v[1] as u16), v[2]); }
+            if v.len() == 4 { e.ix.sfx_len.insert((v[0] as u16, v[1] as u16), (v[2], v[3] as u8)); }
         }
     }
     e.jump(57 + 1, 0);
@@ -91,10 +96,10 @@ fn main() {
         k += 1;
         e.tick(pad);
         e.out.clear();
-        if e.regs.get(0x78EA) == 1 && e.regs.get(0x78E4) == 1 && e.regs.get(0x78E8) == 0 { break; }
+        if e.regs.get(0x78E8) != 0 || e.regs.get(0x78EA) >= 2 { break; }
         if k > 8000 { eprintln!("stage did not start (menu {menu_no})"); std::process::exit(1); }
     }
-    eprintln!("stage started after {k} frames: $78E0={:04x}", e.regs.get(0x78E0));
+    eprintln!("stage started after {k} frames: $78E0={:04x} pcm_bank={}", e.regs.get(0x78E0), e.pcm_bank);
     e.ix.rng_seq = Some(0); // counting starts with the first recorded handler run
     let mut f = std::fs::File::create(&out).unwrap();
     let mut gpos = (0i32, 0i32, false);
@@ -108,7 +113,7 @@ fn main() {
             match sched.get(fr as usize) {
                 Some(runs) => {
                     if runs.is_empty() { e.sub_stall = 1; e.tick(0); }
-                    for r in runs { e.ix.force_in = Some(*r); e.tick(0); }
+                    for r in runs { e.ix.force_in = Some((r[0], r[1], r[2])); if gun_force { e.ix.force_gun = Some((r[3], r[4], r[5])); } e.tick(0); }
                 }
                 None => { e.tick(pad); }
             }

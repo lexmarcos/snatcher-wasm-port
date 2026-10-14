@@ -87,7 +87,44 @@ class Auto:
         return bits | (self.dirs(self.cell) if self.cell is not None else 0)
 
 
-def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=None, auto=None):
+class AutoGun:
+    """Light-gun policy: draw the blaster (second button), aim at live targets (cell centres + noise), pull the trigger and hold the aim for
+    a few frames (the cell is sampled 2 frames after the shot starts, S:0x125F2).  Writes m.gun every frame."""
+    def __init__(self, seed, acc=0.8, idle=0.1):
+        import random
+        self.r = random.Random(seed); self.acc = acc; self.idle = idle
+        self.pos = (128, 70); self.trig = 0; self.hold = 0; self.cool = 0; self.aux = 0
+        self.script = []
+
+    def __call__(self, m, f):
+        s = m.sub
+        w = lambda a: s.r16(a)
+        ph = w(0x78E8)
+        g = m.gun
+        self.aux = 0
+        if self.trig > 0:
+            self.trig -= 1
+        elif ph in (2, 4) and w(0x78F8) == 0 and self.cool <= 0:
+            self.aux = 1; self.cool = 8
+        elif ph in (2, 4) and w(0x78F8) & 1 and w(0x78F8) < 2 and w(0x78FA) == 0 and self.hold <= 0:
+            live = [k for k in range(9) if (s.r8(0x7A00 + (32 + k) * 0x50 + 0x24) & 0xF) in (2, 3, 4)]
+            u = self.r.random()
+            if u < self.idle:
+                self.hold = self.r.randint(10, 40)
+            else:
+                k = self.r.choice(live) if live and u < self.idle + self.acc else self.r.randrange(9)
+                cx, cy = (64, 128, 192)[k % 3], (32, 72, 112)[k // 3]
+                self.pos = (cx + self.r.randint(-12, 12), cy + self.r.randint(-8, 8))
+                self.trig = 3; self.hold = 14
+        self.cool -= 1
+        self.hold -= 1
+        g['x'], g['y'] = self.pos
+        g['trig'] = 1 if self.trig in (3, 2) else 0
+        g['aux'] = self.aux
+        self.script.append([f, g['x'], g['y'], g['trig'], g['aux']])
+
+
+def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=None, auto=None, gunpol=None):
     from PIL import Image
     pad = expand(script)
     s = m.sub
@@ -95,7 +132,7 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
     # and the sound calls subfn_06 S:0x1530E (PCM effect, d0) / subfn_12 S:0x15EB4 (PCM/voice with done flag, d0)
     hooks = {0x1530E: '06', 0x15EB4: '12', 0xD6EE: 'h', 0xD644: 'rng'}
     ev = []
-    sched = ['0 1 0 0 0']
+    sched = ['0 1 0 0 0 0 0 0']
     cnt = [0]   # handler runs since the recording started (engine: Engine::ix.rng_seq)
     orig = m._sub_bios
 
@@ -108,7 +145,7 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
                 s.write(0x786A, ((cnt[0] * 2654435761) & 0xFFFFFFFF).to_bytes(4, 'big'))
         elif pc == 0xD6EE:
             # logical pad bytes this handler run works with (sampled earlier in the handler: S:0xD664 / S:0xDFD6)
-            ev.append(('h', s.r8(0x7990), s.r8(0x7991), s.r8(0x7992)))
+            ev.append(('h', s.r8(0x7990), s.r8(0x7991), s.r8(0x7992), s.r8(0x7985), s.r8(0x798A), s.r8(0x798B)))
         elif pc in hooks:
             ev.append((hooks[pc], s.d(0) & 0xFFFF))
         else:
@@ -116,10 +153,10 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
     m._sub_bios = hk
     for a in hooks:
         m.lib.core_add_hook(1, a)
-    # frame 0 = the first run of setup step 1 ($78EA == 1 and $78E4 == 1): the wait before it (scene VRAM list / tile loading, up to ~20
+    # frame 0 = the first frame in which setup step 1 (wait for the main CPU's gun-detect answer) has completed ($78EA >= 2): the wait before it (scene VRAM list / tile loading, up to ~20
     # frames) is display-side work that is compared elsewhere; both sides align here
     k = 0
-    while not (s.r16(0x78EA) == 1 and s.r16(0x78E4) == 1) and k < 400:
+    while not (s.r16(0x78E8) != 0 or s.r16(0x78EA) >= 2) and k < 400:
         m.inputs = [[1, 0]]
         m.step_frame()
         k += 1
@@ -130,12 +167,14 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
             gun(m, f)
         if auto is not None:
             pad[f] = auto(s, f)
+        if gunpol is not None:
+            gunpol(m, f)
         m.inputs = [[1, pad.get(f, 0)]]
         ev.clear()
         m.step_frame(capture=(f in shots))
         h = sum(1 for x in ev if x[0] == 'h')
         snd = [list(x) for x in ev if x[0] != 'h']
-        sched.append('%d %d %s' % (f, h, ' '.join('%d %d %d' % x[1:] for x in ev if x[0] == 'h')))
+        sched.append('%d %d %s' % (f, h, ' '.join('%d %d %d %d %d %d' % x[1:] for x in ev if x[0] == 'h')))
         if f in shots:
             Image.fromarray(m.vdp.frame_image()).save(os.path.join(outdir, 'o%05d.png' % f))
         recs.append(dict(f=f, h=h, s=snd, **snap(s)))
@@ -158,6 +197,7 @@ if __name__ == '__main__':
     ap.add_argument('--shots', default='')
     ap.add_argument('--norng', action='store_true')
     ap.add_argument('--auto', type=int, default=None, help='seed of the oracle-driven pad policy (script written to OUT.script.json)')
+    ap.add_argument('--gun', type=int, default=None, help='seed of the light-gun policy (needs the gun model; calibration poked like a perfect calibration)')
     ap.add_argument('--acc', type=float, default=0.8)
     ap.add_argument('--idle', type=float, default=0.1)
     a = ap.parse_args()
@@ -174,8 +214,18 @@ if __name__ == '__main__':
             m.save_state(sp)
     outdir = os.path.dirname(os.path.abspath(a.out)); os.makedirs(outdir, exist_ok=True)
     auto = Auto(a.auto, a.acc, a.idle) if a.auto is not None else None
-    recs = record(m, json.loads(a.script), a.frames, rng=not a.norng, shots=set(int(x) for x in a.shots.split(',') if x), outdir=outdir, auto=auto)
+    gunpol = None
+    if a.gun is not None:
+        # perfect calibration: the gun model's raw values are (x - 66, y + 1); value = (x, y - 4) like the engine default (menus.rs)
+        m.gun = {'x': 128, 'y': 70, 'trig': 0, 'aux': 0}
+        m.sub.w16(0x78B8, 1)
+        m.sub.w8(0x7983, 1); m.comcmd[1] = (m.comcmd[1] & 0xFF00) | 1; m.pad2_ctrl = 0xB0
+        m.sub.w8(0x7988, (0x40 - 0x80) & 0xFF); m.sub.w8(0x7989, (133 - 0x80 - 128 + 128) & 0xFF)
+        gunpol = AutoGun(a.gun, a.acc, a.idle)
+    recs = record(m, json.loads(a.script), a.frames, rng=not a.norng, shots=set(int(x) for x in a.shots.split(',') if x), outdir=outdir, auto=auto, gunpol=gunpol)
     open(a.out + '.sched', 'w').write('\n'.join(record.sched) + '\n')
+    if gunpol is not None:
+        json.dump(gunpol.script, open(a.out + '.gun.json', 'w'))
     if auto is not None:
         json.dump([[f, b] for f, b in sorted(record.pad.items()) if b], open(a.out + '.script.json', 'w'))
     with open(a.out, 'w') as fh:

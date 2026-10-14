@@ -38,13 +38,17 @@ pub struct Ix {
     pub shoot: Option<crate::shoot::Shoot>,
     /// fidelity harness: sub RNG seeded from this counter before every frame-handler run (None = normal)
     pub rng_seq: Option<u32>,
-    /// PCM effect lengths in frames by (bank, effect id) from the audio manifest, and the frame the last effect ends (`$1511E` bit 3)
-    pub sfx_len: std::collections::HashMap<(u16, u16), u32>,
-    pub pcm_busy_until: u64,
+    /// PCM effect (length in frames, channel) by (bank, effect id) from the audio manifest
+    pub sfx_len: std::collections::HashMap<(u16, u16), (u32, u8)>,
+    /// `$1511E` bit 3 and the frame each of the two PCM effect channels ends (0 = idle)
+    pub pcm_busy: bool,
+    pub pcm_ch_until: [u64; 2],
     /// fidelity harness: logical (held, pressed, repeat) = $7990/$7991/$7992 the original's handler run saw (overrides the pad)
     pub force_in: Option<(u8, u8, u8)>,
     /// the player calibrated the gun (title screen) or a save with a calibration was loaded; until then a default calibration is used
     pub gun_cal_done: bool,
+    /// fidelity harness: the original's ($7985, $798A, $798B) of the handler run (overrides the computed gun registers)
+    pub force_gun: Option<(u8, u8, u8)>,
     /// pointer mode (`$79FE == 1`): B is held, the view is being moved
     pub ptr_moving: bool,
     /// text entry finished, waiting for the close effect (`$7892 == 0`, S:0x11C28): (result, frames waited)
@@ -157,6 +161,7 @@ pub fn frame_hook(e: &mut Engine) {
     let cx = e.regs.get_b(0x7988); let cy = e.regs.get_b(0x7989);
     e.regs.set_b(0x798A, rx.wrapping_sub(cx));
     e.regs.set_b(0x798B, ry.wrapping_sub(cy));
+    if let Some((b, x, y)) = e.ix.force_gun { e.regs.set_b(0x7985, b); e.regs.set_b(0x798A, x); e.regs.set_b(0x798B, y); }
 
     if e.trace && e.regs.get(0x79FE) == 1 && !e.ix.ptr_logged { e.ix.ptr_logged = true; e.out.push(Out::Log("pointer mode on".into())); }
     if e.regs.get(0x79FE) == 1 {

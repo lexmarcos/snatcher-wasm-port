@@ -84,8 +84,8 @@ async function main() {
   if (pcm?.sfx) { // PCM effect lengths per bank (the shooting results wait for the last effect, S:0x13072)
     const len = (seg: any) => Math.ceil((seg.samples / seg.rate) * 60);
     for (const [id, s] of Object.entries<any>(pcm.sfx)) {
-      if (s.src === "drum") { const seg = pcm.drum?.[s.offset]; if (seg) for (const b of Object.keys(pcm.banks ?? {})) game.set_sfx_len(Number(b), Number(id), len(seg)); }
-      else for (const [b, segs] of Object.entries<any>(pcm.banks ?? {})) { const seg = segs[s.offset]; if (seg) game.set_sfx_len(Number(b), Number(id), len(seg)); }
+      if (s.src === "drum") { const seg = pcm.drum?.[s.offset]; if (seg) for (const b of Object.keys(pcm.banks ?? {})) game.set_sfx_len(Number(b), Number(id), len(seg), s.chan ?? 0); }
+      else for (const [b, segs] of Object.entries<any>(pcm.banks ?? {})) { const seg = segs[s.offset]; if (seg) game.set_sfx_len(Number(b), Number(id), len(seg), s.chan ?? 0); }
     }
   }
   if (!pcm || !fm) console.warn("audio manifests missing – run the audio pipeline (README)");

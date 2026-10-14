@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write "bank id frames" lines (PCM effect lengths, as web/src/main.ts computes them) from assets/audio/web/pcm.json for the engine tracer:
+"""Write "bank id frames chan" lines (PCM effect lengths, as web/src/main.ts computes them) from assets/audio/web/pcm.json for the engine tracer:
 python3 -I shoot_sfxlen.py > out/shoot/sfxlen.txt   (pcm.json is generated from the user's disc, never committed)"""
 import json, math, os
 d = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'assets', 'audio', 'web', 'pcm.json')))
@@ -9,9 +9,9 @@ for sid, s in d['sfx'].items():
         seg = d['drum'].get(s['offset'])
         if seg:
             for b in d['banks']:
-                print(b, sid, ln(seg))
+                print(b, sid, ln(seg), s.get('chan', 0))
     else:
         for b, segs in d['banks'].items():
             seg = segs.get(s['offset'])
             if seg:
-                print(b, sid, ln(seg))
+                print(b, sid, ln(seg), s.get('chan', 0))

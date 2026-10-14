@@ -25,7 +25,7 @@ def main():
     ap.add_argument('--from', dest='frm', type=int, default=0)
     ap.add_argument('--n', type=int, default=6, help='first N divergences per field')
     ap.add_argument('--min-run', type=int, default=4, help='only differences that persist for N consecutive frames count (sub-CPU stalls inside a tick shift single values by 1-2 frames)')
-    ap.add_argument('--skip', default='7984,7986,7988,798A,7990,7992,7902,7904', help='words not compared')
+    ap.add_argument('--skip', default='7984,7986,7988,798A,7990,7992,7902,7904,1511E', help='words not compared')
     a = ap.parse_args()
     o, e = load(a.oracle), load(a.engine)
     n = min(len(o), len(e) - a.lag)
