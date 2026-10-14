@@ -180,6 +180,8 @@ pub enum MsgEvent {
     WaitFrame(u8),
     /// State 0 (S:0x13604): `sub_0139D4` clears the objects of slots 5..14 and slot 0 (menu bar), palette channel S:0x13622.
     Begin,
+    /// State 1 (S:0x13626): `$7891 = FF` (main: refresh palette A, clear the palette split).
+    SplitClear,
 }
 
 /// `msg_wait_anim_tbl` S:0x1391C: (frame source byte, duration) pairs, `FF 00` terminated.
@@ -238,7 +240,7 @@ impl MessageBox {
         if win.busy { return MsgEvent::None; }
         match self.state {
             0 => { self.state = 1; MsgEvent::Begin }
-            1 => { self.state = 9; MsgEvent::None } // `$7891 = FF`
+            1 => { self.state = 9; MsgEvent::SplitClear }
             9 => { self.state = 10; MsgEvent::None } // effect task S:0xECB6 (window open anim)
             10 => { win.clear(); self.colour = 1; self.end = false; self.state = 2; MsgEvent::ScreenCmd(self.open_cmd()) }
             2 => {

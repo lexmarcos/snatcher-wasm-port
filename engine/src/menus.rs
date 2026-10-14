@@ -82,11 +82,15 @@ pub(crate) fn stream_at(e: &Engine, addr: u32) -> Vec<u8> {
 
 /// S:0x10FB0: object 0 (highlight bar created by the VM-thread init list S:0xED0E) at
 /// X = 0x10, Y = 0x8F + 9*line (+0x10 with the wide portrait layout `$7893`), shown.
-pub fn list_cursor(e: &mut Engine, line: usize) {
+pub fn list_cursor_pos(e: &mut Engine, line: usize) {
     let wide = e.regs.get_b(0x7893) != 0;
     let y = 0x8F + 9 * line as i32 + if wide { 0x10 } else { 0 };
     set_x(e, 0, 0x10);
     set_y(e, 0, y);
+}
+
+pub fn list_cursor(e: &mut Engine, line: usize) {
+    list_cursor_pos(e, line);
     let o = &mut e.disp.sub.objs[0];
     if o.script != 0 { o.active = 1; o.flags = 0; } // `move.w #1,obj_slots` + `clr.b $7A25` (S:0x1104E/0x10FFE); the bar exists only after the init list; message boxes clear `active` (S:0x13604)
 }

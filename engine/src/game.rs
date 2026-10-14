@@ -66,7 +66,7 @@ pub enum Top { Title, Intro, Game, Ending, Stopped }
 
 /// Where the VM thread is (S:0x16814 loop).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VmPhase { Pass, Draining, Menu, MenuClose, Stopped }
+pub enum VmPhase { Pass, Draining, Menu, MenuOpen, MenuClose, Stopped }
 
 /// Output events for the front end (audio, saves).
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +102,13 @@ pub struct Engine {
     pub menu: Option<(TextMenu, Vec<u16>)>,
     /// list-menu close sequence in progress (result, frames waited), see `menu_close_frame`
     pub menu_close: Option<(MenuResult, u32)>,
+    /// frames since the menu opening sequence started (`menu_open_frame`)
+    pub menu_open_t: u32,
+    menu_open_ready: u32,
+    /// cursor move in progress: (frames, previous line, new line)
+    pub menu_mv: Option<(u32, usize, usize)>,
+    /// main `$E06E` after the last two ticks (`$788C` is the sub's 2-frame-late copy)
+    pub e06e_hist: [u8; 2],
     /// input of the previous tick for the VM-thread menu loop
     pub menu_in: (u8, u8, u8),
     menu_in_cur: (u8, u8, u8),
@@ -149,7 +156,7 @@ impl Engine {
         Engine {
             files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None,
             vm, script: vec![], phase: VmPhase::Stopped, queue: vec![], qi: 0, seq_step: 0, seq_timer: 0, msg: None,
-            text: TextWindow::new(), menu: None, menu_close: None, menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
+            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
             top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(),
@@ -294,7 +301,8 @@ impl Engine {
         crate::menus::frame_hook(self);
         if self.top == Top::Game {
             if !self.busy() { self.vm_thread(); }
-            if self.busy() { self.seq_run(); }
+            // S:0xD6EE: the sequencer is skipped while a scene VRAM list loads (`$7886`) or the screen reset runs (`$7887`)
+            if self.busy() && self.disp.sub.vram_list.is_none() && self.disp.sub.f7887 == 0 { self.seq_run(); }
             if self.vm.state == 3 && self.top == Top::Game {
                 // SYS SETSTATE(1): mode 6 – late-game module DATA_Y16 (file 0x34)
                 self.top = Top::Ending;
@@ -309,6 +317,7 @@ impl Engine {
 
         self.disp.frame(&self.mem);
         self.e061_hist = [self.disp.main.e061, self.e061_hist[0]];
+        self.e06e_hist = [self.disp.main.e06e as u8, self.e06e_hist[0]];
         let evs: Vec<_> = self.disp.sub.events.drain(..).collect();
         for ev in evs {
             match ev {
@@ -371,6 +380,8 @@ impl Engine {
             VmPhase::Draining => {
                 // queue finished (sequencer command 00 / end of list)
                 if self.vm.state != 2 { self.phase = VmPhase::Stopped; self.out.push(Out::Log(format!("vm state {}", self.vm.state))); return; }
+                // S:0x16892 vm_apply_jump: an applied jump clears the remembered menu cursor `$9716`
+                if self.vm.pending != 0xFFFF { self.regs.set_b(0x9716, 0); }
                 match self.vm.finish_pass() {
                     PassEnd::Continue => { self.phase = VmPhase::Pass; self.vm_pass(); }
                     PassEnd::Menu(items) => self.open_menu(items),
@@ -378,6 +389,7 @@ impl Engine {
             }
             VmPhase::Pass => self.vm_pass(),
             VmPhase::Menu => self.menu_frame(),
+            VmPhase::MenuOpen => self.menu_open_frame(),
             VmPhase::MenuClose => self.menu_close_frame(),
         }
     }
@@ -407,9 +419,49 @@ impl Engine {
         let (m, rem) = TextMenu::new(items.len(), depth, remembered, wide);
         self.regs.set_b(0x9716, rem);
         self.menu = Some((m, items));
-        self.phase = VmPhase::Menu;
-        self.disp.sub.scroll_mode(if wide { 0x12 } else { 0x0D });
-        self.draw_menu();
+        self.menu_open_t = 0;
+        self.phase = VmPhase::MenuOpen;
+    }
+
+    /// The menu opening sequence of the VM thread, frame by frame (oracle watch, pass end = frame 0):
+    /// S:0x1398E (objects 5..14 off, palette channel S:0x139D0, `$7891 = FF`), S:0x10D24 (txt_window_init), then one render
+    /// stream per visible line + 2 (previous / current cursor line) every 2 frames, bar shown and window effect 0x0D (0x12 wide)
+    /// 2 frames after the last stream; the key loop starts when `$788C` (main `$E06E`, 2 frames late) is set (S:0x1103C).
+    fn menu_open_frame(&mut self) {
+        let t = self.menu_open_t + 1;
+        self.menu_open_t = t;
+        let n = self.menu.as_ref().map(|(m, _)| m.visible().len()).unwrap_or(0) as u32;
+        let t_end = 5 + 2 * (n + 2);
+        if t == 1 {
+            for o in self.disp.sub.objs[5..15].iter_mut() { o.active = 0; }
+            self.disp.sub.palch_start(&self.mem, 0x139D0);
+            self.disp.sub.split_req = 0xFF;
+        } else if t == 3 {
+            self.text_window_init();
+            self.text.clear();
+        } else if t >= 5 && t < t_end && (t - 5) % 2 == 0 {
+            let i = ((t - 5) / 2) as usize;
+            if (i as u32) < n { self.draw_menu_line(i, 4); }
+            else if i as u32 == n + 1 {
+                let c = self.menu.as_ref().map(|(m, _)| m.cursor as usize).unwrap_or(0);
+                crate::menus::list_cursor_pos(self, c); // S:0x10FB0: `$7A06`/`$7A0A`
+                self.draw_menu_line(c, 1);
+            }
+        } else if t == t_end {
+            let wide = self.regs.get_b(0x7893) != 0;
+            self.disp.sub.scroll_mode(if wide { 0x12 } else { 0x0D });
+            if self.disp.sub.objs[0].script != 0 { self.disp.sub.objs[0].flags = 0; } // S:0x10FFE `clr.b $7A25`
+        } else if t > t_end && self.e06e_hist[1] != 0 && self.menu_open_ready < 2 {
+            self.menu_open_ready += 1; // oracle: bar object shown 2 frames after `$788C` is set
+        } else if t > t_end && self.e06e_hist[1] != 0 {
+            self.menu_open_ready = 0;
+            // S:0x11042..0x11054: `$9717 = 0`, `$7A25 = 0`, `obj_slots = 1` (the bar object becomes active only now)
+            let c = self.menu.as_ref().map(|(m, _)| m.cursor as usize).unwrap_or(0);
+            crate::menus::list_cursor(self, c);
+            self.regs.set_b(0x9717, 0);
+            self.phase = VmPhase::Menu;
+        }
+        if t > t_end + 240 { self.phase = VmPhase::Menu; }
     }
 
     /// S:0x1383C `sub_01383c`: draw frame `k` of the wait-for-confirm arrow. The descriptor
@@ -425,6 +477,12 @@ impl Engine {
         self.disp.sub.tilech_start(&self.mem, 0xF0_0000);
     }
 
+    /// Voice id -> portrait scene (byte table S:0x13FEC, 0xFF = none), see sequencer command 0x0D.
+    fn portrait_scene(&self, n: u16) -> Option<u8> {
+        let b = self.mem.u8(0x13FEC + n as u32);
+        if b == 0xFF || n >= 1198 { None } else { Some(b) }
+    }
+
     /// `$7892`: the sub CPU's copy of main `$E061`, 2 frames late (oracle: main `$E061` = 0 in frame 20, `$7892` = 0 in frame 22).
     pub fn reg_7892(&self) -> u8 { self.e061_hist[1] }
 
@@ -438,34 +496,46 @@ impl Engine {
         self.script.get(o..).unwrap_or(&[])
     }
 
-    /// Draw the visible menu lines (S:0x10D9A: `FC 00 F9 01 FE c FB 10 y text FF`).
-    fn draw_menu(&mut self) {
-        let Some((m, items)) = self.menu.as_ref() else { return };
+    /// Render stream of visible menu line `i` in colour `col` (`FC 00 F9 01 FE c FB 10 y text FF`, S:0x10D9A).
+    fn menu_line_stream(&mut self, i: usize, col: u8) -> Vec<u8> {
+        let Some((m, items)) = self.menu.as_ref() else { return vec![0xFF] };
         let lines = m.visible();
-        let cursor = m.cursor as usize;
-        let items = items.clone();
         let wide = self.regs.get_b(0x7893) != 0;
-        let font = match self.font.as_ref() { Some(f) => f, None => return };
-        self.text.clear();
-        let mut win = std::mem::take(&mut self.text);
-        for (i, l) in lines.iter().enumerate() {
-            let col = if i == cursor { 1 } else { 4 };
-            let mut s = vec![0xFC, 0x00, 0xF9, 0x01, 0xFE, col, 0xFB, 0x10, (i * 9) as u8];
-            match l {
-                MenuLine::Item(k) => {
-                    let t = self.script_text(items[*k]);
-                    for &c in t.iter().take(0x20) { if c == 0xFF || c == 0xF2 { break } s.push(self.letter(c)); }
-                }
-                // paging arrows: whole render streams at S:0x10EFA (up) / 0x10F10 (down) / 0x10F26 (down, wide)
-                // (`menu_item_stream` S:0x10E5A → sub_010F62), replacing the item line
-                MenuLine::Arrow { down } => { s = crate::menus::stream_at(self, if !*down { 0x10EFA } else if wide { 0x10F26 } else { 0x10F10 }); }
+        let l = lines[i];
+        let item = match l { MenuLine::Item(k) => Some(items[k]), _ => None };
+        let mut s = vec![0xFC, 0x00, 0xF9, 0x01, 0xFE, col, 0xFB, 0x10, (i * 9) as u8];
+        match l {
+            MenuLine::Item(_) => {
+                let t = self.script_text(item.unwrap()).to_vec();
+                for &c in t.iter().take(0x20) { if c == 0xFF || c == 0xF2 { break } s.push(self.letter(c)); }
             }
-            if s.last() != Some(&0xFF) { s.push(0xFF); }
-            win.start(&s);
-            while win.busy { win.tick(font); }
+            // paging arrows: whole render streams at S:0x10EFA (up) / 0x10F10 (down) / 0x10F26 (down, wide)
+            // (`menu_item_stream` S:0x10E5A → sub_010F62), replacing the item line
+            MenuLine::Arrow { down } => { s = crate::menus::stream_at(self, if !down { 0x10EFA } else if wide { 0x10F26 } else { 0x10F10 }); }
         }
+        if s.last() != Some(&0xFF) { s.push(0xFF); }
+        s
+    }
+
+    /// Draw one menu line into the text window at once (the original waits for the glyph renderer between lines).
+    fn draw_menu_line(&mut self, i: usize, col: u8) {
+        let s = self.menu_line_stream(i, col);
+        let Some(font) = self.font.as_ref() else { return };
+        let mut win = std::mem::take(&mut self.text);
+        win.start(&s);
+        while win.busy { win.tick(font); }
         self.text = win;
         self.text_dirty = true;
+    }
+
+    /// Redraw all visible menu lines (cursor moved / page changed).
+    fn draw_menu(&mut self) {
+        let Some((m, _)) = self.menu.as_ref() else { return };
+        let n = m.visible().len();
+        let cursor = m.cursor as usize;
+        if self.font.is_none() { return; }
+        self.text.clear();
+        for i in 0..n { self.draw_menu_line(i, if i == cursor { 1 } else { 4 }); }
         crate::menus::list_cursor(self, cursor);
     }
 
@@ -477,6 +547,13 @@ impl Engine {
         if crate::menus::menu_frame_hook(self) { return; }
         // the menu loop runs in the VM thread, one frame behind the input interrupt (oracle: pad in frame 10,
         // `$7991` = pad in frame 10, `$79F4`/`$9710` change in frame 11; fid_watch.py)
+        if let Some((t, prev, cur)) = self.menu_mv {
+            // the key loop is blocked while the two render streams run
+            self.menu_mv = if t >= 3 { None } else { Some((t + 1, prev, cur)) };
+            if t == 1 { self.draw_menu_line(prev, 4); }
+            if t == 3 { crate::menus::list_cursor(self, cur); self.draw_menu_line(cur, 1); }
+            return;
+        }
         let (pressed, held, repeat) = self.menu_in;
         let frame = self.frame as u16;
         let Some((m, _)) = self.menu.as_mut() else { self.phase = VmPhase::Pass; return };
@@ -486,7 +563,16 @@ impl Engine {
         let depth0 = m.depth == 0;
         let cursor = m.cursor;
         match r {
-            None => { if moved { self.draw_menu(); } }
+            None => {
+                if moved {
+                    let (m, _) = self.menu.as_ref().unwrap();
+                    if m.page == before.1 {
+                        // S:0x10F90: previous line redrawn in colour 4, bar moved, new line in colour 1; each stream
+                        // costs the VM thread ~2 frames (oracle: `$9710` changes in frame 11, bar Y in frame 13)
+                        self.menu_mv = Some((0, before.0 as usize, m.cursor as usize));
+                    } else { self.draw_menu(); }
+                }
+            }
             Some(res) => {
                 // confirm: S:0x11274 plays SFX 0x1D (cmd 1C), then S:0x1106E hides the bar and S:0x11E2A runs the
                 // closing window effect (`scroll_mode(0x0E)`, 0x13 with `$7893`) and waits one frame + `$7892` (= main $E061)
@@ -518,6 +604,8 @@ impl Engine {
         }
         self.phase = VmPhase::Pass;
         self.vm_pass();
+        // oracle: the VM thread goes straight on (an empty pass opens the next menu in the same frame)
+        if !self.busy() { self.vm_thread(); }
     }
 
     // ------------------------------------------------------------------ sequencer
@@ -581,14 +669,29 @@ impl Engine {
                 if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 { self.out.push(Out::PcmSfx { id: w(0), bank: self.pcm_bank }); }
                 true
             }
-            0x0D => { // voice (sub_0150F4): ids 1–35 only select a PCM bank
+            0x0D => { // voice (S:0x101DC): voice start, one idle frame, then the speaker's portrait scene S:0x13FEC[n]
                 let n = w(0);
-                self.regs.set_b(0x9717, 0xFF);
-                if (1..=35).contains(&n) { self.pcm_bank = n; } else {
-                    self.voice_left = *self.voice_len.get(&n).unwrap_or(&90);
-                    self.out.push(Out::Voice { id: n });
+                match self.seq_step {
+                    0 => {
+                        self.regs.set_b(0x9717, 0xFF);
+                        if (1..=35).contains(&n) { self.pcm_bank = n; } else {
+                            self.voice_left = *self.voice_len.get(&n).unwrap_or(&90);
+                            self.out.push(Out::Voice { id: n });
+                        }
+                        self.seq_step = 1;
+                        false
+                    }
+                    1 => { self.seq_step = 2; false }
+                    2 => {
+                        // sub_013FAA: table byte != FF -> `$7891 = 1` (main palette split request, consumed by S:0xD78C)
+                        if self.portrait_scene(n).is_some() { self.disp.sub.split_req = 1; self.seq_step = 3; false } else { true }
+                    }
+                    _ => {
+                        // sub_013FC6: `$78BC = 1`, subfn_16(scene)
+                        if let Some(sc) = self.portrait_scene(n) { self.disp.load_scene(&self.mem, sc as usize); self.apply_7893(); }
+                        true
+                    }
                 }
-                true
             }
             0x0E => { let t = w(0); self.cd_start = Some(self.frame); self.out.push(Out::Music { track: t }); true }
             0x0F => { self.scene_clear(); true }
@@ -756,6 +859,7 @@ impl Engine {
             MsgEvent::ScreenCmd(n) => { if n == 0x0F || n == 0x14 || n == 0x16 { self.text_window_init(); } self.disp.sub.scroll_mode(n); }
             MsgEvent::ClearWindow => self.text_window_init(),
             MsgEvent::WaitFrame(k) => self.msg_wait_frame(k),
+            MsgEvent::SplitClear => self.disp.sub.split_req = 0xFF, // state 1: `$7891 = FF`
             MsgEvent::Begin => {
                 // S:0x13604: sub_0139D4 (objects 5..14 inactive), palette channel S:0x13622, `obj_slots` word 0 = 0 (menu bar)
                 for o in self.disp.sub.objs[5..15].iter_mut() { o.active = 0; }
