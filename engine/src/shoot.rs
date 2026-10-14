@@ -4,8 +4,8 @@
 //!
 //! Objects (slot = (addr − 0x7A00) / 0x50): 21 shot/flash ($8090), 22 pad crosshair ($80E0),
 //! 23 crosshair jitter ($8130), 24 enemy attack ($8180), 26.. templates ($8220), 32–40 the
-//! nine targets ($8400–$86D0), 48 life meter ($8900), 52/53 countdown ($8B80/$8BD0),
-//! 54/55 counters ($8C20/$8C70). The extra per-object fields the shooting code uses
+//! nine targets ($8400–$86D0), 48 life meter ($8900), 56/57 countdown ($8B80/$8BD0),
+//! 58/59 counters ($8C20/$8C70). The extra per-object fields the shooting code uses
 //! (+$17 cell, +$24 state, +$2C timer) are kept here (the animation runtime never reads them).
 use crate::game::{Engine, Out};
 use crate::menus::{set_x, set_y};
@@ -34,6 +34,8 @@ const LIFE_CELLS: u32 = 0x12EBC;  // VRAM addresses of the life-meter cells
 
 const O_SHOT: usize = 21; const O_AIM: usize = 22; const O_JIT: usize = 23; const O_ATK: usize = 24;
 const O_TPL: usize = 26; const O_T0: usize = 32; const O_LIFE: usize = 48;
+// slot = (addr − 0x7A00) / 0x50: countdown READY/GO! labels $8B80/$8BD0, counters $8C20/$8C70
+const O_CD0: usize = 56; const O_CD1: usize = 57; const O_CNT0: usize = 58; const O_CNT1: usize = 59;
 
 #[derive(Clone)]
 pub struct Shoot {
@@ -82,7 +84,7 @@ fn tick(e: &mut Engine, s: &mut Shoot) {
             input(e, s);
             match rw(e, 0x78FA) {
                 0 => {
-                    for o in [52usize, 53] { e.disp.sub.objs[o].flags = 1; e.disp.sub.objs[o].idx = 1; }
+                    for o in [O_CD0, O_CD1] { e.disp.sub.objs[o].flags = 1; e.disp.sub.objs[o].idx = 1; }
                     ww(e, 0x7946, 0x80); ww(e, 0x78FA, 1);
                 }
                 1 => {
@@ -90,8 +92,9 @@ fn tick(e: &mut Engine, s: &mut Shoot) {
                     if t != 0 { if t & 0x3F == 0 { snd(e, 0x11); } ww(e, 0x7946, t - 1); } else { ww(e, 0x78FA, 2); }
                 }
                 _ => {
-                    e.disp.sub.objs[52].active = 0; e.disp.sub.objs[53].active = 0;
+                    e.disp.sub.objs[O_CD0].active = 0; e.disp.sub.objs[O_CD1].active = 0;
                     snd(e, 0x12); ww(e, 0x78FA, 0); ww(e, 0x78E8, 2);
+                    if e.trace { e.out.push(Out::Log("shoot: play phase".into())); }
                 }
             }
         }
@@ -339,7 +342,7 @@ fn hit_test(e: &mut Engine, s: &mut Shoot) {
             if rw(e, 0x790A) & 7 == 7 { speed_down(e); }
             inc(e, 0x790A);
             if st == 0 || st == 0x0B {
-                let o = &mut e.disp.sub.objs[55]; o.active = 1; o.flags = 1; o.idx = o.idx.wrapping_add(1);
+                let o = &mut e.disp.sub.objs[O_CNT1]; o.active = 1; o.flags = 1; o.idx = o.idx.wrapping_add(1);
             }
             let n = tb(e, T_HIT_SFX, st); pcm(e, n);
         }
@@ -533,7 +536,7 @@ fn spawner(e: &mut Engine, s: &mut Shoot) {
             e.disp.sub.objs[t].idx = d5;
             e.disp.sub.objs[t].active = 1;
             if s.f24[t] != 0x20 && (st == 0 || st == 0x0B) {
-                let o = &mut e.disp.sub.objs[54]; o.active = 1; o.flags = 1; o.idx = o.idx.wrapping_add(1);
+                let o = &mut e.disp.sub.objs[O_CNT0]; o.active = 1; o.flags = 1; o.idx = o.idx.wrapping_add(1);
             }
             s.f24[t] = (s.f24[t] & 0xF0) | 1;
             ww(e, 0x78FC, 0);
@@ -632,7 +635,7 @@ fn end_check(e: &mut Engine, s: &mut Shoot) {
         if flags != 0 && st != 7 { e.disp.sub.objs[t].active = 0; }
     }
     if st == 0 || st == 0x0B {
-        for o in [52usize, 53] { e.disp.sub.objs[o].active = 1; e.disp.sub.objs[o].idx = 2; }
+        for o in [O_CD0, O_CD1] { e.disp.sub.objs[o].active = 1; e.disp.sub.objs[o].idx = 2; }
     }
     ww(e, 0x78E8, 3);
 }

@@ -259,6 +259,8 @@ impl Engine {
     pub fn jump_path(&mut self, script_id: u16, pc: u16, path: &[u16]) {
         self.jump(script_id, pc);
         for &p in path { self.vm.path.push(p); }
+        // keep the preset path through the first `finish_pass` (it truncates to the top mark)
+        if !path.is_empty() { self.vm.marks.push(path.len() as u16); }
     }
 
     fn start_queue(&mut self, q: Vec<Action>) {
