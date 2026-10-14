@@ -20,8 +20,11 @@ export class Input {
   /**
    * Light-gun mode: switched on by the first mouse click on the canvas and off again when a pad
    * input (keyboard or gamepad) is used, so the pad keeps working for aiming. While on, the engine
-   * runs the shooting sections with the gun rules (S:0x12516 maps the position to the 3x3 cells:
-   * x < 0x60 / < 0xA0, y < 0x30 / < 0x58 in game pixels, trigger = bit5, second button = bit6 of $7985).
+   * runs the shooting sections with the gun rules: the engine converts the pixel position to the raw
+   * values the main CPU would report (X = 2 x H counter, Y = V counter; M:0xFF148A / M:0xFF14E0,
+   * `gun_raw` in engine/src/menus.rs), subtracts the calibration ($7988/$7989, title screen; default
+   * = perfect) and S:0x12516 maps the result to the 3x3 cells (x < 0x60 / < 0xA0, y < 0x30 / < 0x58).
+   * Trigger = bit5, second button = bit6 of $7985.
    */
   gunMode = false;
   /** Set by main (`input.game = game`); falls back to `window.snatcher.game`. */
