@@ -51,6 +51,7 @@ dedication shutters, docs/re/modules.md §3.2; the oracle's missing CD time `$78
    screens differ only by animation phase/drift. Harness: re/oracle/fid_cmp.py (--rng --sync).
    Next: Acts 2 and 3 (start both sides via SP01 debug jumps), shooting stages after fixing the
    oracle's held-pad model, the ending path end-to-end.
+   Running now: FIDELITY2 (Acts 2–3 + ending + save/continue) and SHOOTING (oracle pad/gun fix + all stages).
 5. Ghidra DB: done once after resume (sub_prg: 406 functions, 303 named; main_ip: 180) via
    `re/analyze.sh` with the concatenated label files; re-run after new labels.
 
