@@ -82,7 +82,7 @@ fn main() {
             let w = e.wait_state();
             if w != ready_kind { ready_kind = w; ready_since = f; }
             if let Some(&(k, since, p)) = sync.front() {
-                let want = if k == 'm' { 1 } else { 2 };
+                let want = if k == 'm' { 1 } else if k == 'e' { 3 } else { 2 };
                 if w == want && f - ready_since >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press {k} {since} pad {p}"); }
             }
         }

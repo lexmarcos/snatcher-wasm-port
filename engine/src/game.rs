@@ -507,11 +507,15 @@ impl Engine {
     }
 
     /// For the test harness (fid_cmp `--sync`): what the game is waiting for. 1 = a message box waits for the confirm
-    /// button (state 5, glyph renderer idle), 2 = the command menu's key loop is running, 0 = neither.
+    /// button (state 5, glyph renderer idle), 2 = the command menu's key loop is running, 3 = keypad/keyboard entry accepts keys, 0 = none.
+    /// Shooting fidelity harness (re/oracle/shoot_rec.py): the oracle pokes the display RNG `$786A..D` to 0 before every frame.
+    pub fn pin_sub_rng(&mut self) { self.disp.sub.rng = [0; 4]; }
+
     pub fn wait_state(&self) -> u8 {
         if self.top != Top::Game { return 0; }
         if let Some(m) = self.msg.as_ref() { if m.state == 5 && !self.text.busy && self.busy() { return 1; } }
         if self.phase == VmPhase::Menu && self.menu.is_some() && self.menu_close.is_none() { return 2; }
+        if self.ix.entry.as_ref().map_or(false, |en| en.active()) && self.ix.closing.is_none() { return 3; }
         0
     }
 

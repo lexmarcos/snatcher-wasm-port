@@ -278,6 +278,9 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Test harness (`Engine::wait_state`): the key loop accepts input.
+    pub fn active(&self) -> bool { matches!(self.stage, Stage::Active) }
+
     /// `loc_0113A0` + `sub_011496` (S:0x113A0–0x11448, S:0x11496).
     fn open(e: &mut Engine, style: u8, items: Vec<u16>) -> Entry {
         let k = (style - 2) as u32;

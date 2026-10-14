@@ -13,11 +13,16 @@ ap.add_argument('--watch', default='s:7892'); ap.add_argument('--wait', type=int
 ap.add_argument('--from', dest='frm', type=int, default=1); ap.add_argument('--load', default='junker_hq')
 ap.add_argument('--rng', action='store_true', help='poke $786A..D = 0 every frame (pair with fid_cmp --rng)')
 ap.add_argument('--changes', action='store_true', help='print only frames where a value changed')
+ap.add_argument('--jump', default='', help='SPnn:pc start (fid_common.oracle_jump) instead of the Junker HQ state')
 a = ap.parse_args()
 m = Machine(trace_path=os.path.join(HERE, 'out', 'fid_watch_trace.jsonl'))
 m.load_state(os.path.join(HERE, 'states', a.load + '.pkl'))
 m.inputs = []
-for _ in range(a.wait): m.step_frame(capture=False)
+from fid_common import patch_cdtime, oracle_jump
+patch_cdtime()
+if a.jump: oracle_jump(m, a.jump, a.wait)
+else:
+    for _ in range(a.wait): m.step_frame(capture=False)
 seq = []; t = 0
 for f, b in sorted(json.loads(a.inputs)): seq.append([f - t - 1, 0]); seq.append([1, b]); t = f
 m.inputs = seq

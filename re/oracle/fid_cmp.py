@@ -34,11 +34,13 @@ ap.add_argument('--engine-jump', default='')
 ap.add_argument('--eprelude', default='1540:32', help='engine: absolute-frame presses before rel 0 (dismiss the first Mika message)')
 ap.add_argument('--load', default='junker_hq')
 ap.add_argument('--skip-oracle', action='store_true')
+ap.add_argument('--jump', default='', help='FIDELITY2: start both sides at SPnn:pc (hex pc of a SP01 CHOICE leaf etc.): oracle fid_common.oracle_jump after --owait idle frames (rel 0 = the jump), engine Engine::jump at frame 0')
 ap.add_argument('--refine', type=int, default=0, help='for screens with more than N differing pixels also try engine frames +-12 around the mapped one and report the best offset (needs a second engine run)')
 ap.add_argument('--refine-range', type=int, default=12)
 ap.add_argument('--rng', action='store_true', help='fix the RANDOM script nodes on both sides (poke $786A..D = 0 each oracle frame, engine FIDRNG)')
 ap.add_argument('--skip-engine', action='store_true')
 a = ap.parse_args()
+if a.jump: a.engine_jump = a.jump; a.ebase = 0; a.eprelude = ''
 out = os.path.join(HERE, 'out', 'fid', a.name)
 for d in ('oracle', 'engine', 'diff'):
     os.makedirs(os.path.join(out, d), exist_ok=True)
@@ -55,7 +57,9 @@ PY = os.path.join(HERE, '.venv', 'bin', 'python')
 if not a.skip_oracle:
     sys.path.insert(0, HERE)
     from machine import Machine
-    if a.oracle_jump:
+    from fid_common import patch_cdtime
+    patch_cdtime()
+    if a.oracle_jump and not a.jump:
         seq, t = [], 0
         for f, b in sorted(inputs):
             seq.append([f - t - 1, 0]); seq.append([1, b]); t = f
@@ -69,7 +73,11 @@ if not a.skip_oracle:
         m = Machine(trace_path=os.path.join(out, 'oracle', 'trace.jsonl'))
         m.load_state(os.path.join(HERE, 'states', a.load + '.pkl'))
         m.inputs = []
-        for _ in range(a.owait): m.step_frame(capture=False)
+        if a.jump:
+            from fid_common import oracle_jump
+            oracle_jump(m, a.jump, a.owait)
+        else:
+            for _ in range(a.owait): m.step_frame(capture=False)
         base0 = m.frame
         press = dict((f, b) for f, b in inputs)
         shotset = set(shots)
