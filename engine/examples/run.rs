@@ -26,6 +26,7 @@ fn main() {
         if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); }
     }
     match a.get(5) {
+        Some(j) if j == "boot" => e.boot(),
         Some(j) => {
             let (f, pc) = j.split_once(':').unwrap();
             e.jump(57 + f[2..].parse::<u16>().unwrap(), u16::from_str_radix(pc, 16).unwrap());

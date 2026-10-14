@@ -30,17 +30,20 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
   Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
 ## Resume here (order)
-1. **Build check first**: `cargo build --release && cargo test --release -p snengine -p sncore --lib`.
-   Uncommitted/partial work may exist from MODULES/INTERACT (engine/src/modules, menus.rs,
-   shoot.rs, `mod` lines in engine/src/lib.rs/game.rs); fix or remove the `mod` lines.
-2. **MODULES** (docs/re/modules.md): finish DATA_D2 title, D1/D0 intro, Y16 ending modules and
-   H40 (320 px) rendering; compare with `re/oracle/out/refs/*.png`. Then `scripts/build-web.sh`.
-3. **INTERACT** (docs/re/interact.md): menu highlight bar = object 0 (S:0xED1C, 7 sprites at y=136,
-   see oracle junker_menu.png), pointer/keypad/keyboard menus, shooting (`shoot_tick` S:0x1208E).
-4. **AUDIO-VERIFY** (docs/re/audio.md): compare kdriver YM writes with the oracle trace `ym` field.
-5. **Engine fidelity loop**: compare engine frames with oracle (`re/oracle/probe.py` per-line VDP
-   state + VRAM dump, `probe_mem.py`); then play further into Act 1 via SP01 debug menu.
-6. Ghidra DB: run `re/analyze.sh` with `cat re/labels/sub_*.txt` to import all names.
+State after resume (commit after cfc038a): build is green (`cargo build --release`,
+`cargo test --release -p snengine -p sncore --lib`, `scripts/build-web.sh`).
+`Top::Title` is skipped (engine/src/modules/title.rs was never written). `boot()` → intro
+DATA_D1 timeline: disclaimer, RSS logo and dedication screens render, then the screen stays black
+(timeline stalls ~frame 1600; see `cargo run --release -p snengine --example run -- 4800 400 OUT "" boot`).
+1. **MODULES** (engine/src/modules/, docs/re/modules.md — doc missing, create it): fix the D1/D0
+   timeline stall, write the DATA_D2 title module and H40 (320 px) rendering; compare with
+   `re/oracle/out/refs/*.png`.
+2. **INTERACT** (docs/re/interact.md "Status"): menu highlight bar re-hidden (object 0 +$25),
+   then verify keypad/keyboard/pointer/shooting via SP01:0 debug menu and the oracle.
+3. **AUDIO-VERIFY** (docs/re/audio.md; core/src/audio/verify.rs WIP): compare kdriver YM writes
+   with the oracle trace `ym` field.
+4. Fidelity loop: engine frames vs oracle (`re/oracle/probe.py`, `probe_mem.py`).
+5. Ghidra DB: `re/analyze.sh` with `cat re/labels/sub_*.txt`.
 
 ## Blockers
 - No Sega CD BIOS (not downloaded by rule) → HLE oracle instead; YM2612/mix levels unverified by ear.
