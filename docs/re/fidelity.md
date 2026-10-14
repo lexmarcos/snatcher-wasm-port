@@ -1,9 +1,21 @@
 # FIDELITY workstream – engine vs ORIGINAL (oracle) through Act 1
 
 ## Status
-(updated as the loop proceeds; see "Findings" for evidence)
-- Harness: `re/oracle/fid_cmp.py` (queues per VM pass + screen diffs), `fid_watch.py` (per-frame watch of original memory), `fid_sheet.py`.
-- Junker HQ command menu / message box open/close timing and the wait-for-confirm arrow now match the oracle within 1 frame (see below).
+- **Result**: a 58,000-frame (16 min) oracle session through Act 1 – Junker HQ lobby (all LOOK/INVESTIGATE/TALK/ASK branches, Mika), the guided tour (Chief's office, engineering, detective's room,
+  computer room, shooting range), Harry/Metal Gear Mk II, the turbocycle ride, the abandoned factory exterior and first interior rooms (SP06 → SP07, MOVE/LISTEN/SAVE/USE METAL GEAR menus) – replayed in the engine:
+  **158 of 159 action queues are identical** (the only differences are the 3 engine-only boot passes before the anchor), drift ≤ 80 frames after 58,000 frames (`fid_cmp.py --sync`, `docs/re/fidelity.md`
+  "Harness"). Screens (233 samples): the bulk of the remaining differences are looping-animation phase (fan, blink, cloud wave, palette cycles; the same image appears at an offset of a few frames or ≤ 40 frames
+  for the factory sky) – see "Known differences".
+- Message box, command menu (open / move / confirm / close), portrait panels, scene changes (cmd 0F/12/0D), cmd 0B/0E CD waits, cmd 15 popups: verified frame-exact (menus) or within 1-3 frames (scene loads).
+- Web smoke test (headless Chrome, `scripts/build-web.sh`, server :5300): `?newgame`, `?scene=SP01:0`, `?newgame&debug` load without console errors, audio manifests 200, message arrow visible.
+
+## Harness (re/oracle)
+- `fid_play.py --cycle --rng --frames N --out play.json`: plays the ORIGINAL adaptively (menu policy: every distinct menu's items in turn; confirm every message) and records the pad script
+  `[[rel,pad,kind,since],..]` (kind m = message waiting, u = menu key loop; `since` = frames after readiness; lost presses are dropped); prints the story (menus, messages, queues, script changes).
+- `fid_cmp.py --rng --sync --inputs-file play.json --frames N --every K [--refine PX]`: oracle replay with the absolute script, engine replay with `SYNC` (presses relative to the engine's own readiness,
+  `Engine::wait_state`), queue comparison per VM pass (difflib), screens at drift-corrected frames; `--refine` searches engine frames +-12 (`--refine-range`) for the best match to tell phase differences from content differences.
+  `--rng`: oracle pokes `$786A..D = 0` every frame, engine `FIDRNG` (RANDOM nodes deterministic on both sides).
+- `fid_watch.py` per-frame memory watch (`s:`/`m:` addresses), `fid_probe.py` VDP/sprite/object dump at a frame, `fid_sheet.py` contact sheets, `hookpc` style PC hooks were used ad hoc (see Findings).
 
 ## Tools
 - `cd re/oracle && .venv/bin/python -I fid_cmp.py --name NAME --inputs '[[rel_frame,bits],..]' --shots 100,200 [--every K]`
@@ -45,6 +57,11 @@
     one pass more than the 12 line groups: the 13th pass (line 148) writes the white buffer `$EC80` (filled with 0x0EEE at M:0xFF1396) to CRAM 0..3 through the wrapped address 0x80 – this is what makes the portrait panel white
     (`core/src/gfx.rs` `y16 == sl + 12`). Oracle CRAM sets per line: `fid_probe.py`.
 11. Scene object chunk (S:0xF718): `tst.b (a1)` tests the high byte of the active word, which is 0 for a live object – the slot "busy" test never stops the chunk in practice (HYPOTHESIS, not changed).
+
+12. **Sequencer command 0B/0E**: 0E plays a CD-DA track once (MSCPLAY1), 0B (S:0x101A6) waits until the CDBSTAT high byte is 0 (track ended) or 5 – the port completed 0B at once, so cutscenes that wait for a
+    jingle ran 800-1300 frames early (turbocycle departure). Uses `SubServices::cd_status` (track lengths from the extract report).
+13. **Scene object chunk, busy slot** (S:0xF718): the test is `tst.b (a1)` on the HIGH byte of the active word, never set for live objects, so an occupied slot is re-created, not skipped
+    (hypothesis 11 above proved right): command 15 popups (the BLASTER picture box, object 1) were never drawn because slot 1 was occupied.
 
 ### Not modelled / known differences
 - Random: the original's RNG `$786A..D` is stepped every sub frame, so RANDOM nodes (and random-duration object waits) differ run to run; the harness pins both sides (`fid_cmp.py --rng`: oracle pokes `$786A..D = 0` every frame, engine `FIDRNG` sets (a,c) = (0,1) before each pass).
