@@ -1,0 +1,13 @@
+# ACTIONS workstream labels (main CPU)
+0xFF1284 pad1_task f
+0xFF1298 pad1_read f
+0xFF1316 pad_id_setup f
+0xFF1358 pad_read_id f
+0xFF13E2 gun_task f
+0xFF13F6 gun_read f
+0xFF14CC gun_send f
+0xFF3100 mailbox_tick f
+0xFF3484 effect_dispatch f
+0xFF348E effect_table
+0xFF17C4 dmaq_run f
+0xFF1750 vram_dma_sprites f

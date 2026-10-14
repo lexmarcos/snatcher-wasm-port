@@ -1,0 +1,25 @@
+# Audio (sub CPU PCM driver, CD-DA). Evidence in docs/re/audio.md
+0x1530E pcm_play_sfx f       # d0 = sfx id, d1 = channel/0xFF
+0x1535E pcm_start_sfx f
+0x154F8 pcm_play_voice f     # d0 = voice id (PCMLT entry)
+0x15140 pcm_frame f
+0x1573C pcm_stream_refill f
+0x15EB4 fm_queue_id f        # d0 = FM id, d1 = 1 music / 0 sfx
+0x15F18 fm_send_comm f       # one id per frame -> COMSTAT2
+0x15BB8 pcm_copy_wave f
+0x162E0 pcm_special_cmd f
+0x70BA pcm_init f
+0x50000 pcm_voice_table
+0x54000 pcm_sfx_table
+0x55000 pcm_drum_kit
+0x65000 pcm_bank_buf
+0xE30A cd_play_track f       # subfn_19: _CDBIOS MSCPLAY1(0x12)
+0xE2FE cd_status f           # subfn_18: _CDBIOS CDBSTAT(0x81)
+0xE31A cd_pause f            # _CDBIOS 3
+0x10238 seqcmd_0e_cdda f
+0x101BC seqcmd_0c_pcmsfx f
+0x101DC seqcmd_0d_voice f
+0x1011E seqcmd_07_fmmusic f
+0x1013E seqcmd_1c_fmsfx f
+0x1016C seqcmd_0a_waitpcm f
+0x103D2 seqcmd_1b_waitcdtime f

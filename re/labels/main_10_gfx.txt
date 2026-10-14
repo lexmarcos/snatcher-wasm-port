@@ -1,0 +1,38 @@
+# Main CPU labels – graphics workstream
+0xFF1994 lzkn1_dec_hdr f       # addq.l #2,a5 then fall into 0xFF1996 (KonDec2)
+0xFF1996 lzkn1_dec f           # KonDec identical to Contra HC
+0xFF1902 lzkn_to_vram f        # (a5)+ size, decompress to a6, DMA to VRAM a4
+0xFF1506 vdp_init_regs f       # writes 15 regs from table 0xFF1584
+0xFF1584 vdp_regtab_boot
+0xFF15A4 vdp_regtab_alt
+0xFF1570 planeB_C000 f
+0xFF157A planeB_E000 f
+0xFF17C4 dmaq_run f            # Word RAM DMA queue 0x236000
+0xFF1806 dmaq_entry f
+0xFF1836 dmaq_type1 f
+0xFF183C dmaq_vram f
+0xFF1750 sat_dma f             # sprite table DMA (Word RAM 0x236200 or RAM $FFED00)
+0xFF1A44 cram_dma_check f
+0xFF1A5A cram_dma f
+0xFF32AC pal_copy_A
+0xFF3100 wram_sync f
+0xFF3CAA scroll_update f
+0xFF0AD4 hint_mode_setup f     # $E06C selects raster-split mode (table 0xFF0AF8)
+0xFF0B58 hintmode_0 f
+0xFF0B96 hintmode_1 f
+0xFF0BC2 hintmode_2 f
+0xFF0BC8 hintmode_7 f
+0xFF0BE0 hintmode_9 f
+0xFF0BF8 hintmode_12 f
+0xFF0C06 hintmode_10 f
+0xFF0C14 hintmode_17 f
+0xFF0C26 hintmode_18 f
+0xFF0C4A hint_handler_a f
+0xFF0CCE hint_handler_b f
+0xFF0D6E hint_handler_c f
+0xFF0DB0 hintc_sub0 f
+0xFF0E30 hintc_sub1 f
+0xFF0E4C hintc_sub2 f
+0xFF0E68 hintc_sub3 f
+0xFF0E86 hintc_sub4 f
+0xFFE100 save_entry_e100 f     # code copied from SP+0x1300 via Word RAM 0x237800 (save/BRAM)

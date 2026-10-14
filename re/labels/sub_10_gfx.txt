@@ -1,0 +1,41 @@
+# Sub CPU labels – graphics workstream
+0xF346 lzkn1_dec_hdr f
+0xF348 lzkn1_dec f
+0xF32C lz_to_wordram f        # decompress (a5)+ -> 0xB8000, d6=2 a5=0x238000 d7=size
+0xE322 dmaq_push f            # subfn_10: queue [type d6][src a5][dst a6][len d7] at 0xB6000
+0xE34E vram_list_tick f       # processes $7880 VRAM upload list (scene chunk type 1)
+0xE41A palch_start f          # subfn_08: start palette channel (scene chunk type 0)
+0xE4B4 palch_run f            # runs 12 palette channels at $9000
+0xE528 palch_dst f
+0xE540 palch_delay f
+0xF68E scene_load f           # subfn_16: d0 = scene number in DATA file ($28004 table)
+0xF696 scene_load_builtin f   # same with built-in table S:0x146CE
+0xF708 scene_obj_spawn f
+0xF78E scene_obj_link f
+0xF7F0 obj_update_all f
+0xF8C0 obj_anim_tick f
+0xF8F6 obj_anim_step f
+0xFD68 obj_set_delay f
+0xED28 sat_build f            # builds SAT into Word RAM 0xB6200 (main 0x236200)
+0xEDA0 sat_build_obj f
+0xF3F8 scroll_mode f          # subfn_13
+0xF446 scroll_tick f          # subfn_22
+0xF47C scroll_apply f         # $8F30.. -> COMSTAT3..6
+0x7A00 obj_slots              # 64 x 0x50 bytes
+0x9000 pal_channels           # 12 x 16 bytes
+0x7880 vram_list_ptr
+0x8F30 scroll_state
+0xB6000 wr_dmaq
+0xB6100 wr_palette            # 2 x 64 colours
+0xB6200 wr_sat
+0xB6400 wr_mailbox
+0xE81A tilech_start f          # subfn_15: start tile-stream channel (7 x 8 bytes at $8E00)
+0xE846 tilech_run f
+0xE880 tilech_dispatch f
+0xE8C6 tilech_send f
+0xE8F2 tilech_k0 f
+0xE93C tilech_k1 f
+0xE986 tilech_k2 f
+0xE9DC tilech_k3 f
+0xEA88 tilech_k4 f
+0xEB28 tilech_pre f

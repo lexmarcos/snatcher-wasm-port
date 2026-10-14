@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Snatcher asset viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#111;--fg:#ddd;--mut:#888;--acc:#4cf}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.4 system-ui,sans-serif}
+header{position:sticky;top:0;background:#1a1a1a;padding:8px 12px;display:flex;gap:12px;align-items:center;z-index:2;border-bottom:1px solid #333}
+select,label{font:inherit}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:12px}
+.card{background:#1b1b1b;border:1px solid #2a2a2a;border-radius:4px;padding:4px;cursor:pointer}
+.card img{width:256px;height:224px;image-rendering:pixelated;display:block;background:#000}
+.card .t{color:var(--mut);font-size:12px;margin-top:2px}
+#detail{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:3;overflow:auto;padding:16px}
+#detail img{image-rendering:pixelated}
+.pal{display:grid;grid-template-columns:repeat(16,18px);gap:1px;margin:8px 0}
+.pal div{width:18px;height:18px;border:1px solid #000}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+</style></head>
+<body>
+<header><b>Snatcher scenes</b>
+<select id="file"></select>
+<label><input type="checkbox" id="vramOnly" checked> only scenes with VRAM uploads</label>
+<span id="count" style="color:var(--mut)"></span></header>
+<div id="grid"></div>
+<div id="detail"></div>
+<script>
+const md = w => { const r=(w>>1)&7,g=(w>>5)&7,b=(w>>9)&7; return `rgb(${r*36},${g*36},${b*36})`; };
+let index = [];
+async function init(){
+  index = await (await fetch('/gfx/scenes/index.json')).json();
+  const files = [...new Set(index.map(e=>e.file))];
+  const sel = document.getElementById('file');
+  sel.innerHTML = files.map(f=>`<option>${f}</option>`).join('');
+  const want = new URLSearchParams(location.search).get('file');
+  if (want) sel.value = want;
+  sel.onchange = render; document.getElementById('vramOnly').onchange = render;
+  render();
+  const sc = new URLSearchParams(location.search).get('scene');
+  if (sc !== null) show(index.find(e=>e.file===sel.value && e.scene==+sc));
+}
+function render(){
+  const f = document.getElementById('file').value, vo = document.getElementById('vramOnly').checked;
+  const list = index.filter(e=>e.file===f && (!vo || e.vram));
+  document.getElementById('count').textContent = `${list.length} scenes`;
+  document.getElementById('grid').innerHTML = list.map(e=>
+    `<div class="card" data-s="${e.scene}"><img loading="lazy" src="/gfx/scenes/${e.screen}"><div class="t">${e.file} scene ${e.scene} · ${e.objects} obj · rec ${e.addr.toString(16)}</div></div>`).join('');
+  document.querySelectorAll('.card').forEach(c=>c.onclick=()=>show(index.find(e=>e.file===f && e.scene==+c.dataset.s)));
+}
+function show(e){
+  if(!e) return;
+  const d = document.getElementById('detail');
+  const pal = (from) => `<div class="pal">${e.palette.slice(from,from+64).map(w=>`<div title="${w.toString(16).padStart(4,'0')}" style="background:${md(w)}"></div>`).join('')}</div>`;
+  d.innerHTML = `<div style="margin-bottom:8px"><b>${e.file} scene ${e.scene}</b> (click to close)</div>
+   <div class="row"><div><div>screen 256×224 ×2</div><img id="scr" src="/gfx/scenes/${e.screen}" width="512" height="448"></div>
+   <div><div>palette set A (CRAM top)</div>${pal(0)}<div>palette set B (below line 137)</div>${pal(64)}</div></div>
+   <div style="margin-top:12px">planes: A (top 64×32 cells) / B (bottom), transparent = checker</div>
+   <img src="/gfx/scenes/${e.planes}" width="1024" height="1024" style="background:repeating-conic-gradient(#333 0 25%,#222 0 50%) 0 0/16px 16px">`;
+  d.style.display='block'; d.onclick=()=>{d.style.display='none'};
+}
+init();
+</script></body></html>

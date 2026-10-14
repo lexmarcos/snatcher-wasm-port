@@ -39,3 +39,88 @@
 0x105fe seqc_21 f
 0x1060c seqc_22 f
 0x10618 seqc_23 f
+0x1062e save_misc_tick f
+# --- input
+0xD7B2 in_copy_comcmd f
+0xDF86 in_repeat f
+0xDFD6 in_remap f
+0xDFF6 in_remap_byte f
+0xE034 in_button_cfg_tbl
+0xDF52 in_sound_done_flags f
+0x7980 in_raw_held
+0x7981 in_raw_pressed
+0x7990 in_held
+0x7991 in_pressed
+0x7992 in_repeat_bits
+0x78BA opt_button_cfg
+# --- text
+0x13BC8 txt_tick f
+0x13D4E txt_window_init f
+0x13D84 txt_clear f
+0x13DD0 txt_start_stream f
+0x13DEC seq_push_cmd05 f
+0x13E5E txt_pixel_addr f
+0x13E9C txt_draw_glyph f
+0x13F46 txt_upload_rows f
+0x13F86 txt_advance f
+0x14B7C txt_font
+0x14EAC txt_widths
+0x13552 speaker_names
+0x135B2 msg_tick f
+0x13686 msg_name_line f
+0x136E6 msg_build_name f
+0x13A0E msg_line_header f
+0x13A90 msg_next_line f
+0x13AC0 txt_build_line f
+0x137E8 msg_wait_confirm f
+0x1391C msg_wait_anim_tbl
+0x9720 txt_busy
+0x9730 txt_ptr
+0x9740 msg_state
+# --- menus
+0x10CBE menu_show f
+0x11004 menu_input f
+0x110B0 menu_read_keys f
+0x10E5A menu_item_stream f
+0x1130A menu_pick_layout f
+0x11AA8 kbd_match_items f
+0x11B26 kbd_compare f
+0x10846 pointer_mode f
+0x107DC stk_get f
+0x107FE stk_top f
+0x10806 stk_push f
+0x10816 stk_pop f
+0x10778 stk_drop f
+0x1082C stk_truncate f
+0x10840 stk_clear f
+0x10788 stk_contains f
+0x1071E stk_push_fifo f
+0x9840 stk_floors
+0x9852 stk_items
+0x9892 stk_path
+0x98B2 stk_calls
+0x98D8 stk_history
+0x98E0 stk_gosub
+0x79F4 menu_result
+0x79FE menu_style
+# --- modes / save / misc
+0xE046 mode_tick f
+0x166BA vm_thread f
+0x14A52 mode2_intro f
+0x14F12 save_snapshot f
+0x14F70 save_snapshot_scene f
+0x1500E save_restore_scene f
+0x1507A save_restore_objects f
+0xFD96 rand16 f
+0xFD8C rand_range f
+0xFDD2 obj_control f
+0xED28 sprite_build f
+0xEDA0 sprite_build_obj f
+0x1208E shoot_tick f
+0x12400 shoot_input f
+0x12516 shoot_gun_cell f
+0x9C00 save_block
+0x9C60 game_vars
+0x7842 mode_state
+0x9808 vm_state
+0x1062E debug_hexview f

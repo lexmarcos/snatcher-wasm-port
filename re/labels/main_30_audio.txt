@@ -1,0 +1,44 @@
+# Audio (FM driver on main CPU). Evidence in docs/re/audio.md
+0xFF5058 fm_request f        # d0 = sound id; queue -> $FF7F00
+0xFF5106 fm_update f         # called from vint; dequeues one id
+0xFF5306 fm_start f          # start song/sfx d0
+0xFF55FE fm_song_copy f      # copy song from Word RAM 0x202846 table to 0xFF8000
+0xFF56AE fm_boot_load f      # instruments -> Z80 RAM, sfx bank -> 0xFF9000
+0xFF408A fm_tick f           # per-frame sequencer (vint)
+0xFF6142 fm_sound_table      # 8 bytes per id
+0xFF5586 fm_song_sizes
+0xFF51A8 fm_cmd_table        # ids F1..
+0xFF52AC fm_stop_all f
+0xFF51E4 fm_cmd_f2 f
+0xFF400A fm_seqcmd_table   # 32 longs, commands E0..FF (M:0xFF48BC)
+0xff48d8 fmcmd_e0 f
+0xff48fe fmcmd_e1 f
+0xff4932 fmcmd_e2 f
+0xff4956 fmcmd_e3 f
+0xff496c fmcmd_e4 f
+0xff4986 fmcmd_e5 f
+0xff499c fmcmd_e6 f
+0xff49f2 fmcmd_e7 f
+0xff49a2 fmcmd_e8 f
+0xff49b4 fmcmd_e9 f
+0xff4a3c fmcmd_ea f
+0xff4b7a fmcmd_eb f
+0xff4a70 fmcmd_ec f
+0xff4a76 fmcmd_ed f
+0xff4a88 fmcmd_ee f
+0xff4a96 fmcmd_ef f
+0xff4abc fmcmd_f0 f
+0xff4acc fmcmd_f1 f
+0xff4ae4 fmcmd_f2 f
+0xff4af4 fmcmd_f3 f
+0xff4af6 fmcmd_f4 f
+0xff4b0c fmcmd_f5 f
+0xff4b26 fmcmd_f6 f
+0xff4b32 fmcmd_f7 f
+0xff48d6 fmcmd_f8 f
+0xff4ba8 fmcmd_f9 f
+0xff4bca fmcmd_fb f
+0xff4bd6 fmcmd_fc f
+0xff4be0 fmcmd_fd f
+0xff4be6 fmcmd_fe f
+0xff4c12 fmcmd_ff f

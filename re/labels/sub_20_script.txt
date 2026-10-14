@@ -1,0 +1,136 @@
+# Script VM labels (script workstream). Evidence: docs/re/script.md.
+# --- main loop states (table S:0x166D4) ---
+0x166E0 vmstate0_title_wait f
+0x16734 vmstate1_init f
+0x16814 vmstate2_pass f
+0x166FA vmstate3_end f
+0x1670C vmstate4_exit f
+0x16800 vm_queue_load_script f
+0x16870 vm_pass_begin f
+0x16892 vm_apply_jump f
+0x16922 vm_no_menu_truncate_path
+0x168CA vm_menu_result
+# --- VM core ---
+0x1699A vm_skip_node f
+0x16A30 vm_car_pos f
+0x16A3E vm_node_types f
+0x16A64 vm_node_has_link f
+0x16A6E vm_is_list f
+0x16A8E vm_car_case_key f
+0x16ACA vm_eval_operand f
+0x16B14 var_read f
+0x16B60 var_width_masks
+0x16B80 var_write f
+0x16BE2 vm_list_count f
+0x16C32 vm_list_nth f
+0x16C90 vm_guard f
+0x17492 vm_sys_table
+0x1761C vm_scene_queue_load f
+0x1763E vm_scene_queue_image f
+# --- handlers (opcode table S:0x16CDC) ---
+0x16E08 op_DO f
+0x16E12 op_LIST_SEQ f
+0x16E52 op_WHEN f
+0x16E6E op_IFELSE f
+0x16E96 op_SWITCH f
+0x16EF0 op_CYCLE f
+0x16F4C op_RANDOM f
+0x16F94 op_CHOICE f
+0x17018 op_CASE f
+0x1702C op_NOP f
+0x1702E op_MARK f
+0x17078 op_UNMARK f
+0x17090 op_SETALL f
+0x170AA op_CLR f
+0x170C4 op_INC f
+0x170FA op_GOTO_JUMP f
+0x17150 op_CALL f
+0x171D2 op_RETURN f
+0x1720C op_GOSUB f
+0x17248 op_HISTORY f
+0x17266 op_INGOSUB_GOSUBPC f
+0x172C0 op_SAY f
+0x17300 op_SCENE f
+0x17330 op_ANIM f
+0x17358 op_ANIMWAIT f
+0x17378 op_SOUND f
+0x17394 op_CMD19 f
+0x173A4 op_CMD0D f
+0x173C0 op_CMD0C f
+0x173DC op_CMD0A f
+0x173EC op_MUSIC f
+0x17408 op_CMD13 f
+0x17418 op_CMD0E f
+0x17434 op_CMD0B f
+0x17444 op_WAIT f
+0x17460 op_SYS f
+0x1764A op_ADD f
+0x1766A op_AND f
+0x1768A op_OR f
+0x176AA op_NOT f
+0x176C2 op_EQ f
+0x176E6 op_LE f
+0x1770A op_LT f
+0x1772E op_GE f
+0x17752 op_GT f
+0x17776 op_LET f
+# --- SYS sub-functions ---
+0x174AE sys0_q04 f
+0x174B4 sys1_save f
+0x174C8 sys2_q21 f
+0x174CE sys3_q1f f
+0x174D4 sys4_minigame f
+0x174FC sys5_peek f
+0x1750E sys6_poke f
+0x17538 sys7_q1d f
+0x17552 sys8_q15 f
+0x1758C sys9_setstate f
+0x175A0 sys10_set79fe f
+0x175C2 sys11_scenesnap f
+0x175DA sys12_resetflags f
+0x175F2 sys13_q1b f
+0x14F12 vm_snapshot_full f
+0x14F70 vm_snapshot_scene f
+0x1500E vm_restore_scene f
+# --- stacks (byte cap, byte count, words) ---
+0x1071E stk_push_drop_oldest f
+0x10732 stk_push2 f
+0x1074E stk_remove f
+0x10778 stk_drop f
+0x10788 stk_contains f
+0x107DC stk_get f
+0x107F4 stk_peek_from_top f
+0x107FE stk_top f
+0x10806 stk_push f
+0x10816 stk_pop f
+0x1082C stk_truncate f
+0x10840 stk_clear f
+# --- RNG ---
+0x0FD8C rand_range f
+0x0FD96 rand16 f
+0x786A rng_state_a
+0x786C rng_state_c
+# --- globals ---
+0x9802 vm_pending_jump
+0x9804 vm_depth
+0x9805 vm_leaf_done
+0x9808 vm_main_state
+0x980A vm_scene_id
+0x980C vm_script_id
+0x980E cur_music
+0x980F cur_sound
+0x9840 stk_marks
+0x9852 stk_menu
+0x9892 stk_path
+0x98B2 stk_calls
+0x98D8 stk_history
+0x98E0 stk_gosubs
+0x9940 action_queue
+0x9B40 action_queue_pos
+0x9B44 action_queue_busy
+0x9C00 save_block
+0x9C60 var_bits
+0x1E000 script_text
+0x13AC0 text_copy_line f
+0x13BC8 text_typewriter f
+0x13552 speaker_name_table
