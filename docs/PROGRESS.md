@@ -46,7 +46,8 @@ Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, A
    all oracle logs (~3M YM writes, all 122 ids), drum key-ons equal; YM2612 LFO period fixed.
    Remaining: YM2612 output vs hardware (no chip reference), mix levels.
 4. **FIDELITY** (running, docs/re/fidelity.md): engine vs oracle through Act 1; engine frames vs oracle (`re/oracle/probe.py`, `probe_mem.py`).
-5. Ghidra DB: `re/analyze.sh` with `cat re/labels/sub_*.txt`.
+5. Ghidra DB: done once after resume (sub_prg: 406 functions, 303 named; main_ip: 180) via
+   `re/analyze.sh` with the concatenated label files; re-run after new labels.
 
 ## Blockers
 - No Sega CD BIOS (not downloaded by rule) → HLE oracle instead; YM2612/mix levels unverified by ear.
