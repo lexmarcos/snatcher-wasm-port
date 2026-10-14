@@ -8,7 +8,7 @@
 //! `sncore::gfx` and the helpers below.
 pub mod boot;
 pub mod timeline;
-pub mod title;
+// pub mod title;  // TODO: DATA_D2 title module not written yet (stopped mid-task)
 
 use crate::game::{cd_time_bcd, Engine, Module, Out, Top};
 use sncore::gfx;
@@ -16,7 +16,7 @@ use sncore::gfx;
 /// `module_factory` for [`Engine`]: which module runs for a top-level mode.
 pub fn factory(top: Top, part: u8) -> Option<Box<dyn Module>> {
     match top {
-        Top::Title => Some(Box::new(title::Title::new())),
+        Top::Title => None, // TODO: title module (DATA_D2); None = skip straight to the intro
         // table S:0x14AA0 (`00 03 00 02`): DATA_D1 then DATA_D0
         Top::Intro => Some(Box::new(timeline::Timeline::new(if part == 0 { timeline::Kind::D1 } else { timeline::Kind::D0 }))),
         Top::Ending => Some(Box::new(timeline::Timeline::new(timeline::Kind::Y16))),
