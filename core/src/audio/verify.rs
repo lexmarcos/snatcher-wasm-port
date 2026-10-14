@@ -24,14 +24,22 @@ pub struct Report {
     /// ticks replayed, `S` starts and `C` commands replayed
     pub ticks: usize,
     pub starts: Vec<u8>,
+    /// PCM drum commands (COMCMD5..6 triples, M:0xFF4DDE) of the oracle / ours / equal
+    pub drum_mismatches: Vec<(u32, Vec<[u8; 3]>, Vec<[u8; 3]>)>,
+    /// requests the oracle accepted but our `enqueue` rejected (must stay empty)
+    pub queue_rejects: Vec<(u32, u8)>,
+    pub drums_oracle: usize,
+    pub drums_ours: usize,
+    pub drums_equal: usize,
     /// executed sequence commands 0xE0..=0xFF in our driver (coverage of the replay)
     pub cmd_stats: [u32; 32],
 }
 
 impl Report {
     pub fn summary(&self) -> String {
-        format!("segments {}/{} equal, writes oracle {} ours {} (positionally equal {})",
-            self.segments_equal, self.segments, self.writes_oracle, self.writes_ours, self.writes_equal)
+        format!("segments {}/{} equal, writes oracle {} ours {} (positionally equal {}), drum commands oracle {} ours {} equal {}",
+            self.segments_equal, self.segments, self.writes_oracle, self.writes_ours, self.writes_equal,
+            self.drums_oracle, self.drums_ours, self.drums_equal)
     }
 }
 
@@ -45,19 +53,39 @@ impl std::fmt::Display for Report {
         for (fr, ev, o, u) in &self.mismatches {
             writeln!(f, "frame {fr} after {ev}:\n  oracle {}\n  ours   {}", fmt(o), fmt(u))?;
         }
+        for (fr, o, u) in &self.drum_mismatches { writeln!(f, "frame {fr} drums: oracle {o:02x?} ours {u:02x?}")?; }
         Ok(())
     }
 }
 
 /// Replay `log` (see module doc) with a fresh driver. `max_mismatch` limits the report.
 pub fn replay(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize) -> Report {
+    replay_mode(ip, fmwr, log, max_mismatch, false)
+}
+
+/// `via_queue`: once the first injected request (`I id 1`, see audio_inject.py) is seen, the
+/// oracle's own `S`/`C` entry events are ignored and our driver is driven only by the same
+/// requests: `I` -> `KDriver::enqueue` (M:0xFF5058), every frame `KDriver::update` (M:0xFF5106)
+/// then `tick`. This also checks the request queue, the priority gate and the dequeue order.
+pub fn replay_mode(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize, via_queue: bool) -> Report {
+    let mut queue_mode = false;
+    let mut pending_updates = 0u32;
     let mut d = KDriver::new(ip, fmwr);
     d.ym.log = Some(Vec::new());
     let mut rep = Report::default();
     let mut frame = 0u32;
     let mut cur_ev = String::from("start");
     let mut oracle: Vec<(u8, u8, u8)> = Vec::new();
-    let flush = |d: &mut KDriver, rep: &mut Report, oracle: &mut Vec<(u8, u8, u8)>, frame: u32, ev: &str| {
+    let mut odr: [u8; 3] = [0; 3];
+    let mut odrums: Vec<[u8; 3]> = Vec::new();
+    let flush = |d: &mut KDriver, rep: &mut Report, oracle: &mut Vec<(u8, u8, u8)>, odrums: &mut Vec<[u8; 3]>, frame: u32, ev: &str| {
+        let ours_dr: Vec<[u8; 3]> = d.drums.drain(..).map(|e| [e.b0, e.b1, e.b2]).collect();
+        rep.drums_oracle += odrums.len();
+        rep.drums_ours += ours_dr.len();
+        if *odrums == ours_dr { rep.drums_equal += ours_dr.len(); } else if rep.drum_mismatches.len() < 8 {
+            rep.drum_mismatches.push((frame, odrums.clone(), ours_dr));
+        }
+        odrums.clear();
         let ours = d.ym.log.replace(Vec::new()).unwrap_or_default();
         if oracle.is_empty() && ours.is_empty() { return; }
         rep.segments += 1;
@@ -75,15 +103,34 @@ pub fn replay(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize) -> Rep
         let Some(k) = it.next() else { continue };
         let hex = |s: Option<&str>| u32::from_str_radix(s.unwrap_or("0"), 16).unwrap_or(0);
         match k {
-            "F" => { frame = it.next().and_then(|s| s.parse().ok()).unwrap_or(frame); }
+            "F" => {
+                frame = it.next().and_then(|s| s.parse().ok()).unwrap_or(frame);
+                // (the oracle's tick can run past the end of its frame, so the update is
+                // deferred to the next `T` instead of splitting segments here)
+                if queue_mode { pending_updates += 1; }
+            }
+            "I" if via_queue => {
+                let id = hex(it.next()) as u8; let acc = it.next() == Some("1");
+                if acc { queue_mode = true; flush(&mut d, &mut rep, &mut oracle, &mut odrums, frame, &cur_ev); }
+                if queue_mode && acc && !d.enqueue(id) { rep.queue_rejects.push((frame, id)); }
+            }
+            "S" | "C" if queue_mode => {
+                if k == "S" { rep.starts.push(hex(it.next()) as u8); }
+            }
             "W" => {
                 let port = it.next().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
                 let reg = hex(it.next()) as u8; let val = hex(it.next()) as u8; let ppc = hex(it.next());
                 if (0xFF4000..0xFF6142).contains(&ppc) { oracle.push((port, reg, val)); }
             }
+            "D" => {
+                let n = it.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+                odr[n.min(2)] = hex(it.next()) as u8;
+                if n == 2 { odrums.push(odr); }
+            }
             "V" => { let w = hex(it.next()) as u16; if w != 0xFFFF && rep.odd_volume.len() < 16 { rep.odd_volume.push((frame, w)); } }
             "S" | "C" | "T" => {
-                flush(&mut d, &mut rep, &mut oracle, frame, &cur_ev);
+                if k == "T" { for _ in 0..pending_updates { d.update(); } pending_updates = 0; }
+                flush(&mut d, &mut rep, &mut oracle, &mut odrums, frame, &cur_ev);
                 match k {
                     "S" => { let id = hex(it.next()) as u8; rep.starts.push(id); d.start(id); cur_ev = format!("S {id:02x}"); }
                     "C" => { let id = hex(it.next()) as u8; d.request(id); cur_ev = format!("C {id:02x}"); }
@@ -103,8 +150,85 @@ pub fn replay(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize) -> Rep
             _ => {}
         }
     }
-    flush(&mut d, &mut rep, &mut oracle, frame, &cur_ev);
+    flush(&mut d, &mut rep, &mut oracle, &mut odrums, frame, &cur_ev);
     rep.cmd_stats = d.cmd_stats;
+    rep
+}
+
+/// Result of [`verify_drum_pcm`].
+#[derive(Debug, Default)]
+pub struct DrumPcmReport {
+    /// key-ons predicted from the drum commands (COMCMD5..6 triples via `DrumEvent::decode` and
+    /// the PCM sfx table) / key-on pairs observed on RF5C164 channels 4..7 / predictions that
+    /// equal the observation in order (channel, wave-RAM start page, FD, ENV, PAN)
+    pub expected: usize,
+    pub observed: usize,
+    pub equal: usize,
+    /// first mismatches: (index, expected (ch, start page, fd, env, pan), observed)
+    pub mismatches: Vec<(usize, (u8, u8, u16, u8, u8), Option<(u8, u8, u16, u8, u8)>)>,
+}
+
+/// Check the sub-CPU side of the PCM drums (S:0x160BA decode + S:0x161F4 play): every drum command
+/// triple the main CPU wrote (`D` lines) must produce, in order, an RF5C164 key-on pair (`P`
+/// lines, channels 4/5 for logical channel 2 and 6/7 for 3) with FD, ENV and PAN from the sfx
+/// table entry of the note: ENV = table ENV * (vel << 3) >> 8, or the table ENV for vel 0
+/// (S:0x16260); notes 6, 8, 9, 10 are skipped (S:0x161F4).
+pub fn verify_drum_pcm(log: &str, sfx: &[super::PcmSfxEntry], drmdt: &[u8]) -> DrumPcmReport {
+    use super::kdriver::DrumEvent;
+    let mut rep = DrumPcmReport::default();
+    // wave-RAM start pages of the drum samples as laid out by pcm_drum_preload S:0x16128: notes
+    // 1..12 except 6, 8, 9, 10 consecutively from 0x8000; each sample is copied from the
+    // segment's data (header + 0x10) up to the first 0xFF, followed by 4 marker bytes, and the
+    // next one starts on the following 256-byte page (S:0x161D6..0x161E0)
+    let mut page = [0u8; 13];
+    let mut d5 = 0x8000u32;
+    for n in 1..13u8 {
+        if [6, 8, 9, 10].contains(&n) { continue }
+        let Some(e) = sfx.iter().find(|e| e.id == n) else { continue };
+        let off = (e.addr.wrapping_sub(super::DRUM_BASE) + 0x10) as usize;
+        let Some(len) = drmdt.get(off..).and_then(|d| d.iter().position(|&b| b == 0xFF)) else { continue };
+        page[n as usize] = (d5 >> 8) as u8;
+        d5 += len as u32 + 4;
+        if d5 & 0xFF != 0 { d5 = (d5 + 0xFF) & !0xFF; }
+    }
+    let mut exp: Vec<(u8, u8, u16, u8, u8)> = Vec::new();
+    let mut obs: Vec<(u8, u8, u16, u8, u8)> = Vec::new();
+    let mut odr = [0u8; 3];
+    let mut pend: Option<(u8, u8, u16, u8, u8)> = None;
+    for line in log.lines() {
+        let mut it = line.split_whitespace();
+        let h = |s: Option<&str>| u32::from_str_radix(s.unwrap_or("0"), 16).unwrap_or(0);
+        match it.next() {
+            Some("D") => {
+                let n = it.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(0).min(2);
+                odr[n] = h(it.next()) as u8;
+                if n == 2 {
+                    for (note, vel, chan) in (DrumEvent { b0: odr[0], b1: odr[1], b2: odr[2] }).decode() {
+                        if [6, 8, 9, 10].contains(&note) { continue }
+                        let Some(e) = sfx.iter().find(|e| e.id == note) else { continue };
+                        let env = if vel == 0 { e.env } else { ((e.env as u32 * vel as u32) >> 8) as u8 };
+                        exp.push((chan * 2, page[note as usize], e.fd, env, e.pan));
+                    }
+                }
+            }
+            Some("P") => {
+                let ch = it.next().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
+                let st = h(it.next()) as u8; let fd = h(it.next()) as u16; let _ls = h(it.next());
+                let env = h(it.next()) as u8; let pan = h(it.next()) as u8;
+                if (4..8).contains(&ch) {
+                    if ch & 1 == 0 { pend = Some((ch, st, fd, env, pan)); }
+                    else if let Some(p) = pend.take() { if p == (ch - 1, st, fd, env, pan) { obs.push(p); } }
+                }
+            }
+            _ => {}
+        }
+    }
+    rep.expected = exp.len();
+    rep.observed = obs.len();
+    for (k, e) in exp.iter().enumerate() {
+        if obs.get(k) == Some(e) { rep.equal += 1; }
+        else if rep.mismatches.len() < 8 { rep.mismatches.push((k, *e, obs.get(k).copied())); }
+    }
     rep
 }
 
@@ -127,6 +251,8 @@ mod tests {
         let mut ip = hdr[0x200..0x800].to_vec();
         ip.extend_from_slice(&std::fs::read(raw.join("ip.bin")).unwrap());
         let fm = std::fs::read(raw.join("files/FMWR_1.BIN")).unwrap();
+        let sfx = std::fs::read(raw.join("files/PCMLT_01.BIN")).ok().map(|lt| crate::audio::parse_sfx_table(&lt));
+        let drmdt = std::fs::read(raw.join("files/PCMDRMDT.BIN")).unwrap_or_default();
         let mut n = 0;
         for e in dir.flatten() {
             let path = e.path();
@@ -136,6 +262,20 @@ mod tests {
             eprintln!("{}: {}", path.file_name().unwrap().to_string_lossy(), rep.summary());
             assert!(rep.segments > 1000, "{}: too few segments: {}", path.display(), rep.summary());
             assert_eq!(rep.segments, rep.segments_equal, "{}: {rep}", path.display());
+            if log.contains("\nI ") {
+                let q = replay_mode(ip.clone(), fm.clone(), &log, 5, true);
+                eprintln!("  via request queue: {}", q.summary());
+                assert_eq!(q.segments, q.segments_equal, "{} (queue mode): {q}", path.display());
+                assert!(q.queue_rejects.is_empty(), "{:?}", q.queue_rejects);
+            }
+            assert_eq!(rep.drums_oracle, rep.drums_equal, "{}: {rep}", path.display());
+            assert_eq!(rep.drums_ours, rep.drums_equal, "{}: {rep}", path.display());
+            if let Some(sfx) = &sfx {
+                let dr = verify_drum_pcm(&log, sfx, &drmdt);
+                eprintln!("  drum key-ons: expected {} observed {} equal {}", dr.expected, dr.observed, dr.equal);
+                assert_eq!(dr.expected, dr.equal, "{}: {:?}", path.display(), dr);
+                assert_eq!(dr.expected, dr.observed, "{}: {:?}", path.display(), dr);
+            }
             n += 1;
         }
         if n == 0 { eprintln!("no reference logs, skipped"); }

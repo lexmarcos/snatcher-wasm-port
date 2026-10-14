@@ -151,6 +151,49 @@ impl KDriver {
         self.start(id);
     }
 
+    /// `fm_request` M:0xFF5058 / the queueing half of M:0xFF4F96: put a request id into the 32-byte
+    /// ring at M:$FF7F00 (write index $FF7F20, read index $FF7F21). Ids >= 0x7B are dropped; the
+    /// priority sfx ids 0x32..0x3E (priority byte = sound table +3) are dropped if their priority
+    /// is lower than the pending one in $FF7F22, otherwise they set it and remember their slot in
+    /// $FF7F23 (cleared by `update` when that entry is dequeued). Returns false if rejected.
+    pub fn enqueue(&mut self, id: u8) -> bool {
+        const Q: u32 = 0xFF7F00;
+        if id == 0 { return false }
+        if id < 0xF1 {
+            if id >= 0x7B { return false }
+            if (0x32..0x3F).contains(&id) {
+                let prio = self.rb(0xFF6142 + id as u32 * 8 + 3);
+                if prio < self.rb(Q + 0x22) { return false }
+                self.wb(Q + 0x22, prio);
+                let w = self.rb(Q + 0x20);
+                self.wb(Q + 0x23, w);
+            }
+        }
+        let w = self.rb(Q + 0x20);
+        self.wb(Q + w as u32, id);
+        let w = w.wrapping_add(1);
+        self.wb(Q + 0x20, if w == 0x20 { 0 } else { w });
+        true
+    }
+
+    /// `fm_update` M:0xFF5106: dequeue one request (called once per frame before `tick`) and run
+    /// it: ids >= 0xF1 are commands (M:0xFF51A8 table), others `fm_start`.
+    pub fn update(&mut self) {
+        const Q: u32 = 0xFF7F00;
+        let r = self.rb(Q + 0x21);
+        if r == self.rb(Q + 0x20) { return }
+        if r == self.rb(Q + 0x23) { self.wb(Q + 0x22, 0); }
+        let d0 = self.rb(Q + r as u32);
+        let r = r.wrapping_add(1);
+        if r == 0x20 {
+            self.wb(Q + 0x21, 0);
+            if d0 == 0 { return } // M:0xFF5172: only checked after the wrap (original quirk)
+        } else {
+            self.wb(Q + 0x21, r);
+        }
+        if d0 < 0xF1 { self.start(d0); } else { self.command(d0); }
+    }
+
     fn command(&mut self, id: u8) {
         match id {
             0xF1 => self.stop_all(),

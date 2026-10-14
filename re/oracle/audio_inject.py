@@ -17,6 +17,11 @@ later one sfx id (0x01-0x3E cycling), then the sfx not yet used (every half peri
              300-frame segments; forced at each fm_tick entry (so it is constant during a tick,
              as in the game) and logged as `V` 
   --ids a-b  restrict the music ids (hex), e.g. 4f-4f
+  --cmds     command mix: per music id (period frames): id, F3 (mono) at +20 %, sfx at +30 %, F4
+             (stereo) at +50 %, F2 (stop music) at +70 %, id again at +80 %, F1 (stop all) at +95 %
+  --burst    queue/priority test: groups of 2-4 requests injected in the SAME frame (priority sfx
+             0x35 = 32, 0x3D = 17, 0x32/33/.. = 16 in all orders, plus music and F-commands),
+             300 frames apart, repeated `period` times over several music ids
   --sfxonly  no music: sfx 01-3E one per half period, preceded by F2 (stop music)
 """
 import os, sys
@@ -66,7 +71,22 @@ def main():
     f = first
     sfx = list(range(0x01, 0x3F))
     used = set()
-    if not sfxonly:
+    if '--burst' in argv:
+        groups = [[0x35, 0x32], [0x32, 0x35], [0x32, 0x3D, 0x33], [0x3D, 0x32, 0x35, 0x33], [0x35, 0x3D, 0x3E],
+                  [0x3E, 0x3D, 0x35], [0x36, 0x01, 0x3D, 0x02], [0x3D, 0x32], [0x35, 0x35, 0x3D], [0x32, 0x32]]
+        mus = [0x4F, 0x40, 0x50, 0x6F]
+        for k in range(period):          # `period` = number of groups
+            if k % 10 == 0:
+                plan[f] = [mus[(k // 10) % len(mus)]]; f += 200
+            plan[f] = list(groups[k % len(groups)]); f += 150
+        plan[f] = [0xF1]
+        f += 100
+    elif '--cmds' in argv:
+        for k, mus in enumerate(range(ids[0], ids[1] + 1)):
+            for frac, v in ((0, mus), (20, 0xF3), (30, sfx[k % len(sfx)]), (50, 0xF4), (70, 0xF2), (80, mus), (95, 0xF1)):
+                plan[f + period * frac // 100] = v
+            f += period
+    elif not sfxonly:
         for k, mus in enumerate(range(ids[0], ids[1] + 1)):
             plan[f] = mus
             plan[f + period // 2] = sfx[k % len(sfx)]
@@ -75,9 +95,9 @@ def main():
     else:
         plan[f] = 0xF2; f += period // 2
     for s in sfx:                           # remaining sfx, without music
-        if s not in used:
+        if s not in used and '--cmds' not in argv and '--burst' not in argv:
             plan[f] = s; f += period // 2
-    plan[f] = 0xF2
+    plan.setdefault(f, 0xF2)
     end = f + 120
     m = AudioMachine()
     if vol:
@@ -86,8 +106,9 @@ def main():
         while m.frame < end:
             nf = m.frame + 1
             if nf in plan:
-                ok = inject(m, plan[nf])
-                m.ev.append('I %02x %d' % (plan[nf], ok))
+                for v in (plan[nf] if isinstance(plan[nf], list) else [plan[nf]]):
+                    ok = inject(m, v)
+                    m.ev.append('I %02x %d' % (v, ok))
             m.ev.append('F %d' % nf)
             m.step_frame(capture=False)
             if len(m.ev) > 20000:

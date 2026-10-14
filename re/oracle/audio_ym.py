@@ -10,6 +10,9 @@ Writes one line per event, in execution order:
   T                              fm_tick entry M:0xFF408A
   W <port> <reg> <val> <ppc>     YM2612 data write (ppc = PC of the writing instruction)
   V <word>                       value of the volume word M:$FF7F5E at each tick (diagnostic)
+  P <ch> <st> <fd> <ls> <env> <pan>  RF5C164 key-on (hex; st = start page, ls = loop address)
+  D <n> <val>                    byte written to COMCMD5+n (A1201A..C): PCM drum command, M:0xFF4DDE
+                                 (written as a triple n=0,1,2 per tick when a drum note occurs)
 Only writes from driver code (ppc in M:0xFF4000..0xFF6142) are meaningful for kdriver; others
 (e.g. boot-time chip init) are kept with their ppc so the comparer can filter them.
 """
@@ -30,6 +33,10 @@ class AudioMachine(M.Machine):
         for pc in HOOKS:
             self.lib.core_add_hook(M.MAIN, pc)
 
+    def log(self, ev):
+        if ev.get('t') == 'pcm_on':     # RF5C164 key-on: PCM drums of the FM music (sub CPU driver)
+            self.ev.append('P %d %02x %04x %04x %02x %02x' % (ev['ch'], ev['st'], ev['fd'], ev['ls'], ev['env'], ev['pan']))
+
     def _main_bios(self, pc):
         t = HOOKS.get(pc)
         if t is None:
@@ -45,6 +52,8 @@ class AudioMachine(M.Machine):
             self.ev.append('%s %02x' % (t, self.main.d(0) & 0xFF))
 
     def _main_w(self, a, size, v):
+        if size == 1 and a in (0xA1201A, 0xA1201B, 0xA1201C):
+            self.ev.append('D %d %02x' % (a - 0xA1201A, v & 0xFF))      # COMCMD5..6: PCM drum notes
         if size == 1 and a in (0xA04001, 0xA04003):
             self.ev.append('W %d %02x %02x %06x' % (self.ym_addr[0], self.ym_addr[1], v & 0xFF,
                                                      self.main.reg(M.R_PPC) & 0xFFFFFF))

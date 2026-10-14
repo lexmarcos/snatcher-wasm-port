@@ -12,6 +12,8 @@ Writes (format: audio_ym.py docstring; replayed by core/src/audio/verify.rs):
   inject3000.txt   every music id for 3000 frames (50 s: past the first loop of most songs)
   inject_vol.txt   like inject600 with 1500 frames per song and the volume word M:$FF7F5E
                    swept through ramps/pseudo-random values (--vol)
+  cmds.txt         music 3F-7A with the command ids F3 (mono), F4, F2, F1 and an sfx in between
+  burst.txt        several requests in one frame (queue order and the priority gate of 0x32-0x3E)
   sfx_only.txt     every FM sfx 01-3E alone (no music), 150 frames apart
 --quick only records intro_ym.txt and inject600.txt (~2 min). Everything runs in parallel.
 The logs are gitignored (they describe the original code's behaviour, not shipped).
@@ -31,6 +33,8 @@ if '--quick' not in sys.argv:
         [py, '-I', 'audio_inject.py', os.path.join(out, 'inject3000.txt'), '3000', '1500'],
         [py, '-I', 'audio_inject.py', os.path.join(out, 'inject_vol.txt'), '1500', '1500', '--vol'],
         [py, '-I', 'audio_inject.py', os.path.join(out, 'sfx_only.txt'), '300', '1500', '--sfxonly'],
+        [py, '-I', 'audio_inject.py', os.path.join(out, 'cmds.txt'), '1000', '1500', '--cmds'],
+        [py, '-I', 'audio_inject.py', os.path.join(out, 'burst.txt'), '60', '1500', '--burst'],
     ]
 procs = [subprocess.Popen(j, cwd=here) for j in jobs]
 rc = [p.wait() for p in procs]

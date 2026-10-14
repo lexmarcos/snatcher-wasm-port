@@ -67,7 +67,11 @@ const EG_INC: [[u8; 8]; 17] = [
     [8,8,8,8,8,8,8,8],
 ];
 
-/// LFO: chip samples per LFO step for the 8 frequencies (3.98..72.2 Hz, 128 steps/period).
+/// LFO: counter limit for the 8 frequencies; the step advances when the counter *exceeds* it, i.e.
+/// every `limit + 1` chip samples = 109, 78, 72, 68, 63, 45, 9, 6 samples, 128 steps per period.
+/// Documented LFO frequencies 3.98, 5.56, 6.02, 6.37, 6.88, 9.63, 48.1, 72.2 Hz are for the
+/// 8 MHz OPN family (fs = 8e6/144 = 55556 Hz): fs / 128 / (limit + 1) reproduces all eight
+/// (test `lfo_frequencies`). On the Mega Drive clock they are 4.2 % lower.
 const LFO_PERIOD: [u32; 8] = [108, 77, 71, 67, 62, 44, 8, 5];
 /// PM depth in 1/1024 of fnum at full LFO deflection, per PMS (0, 3.4, 6.7, 10, 14, 20, 40, 80 cents).
 const PM_DEPTH: [i32; 8] = [0, 2, 4, 6, 8, 12, 24, 48];
@@ -207,7 +211,7 @@ impl Ym2612 {
         // LFO
         if self.lfo_en {
             self.lfo_cnt += 1;
-            if self.lfo_cnt >= LFO_PERIOD[self.lfo_freq as usize] { self.lfo_cnt = 0; self.lfo_step = (self.lfo_step + 1) & 127; }
+            if self.lfo_cnt > LFO_PERIOD[self.lfo_freq as usize] { self.lfo_cnt = 0; self.lfo_step = (self.lfo_step + 1) & 127; }
         }
         let (lfo_am, lfo_pm) = if self.lfo_en { self.lfo_value() } else { (0, 0) };
         // envelope clock every 3 samples
@@ -359,6 +363,124 @@ mod tests {
         let mut last = 1;
         for _ in 0..(CHIP_RATE as usize / 2) { last = y.clock().0; }
         assert_eq!(last, 0);
+    }
+
+    /// Register offsets of the logical operators op1..op4 (S1, S2, S3, S4): 0x00, 0x08, 0x04, 0x0C.
+    const OPOFF: [u8; 4] = [0x00, 0x08, 0x04, 0x0C];
+
+    fn silence_all(y: &mut Ym2612) {
+        for &o in &OPOFF {
+            y.write(0, 0x30 + o, 0x01); y.write(0, 0x40 + o, 0x7F); y.write(0, 0x50 + o, 0x1F);
+            y.write(0, 0x60 + o, 0); y.write(0, 0x70 + o, 0); y.write(0, 0x80 + o, 0x0F);
+        }
+    }
+
+    /// Documented carrier sets per algorithm (YM2608/OPN manuals, connection diagrams): bit n = op(n+1).
+    #[test]
+    fn algorithm_carriers() {
+        let carriers = [0b1000u8, 0b1000, 0b1000, 0b1000, 0b1010, 0b1110, 0b1110, 0b1111];
+        for alg in 0..8u8 {
+            for op in 0..4usize {
+                let mut y = Ym2612::new();
+                silence_all(&mut y);
+                y.write(0, 0xB0, alg);
+                y.write(0, 0xB4, 0xC0);
+                y.write(0, 0x40 + OPOFF[op], 0); // only this operator is loud
+                y.write(0, 0xA4, (4 << 3) | 2);
+                y.write(0, 0xA0, 0x84);
+                y.write(0, 0x28, 0xF0);
+                let mut peak = 0;
+                for _ in 0..2000 { peak = peak.max(y.clock().0.abs()); }
+                // a loud operator that is not a carrier only modulates silent operators (att 1023)
+                let audible = peak > 0;
+                assert_eq!(audible, carriers[alg as usize] & (1 << op) != 0, "alg {alg} op{}", op + 1);
+            }
+        }
+    }
+
+    /// Detune (DT1) phase-increment table = the OPN manual's table (also derivable from the
+    /// closed form used by hardware-derived models: base[(note, block parity)] >> shift).
+    #[test]
+    fn detune_table_formula() {
+        let pg = [16u32, 17, 19, 20, 22, 24, 27, 29];
+        for dt in 1..4usize {
+            for kc in 0..32usize {
+                let k = kc.min(0x1C);
+                let sum = (k >> 2) + 9 + if dt == 3 { 3 } else if dt == 2 { 2 } else { 0 };
+                let v = pg[((sum & 1) << 2) | (k & 3)] >> (9 - (sum >> 1));
+                assert_eq!(DT_TAB[dt][kc] as u32, v, "dt {dt} kc {kc}");
+            }
+        }
+    }
+
+    /// Samples until the (fully attacked, TL 0) output of op4 is silent after key-off, for RR.
+    fn release_time(rr: u8, ks: u8, block: u8) -> usize {
+        let mut y = Ym2612::new();
+        silence_all(&mut y);
+        y.write(0, 0xB0, 7);
+        y.write(0, 0xB4, 0xC0);
+        y.write(0, 0x40 + OPOFF[3], 0);
+        y.write(0, 0x50 + OPOFF[3], 0x1F | (ks << 6));
+        y.write(0, 0x80 + OPOFF[3], rr);
+        y.write(0, 0xA4, (block << 3) | 0x04);
+        y.write(0, 0xA0, 0x00);
+        y.write(0, 0x28, 0xF0);
+        for _ in 0..300 { y.clock(); }
+        y.write(0, 0x28, 0x00);
+        let mut n = 0;
+        while y.ch[0].ops[3].att < 1023 && n < 3_000_000 { y.clock(); n += 1; }
+        n
+    }
+
+    /// Envelope rates: rate = 2*RR*2+1.. in the shifted region every +4 on the 6-bit rate halves
+    /// the time (RR +1 = rate +4), key scaling adds keycode >> (3 - KS) to the rate.
+    #[test]
+    fn release_rate_scaling() {
+        for rr in 1..11u8 {
+            let (a, b) = (release_time(rr, 0, 4) as f64, release_time(rr + 1, 0, 4) as f64);
+            assert!((a / b - 2.0).abs() < 0.15, "rr {rr}: {a} {b}");
+        }
+        // keycode of block 7, fnum 0x400 = 31 -> KS 3 adds 31 to the rate: faster than KS 0
+        let (slow, fast) = (release_time(4, 0, 7) as f64, release_time(4, 3, 7) as f64);
+        assert!(fast < slow / 4.0, "ks: {slow} {fast}");
+        // documented endpoints: RR=15 is a few ms, RR=0 never ends within the test window
+        assert!(release_time(15, 0, 4) < 600);
+    }
+
+    #[test]
+    fn attack_rate_31_is_instant() {
+        let mut y = Ym2612::new();
+        setup_sine(&mut y, 644, 4);
+        assert_eq!(y.ch[0].ops[3].att, 0);
+        // AR 20 takes noticeably longer than AR 28
+        let t = |ar: u8| {
+            let mut y = Ym2612::new();
+            setup_sine(&mut y, 644, 4);
+            y.write(0, 0x28, 0x00);
+            for _ in 0..2000 { y.clock(); } // RR 15 (setup_sine): fully released
+            assert!(y.ch[0].ops[3].att >= 1023);
+            y.write(0, 0x50 + OPOFF[3], ar);
+            y.write(0, 0x28, 0xF0);
+            let mut n = 0; while y.ch[0].ops[3].att > 0 && n < 1_000_000 { y.clock(); n += 1; } n
+        };
+        assert!(t(20) > 4 * t(28), "{} {}", t(20), t(28));
+    }
+
+    /// Documented LFO frequencies (8 MHz OPN family: fs = 8e6/144).
+    #[test]
+    fn lfo_frequencies() {
+        let doc = [3.98, 5.56, 6.02, 6.37, 6.88, 9.63, 48.1, 72.2];
+        for (i, d) in doc.iter().enumerate() {
+            let mut y = Ym2612::new();
+            y.write(0, 0x22, 8 | i as u8);
+            let mut n = 0u64;
+            while y.lfo_step < 127 { y.clock(); n += 1; } // 127 steps
+            while y.lfo_step == 127 { y.clock(); n += 1; }
+            // n = samples for 128 steps minus the partial first step
+            let per_step = (n as f64 + LFO_PERIOD[i] as f64 / 2.0) / 128.0;
+            let f8 = 8.0e6 / 144.0 / (128.0 * per_step);
+            assert!((f8 - d).abs() / d < 0.004, "lfo {i}: {f8} vs {d}");
+        }
     }
 
     #[test]
