@@ -62,6 +62,11 @@ async function main() {
   } catch (e) {
     msg.textContent = String(e) + " – or pick the extracted files folder";
   }
+  // main-CPU boot code (copyright + Konami logo screens): the disc's HEADER.BIN / IP.BIN; optional (the engine
+  // skips those two screens when they are missing)
+  for (const [url, name] of [["/assets/raw/header.bin", "HEADER.BIN"], ["/assets/raw/ip.bin", "IP.BIN"]]) {
+    try { const r = await fetch(url); if (r.ok) game.load_file(name, new Uint8Array(await r.arrayBuffer())); } catch {}
+  }
   // saves (localStorage, base64 of the 0x1C0-byte save block) → CONTINUE slots 1..4
   for (let slot = 1; slot <= 4; slot++) {
     let d: string | null = null;

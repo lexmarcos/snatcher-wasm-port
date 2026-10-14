@@ -1,0 +1,31 @@
+# DATA_D2 title module (S:0x28000 when DATA_D2 is mapped)
+0x285ce d2_entry f
+0x2860e d2_start_game_flag f
+0x28618 d2_buram_init f
+0x28664 d2_read_slots f
+0x28734 d2_free_space f
+0x28768 d2_load_slot f
+0x2878c d2_cart_load_request f
+0x287be d2_next_state f
+0x287c8 d2_next_sub f
+0x287ce d2_st00_init f
+0x28860 d2_st01_cd_play f
+0x28888 d2_st02_scene0 f
+0x288b0 d2_st03_squeeze f
+0x288ca d2_st04_fadein f
+0x28948 d2_st05_wait f
+0x28954 d2_st06_nobram_msg f
+0x289a4 d2_st07_slots f
+0x289c0 d2_st08_freespace f
+0x28a20 d2_st09_title_menu f
+0x28adc d2_st10_slot_select f
+0x28d26 d2_draw_slot_panel f
+0x28e32 d2_st11_settings f
+0x28f9c d2_option_row f
+0x29066 d2_option_objects f
+0x290e2 d2_fade_out f
+0x290f6 d2_st12_fade_done f
+0x29112 d2_slot_names f
+0x29814 d2_st11_sub2_gun_init f
+0x298b4 d2_st11_sub3_gun_cal f
+0x28ad8 d2_options_row_var

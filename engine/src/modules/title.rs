@@ -532,3 +532,82 @@ impl Module for Title {
         r
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::{Top, FILE_NAMES};
+
+    fn engine() -> Option<Engine> {
+        let raw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/raw");
+        if !raw.join("files/SUBCODE.BIN").exists() { eprintln!("assets missing, skipped"); return None; }
+        let mut e = Engine::new();
+        for n in FILE_NAMES.iter() {
+            if *n == "PCMLD_01.BIN" { continue; }
+            if let Ok(d) = std::fs::read(raw.join("files").join(n)) { e.load_file(n, d); }
+        }
+        if let (Ok(h), Ok(i)) = (std::fs::read(raw.join("header.bin")), std::fs::read(raw.join("ip.bin"))) {
+            e.load_file("HEADER.BIN", h);
+            e.load_file("IP.BIN", i);
+        }
+        Some(e)
+    }
+
+    fn run(e: &mut Engine, frames: u64, presses: &[(u64, u8)]) {
+        for f in 1..=frames {
+            let pad = presses.iter().find(|p| p.0 == f).map(|p| p.1).unwrap_or(0);
+            e.tick(pad);
+        }
+    }
+
+    /// Verified against the oracle (docs/re/modules.md §4): D2 state 9 (title menu) at frame 1139, START on
+    /// NEW GAME opens the settings screen at 1301, START there starts the intro (DATA_D1, CD track 3).
+    #[test]
+    fn title_to_intro() {
+        let Some(mut e) = engine() else { return };
+        e.boot();
+        run(&mut e, 1300, &[]);
+        assert_eq!(e.top, Top::Title);
+        let mut e = engine().unwrap();
+        e.boot();
+        run(&mut e, 2400, &[(1301, 0x80), (1612, 0x80)]);
+        assert_eq!(e.top, Top::Intro, "the title must hand over to the intro");
+        assert_eq!(e.data_file, Some(3), "DATA_D1 is mapped");
+    }
+
+    /// Without the IP image (picked files only) the copyright/logo screens are skipped, the title still runs.
+    #[test]
+    fn title_without_ip() {
+        let Some(mut e) = engine() else { return };
+        e.files.remove("IP.BIN");
+        e.boot();
+        run(&mut e, 400, &[(300, 0x80)]);
+        assert_eq!(e.top, Top::Title);
+    }
+
+    /// CONTINUE: with a save block the default selection is CONTINUE, START opens the slot select and
+    /// START on a slot hands the block to the game (`$785C`, `$78B7`).
+    #[test]
+    fn continue_slot_select() {
+        let Some(mut e) = engine() else { return };
+        let mut blk = vec![0u8; 0x1C0];
+        blk[0] = 3; blk[2..6].copy_from_slice(&[1, 0x23, 0x45, 0x10]); blk[0x0A] = 0x05;
+        blk[0x0C..0x0E].copy_from_slice(&0x3Fu16.to_be_bytes());
+        e.saves[2] = Some(blk);
+        e.boot();
+        run(&mut e, 1199, &[]);
+        assert_eq!(e.regs.get_b(0x78B6), 0b100, "slot 3 found");
+        let mut f = 1199;
+        let mut done = false;
+        for _ in 0..700 {
+            f += 1;
+            // START: CONTINUE (1200), START: select the slot (1300), START again on the settings screen (1450)
+            e.tick(if f == 1200 || f == 1300 || f == 1450 { 0x80 } else { 0 });
+            if e.top == Top::Game { done = true; break; }
+        }
+        assert!(done, "CONTINUE must start the game (settings screen included)");
+        assert_eq!(e.regs.get_b(0x78B7), 2);
+        assert_eq!(e.input.as_ref().unwrap().config, 5, "button config restored from the save block");
+        assert!(done, "CONTINUE must start the game (option screen included)");
+    }
+}

@@ -46,10 +46,12 @@ pub struct Timeline {
     drv: u8,
     /// frame when the intro driver's file load completes
     ready: u64,
+    /// last step written to the trace log (waiting handlers repeat)
+    logged: i32,
 }
 
 impl Timeline {
-    pub fn new(kind: Kind) -> Self { Timeline { kind, step: -1, sub: 0, timer: 0, entries: vec![], drv: if kind == Kind::Y16 { 2 } else { 0 }, ready: 0 } }
+    pub fn new(kind: Kind) -> Self { Timeline { kind, step: -1, sub: 0, timer: 0, entries: vec![], drv: if kind == Kind::Y16 { 2 } else { 0 }, ready: 0, logged: -2 } }
 
     fn load_table(&mut self, e: &Engine) {
         let (t, n, _, _) = self.kind.spec();
@@ -221,7 +223,10 @@ impl Timeline {
             return None;
         }
         self.step += 1;
-        if e.trace { e.out.push(Out::Log(format!("{:?} step {} handler {h:#x} t={t:08x} cd={:08x}", self.kind, self.step - 1, e.cd_time()))); }
+        if e.trace && self.logged != self.step - 1 {
+            self.logged = self.step - 1;
+            e.out.push(Out::Log(format!("{:?} step {} handler {h:#x} t={t:08x} cd={:08x}", self.kind, self.step - 1, e.cd_time())));
+        }
         self.run(e, h)
     }
 }

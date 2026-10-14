@@ -1,0 +1,22 @@
+# MODULES workstream: sub-CPU labels outside the DATA module range (docs/re/modules.md)
+0x14a68 intro_drv_s0
+0x14aa0 intro_file_table
+0x14aa4 intro_drv_s1
+0x14adc intro_drv_s2
+0x14b04 intro_drv_skip
+0x14b20 intro_drv_fade
+0xf560 pal_blackout f
+0x6102 sp_vint_tick7848
+0xd6ee frame_gate_7887_7886
+0xd71e frame_mode_tick
+0xe38a vram_list_next
+0xe8f2 tilech_k0
+0xe93c tilech_k1
+0xe986 tilech_k2
+0xe9dc tilech_k3
+0xea88 tilech_k4
+0xeb28 tilech_pre f
+0xf3b0 scroll_reset f
+0xf3f8 scroll_mode f
+0xf446 scroll_tick f
+0xfb92 anim_op_wait_cd f      # ops 99/9A

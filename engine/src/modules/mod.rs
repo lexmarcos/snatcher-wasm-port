@@ -24,6 +24,18 @@ pub fn factory(top: Top, part: u8) -> Option<Box<dyn Module>> {
     }
 }
 
+/// Pseudo register address holding the current CD-DA track (`Regs` is a map, not sub memory).
+const CD_TRACK_KEY: u32 = 0x00CD_0000;
+
+/// Track lengths in sectors (1/75 s) of the USA disc (`assets/raw/extract_report.txt`, `snt extract`): the modules poll
+/// `CDBSTAT` for "track ended" (DATA_Y16 step 17, S:0x2920A) and the intro tables are consistent with them (D1's last entry
+/// 02:12:40 vs track 3 = 02:12:54, D0 track 5 = 00:19:05 vs the track-4 start entry at 00:19:00, D0's last entry 04:30:00 vs
+/// track 4 = 04:32:06).
+const TRACK_SECTORS: [(u16, u32); 20] = [
+    (2, 346), (3, 9971), (4, 20406), (5, 1431), (6, 5268), (7, 12353), (8, 15941), (9, 6404), (10, 9532), (11, 7999),
+    (12, 20079), (13, 8473), (14, 5993), (15, 5709), (16, 1138), (17, 7275), (18, 3386), (19, 31548), (20, 2336), (21, 31231),
+];
+
 /// Status word of `cd_status` (S:0xE2FE, CDBSTAT word 0): 0x0100 = playing.
 pub const CD_PLAYING: u16 = 0x0100;
 
@@ -90,9 +102,18 @@ impl SubServices for Engine {
 
     fn cd_play(&mut self, track: u16) {
         self.cd_start = Some(self.frame);
+        self.regs.set(CD_TRACK_KEY, track);
         self.out.push(Out::Music { track });
     }
-    fn cd_status(&self) -> u16 { if self.cd_start.is_some() { CD_PLAYING } else { 0 } }
+    // CDBSTAT status: 0x0100 playing, 0 stopped (also once the track has played to its end)
+    fn cd_status(&self) -> u16 {
+        let Some(s) = self.cd_start else { return 0 };
+        let tr = self.regs.get(CD_TRACK_KEY);
+        match TRACK_SECTORS.iter().find(|t| t.0 == tr) {
+            Some(&(_, sectors)) if (self.frame - s) * 75 / 60 >= sectors as u64 => 0,
+            _ => CD_PLAYING,
+        }
+    }
     fn cd_time(&self) -> u32 { self.cd_start.map(|s| cd_time_bcd(self.frame - s)).unwrap_or(0) }
     // `clr.l $787A`: momentary – the next sub frame reloads the track-relative time (S:0xD640)
     fn cd_time_reset(&mut self) { self.disp.sub.cd_time = 0; }
@@ -118,6 +139,12 @@ impl SubServices for Engine {
 }
 
 impl Engine {
+    /// Debug / test entry: run the late-game module DATA_Y16 (file 0x34) as the mode machine does for `SETSTATE(1)`.
+    pub fn start_ending(&mut self) {
+        self.top = Top::Ending;
+        self.enter_module(Top::Ending, 0x34);
+    }
+
     /// The sub frame skips the mode machine and object updates while a VRAM list (`$7886`) or the
     /// scene-reset handshake (`$7887`) is pending (S:0xD6EE–0xD71E).
     pub fn mode_blocked(&self) -> bool { self.disp.sub.vram_list.is_some() || self.disp.sub.f7887 != 0 }

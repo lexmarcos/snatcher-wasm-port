@@ -178,7 +178,7 @@ impl Engine {
     }
 
     /// Map the module's DATA file at 0x28000 and create its module (if implemented).
-    fn enter_module(&mut self, top: Top, file: u16) {
+    pub(crate) fn enter_module(&mut self, top: Top, file: u16) {
         self.cmd_load(gfx::DATA_BASE, file);
         self.module = self.module_factory.and_then(|f| f(top, self.intro_part));
         if self.module.is_none() { self.module_done(1); }

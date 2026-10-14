@@ -2,7 +2,8 @@
 //! usage: cargo run --release -p snengine --example run -- <frames> <shot-every> <outdir> [inputs] [jump]
 //!   inputs: comma list of "frame:bits" (bits held for 1 frame), e.g. "200:32,300:32"
 //!           or "auto" = press C (confirm) every 40 frames
-//!   jump:   e.g. SP01:0
+//!   jump:   e.g. SP01:0, `boot` (copyright → title → …) or `ending` (DATA_Y16 staff roll)
+//!   env: SHOTAT=f1,f2,.. (shots at these frames), SAVES=0:blk.hex,2:blk.hex (CONTINUE slots), SCROLLDBG=1
 use snengine::game::{Engine, FILE_NAMES, H, W};
 use std::io::BufWriter;
 
@@ -40,6 +41,7 @@ fn main() {
     }
     match a.get(5) {
         Some(j) if j == "boot" => e.boot(),
+        Some(j) if j == "ending" => e.start_ending(),
         Some(j) => {
             // SPnn:pc[:item,item,..] (hex text offsets of an already chosen menu path)
             let mut it = j.split(':');

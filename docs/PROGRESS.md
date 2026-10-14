@@ -32,9 +32,9 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
 ## Resume here (order)
 State after resume (commit after cfc038a): build is green (`cargo build --release`,
 `cargo test --release -p snengine -p sncore --lib`, `scripts/build-web.sh`).
-`Top::Title` is skipped (engine/src/modules/title.rs was never written). `boot()` → intro
-DATA_D1 timeline: disclaimer, RSS logo and dedication screens render, then the screen stays black
-(timeline stalls ~frame 1600; see `cargo run --release -p snengine --example run -- 4800 400 OUT "" boot`).
+`Top::Title` runs the boot screens + DATA_D2 title module (engine/src/modules/title.rs, docs/re/modules.md). `boot()` → intro
+DATA_D1/D0 intro and the DATA_Y16 staff roll play completely (the old "stall" was the display bit left off after the
+dedication shutters, docs/re/modules.md §3.2; the oracle's missing CD time `$787A` §1). MODULES: done, see its Status.
 Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, AUDIO-VERIFY.
 1. **MODULES** (engine/src/modules/, docs/re/modules.md — doc missing, create it): fix the D1/D0
    timeline stall, write the DATA_D2 title module and H40 (320 px) rendering; compare with
