@@ -51,6 +51,19 @@ impl Host for Regs {
     fn poke_byte(&mut self, addr: u32, val: u8) { self.set_b(addr, val) }
 }
 
+/// A sub-CPU code module that lives inside a DATA file (title DATA_D2, intro DATA_D1/D0,
+/// late-game DATA_Y16; docs/re/actions.md §9) reimplemented in Rust. Called once per frame
+/// like `jsr ($28008)` from the mode machine (S:0xE046).
+pub trait Module {
+    fn name(&self) -> &'static str;
+    /// One frame. Return `Some(v)` when the module sets `$7846` (1 = done, -1/0xFF = skipped).
+    fn tick(&mut self, e: &mut Engine) -> Option<i8>;
+}
+
+/// Top-level mode (`subfn_02` S:0xE046, state `$7842`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Top { Title, Intro, Game, Ending, Stopped }
+
 /// Where the VM thread is (S:0x16814 loop).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmPhase { Pass, Draining, Menu, Stopped }
@@ -97,6 +110,14 @@ pub struct Engine {
     pub text_dirty: bool,
     pub fb: Vec<u8>,
     pub trace: bool,
+    pub top: Top,
+    pub module: Option<Box<dyn Module>>,
+    /// intro part counter (DATA_D1 then DATA_D0, table S:0x14AA0)
+    pub intro_part: u8,
+    /// save blocks available to CONTINUE (slot 1..4 → 0x1C0 bytes), provided by the front end
+    pub saves: [Option<Vec<u8>>; 4],
+    /// factory for the module of a given top mode (set by lib.rs; None = skip the module)
+    pub module_factory: Option<fn(Top, u8) -> Option<Box<dyn Module>>>,
 }
 
 fn rd16(a: &[u16], i: usize) -> u16 { a.get(i).copied().unwrap_or(0) }
@@ -112,6 +133,7 @@ impl Engine {
             text: TextWindow::new(), menu: None, regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, cd_start: None, voice_len: HashMap::new(), text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
+            top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: None,
         }
     }
 
@@ -130,8 +152,56 @@ impl Engine {
         FILE_NAMES.get(idx as usize).and_then(|n| self.files.get(*n))
     }
 
+    /// Power-on: title screen module (DATA_D2), then intro or continue, then the game.
+    pub fn boot(&mut self) {
+        self.top = Top::Title;
+        self.enter_module(Top::Title, 4);
+    }
+
+    /// Map the module's DATA file at 0x28000 and create its module (if implemented).
+    fn enter_module(&mut self, top: Top, file: u16) {
+        self.cmd_load(gfx::DATA_BASE, file);
+        self.module = self.module_factory.and_then(|f| f(top, self.intro_part));
+        if self.module.is_none() { self.module_done(1); }
+    }
+
+    /// Mode machine transitions after a module set `$7846` (S:0xE046 modes 1, 2, 6).
+    fn module_done(&mut self, v: i8) {
+        self.module = None;
+        match self.top {
+            Top::Title => {
+                if self.regs.get_b(0x785C) != 0 {
+                    // CONTINUE: VM state 1 continue branch with the loaded save block
+                    let slot = self.regs.get_b(0x78B7) as usize;
+                    let blk = self.saves.get(slot.saturating_sub(1)).cloned().flatten().unwrap_or_default();
+                    self.continue_game(&blk);
+                } else {
+                    self.top = Top::Intro; self.intro_part = 0;
+                    self.enter_module(Top::Intro, 3);
+                }
+            }
+            Top::Intro => {
+                // table S:0x14AA0: DATA_D1 then DATA_D0; skipping (-1) ends the intro at once
+                if v >= 0 && self.intro_part == 0 { self.intro_part = 1; self.enter_module(Top::Intro, 2); }
+                else { self.new_game(); }
+            }
+            Top::Ending => { self.regs.set_b(0x78AE, 0xFF); self.top = Top::Stopped; }
+            _ => {}
+        }
+    }
+
+    /// Continue from a save block (VM state 1, `$785C` != 0).
+    pub fn continue_game(&mut self, blk: &[u8]) {
+        self.top = Top::Game;
+        let (vm, q) = Vm::from_save(blk, &mut self.regs);
+        self.vm = vm;
+        self.start_queue(q);
+        self.phase = VmPhase::Draining;
+    }
+
     /// Start a new game at SP06:0 (VM main-loop state 1, new-game branch).
     pub fn new_game(&mut self) {
+        self.top = Top::Game;
         let (vm, q) = Vm::new_game();
         self.vm = vm;
         self.start_queue(q);
@@ -140,6 +210,7 @@ impl Engine {
 
     /// Debug: jump to `SPnn:pc` (hex pc) with a fresh VM (e.g. "SP01:0" = developer scene select).
     pub fn jump(&mut self, script_id: u16, pc: u16) {
+        self.top = Top::Game;
         let mut vm = Vm::blank();
         vm.state = 2;
         vm.script_id = script_id;
@@ -168,8 +239,20 @@ impl Engine {
         if let Some(s) = self.cd_start { self.disp.sub.cd_time = cd_time_bcd(self.frame - s); }
 
         // VM thread (runs while the sequencer is idle)
-        if !self.busy() { self.vm_thread(); }
-        if self.busy() { self.seq_run(); }
+        if self.top == Top::Game {
+            if !self.busy() { self.vm_thread(); }
+            if self.busy() { self.seq_run(); }
+            if self.vm.state == 3 && self.top == Top::Game {
+                // SYS SETSTATE(1): mode 6 – late-game module DATA_Y16 (file 0x34)
+                self.top = Top::Ending;
+                self.enter_module(Top::Ending, 0x34);
+            }
+        } else if let Some(mut m) = self.module.take() {
+            match m.tick(self) {
+                Some(v) => { self.module = None; self.module_done(v); }
+                None => { if self.module.is_none() { self.module = Some(m); } }
+            }
+        }
 
         self.disp.frame(&self.mem);
         for ev in self.disp.sub.events.drain(..) {

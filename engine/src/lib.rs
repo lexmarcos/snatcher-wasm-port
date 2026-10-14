@@ -35,7 +35,11 @@ impl Game {
     pub fn load_file(&mut self, name: &str, data: Vec<u8>) { self.e.load_file(name, data) }
     pub fn has_file(&self, name: &str) -> bool { self.e.files.contains_key(&name.to_ascii_uppercase()) }
     /// Start the game (currently: new game straight into the scenario, SP06:0).
-    pub fn boot(&mut self) { self.e.new_game() }
+    pub fn boot(&mut self) { self.e.boot() }
+    /// Skip the title/intro and start a new game directly.
+    pub fn new_game(&mut self) { self.e.new_game() }
+    /// Provide a save block for CONTINUE (slot 1..4).
+    pub fn set_save(&mut self, slot: usize, data: Vec<u8>) { if (1..=4).contains(&slot) { self.e.saves[slot - 1] = Some(data); } }
     /// Debug scene jump, e.g. "SP01:0" (developer scene-select script) or "SP06:0".
     pub fn debug_jump(&mut self, spec: &str) -> bool {
         let Some((f, pc)) = spec.split_once(':') else { return false };
