@@ -69,6 +69,8 @@ pub struct KDriver {
     pub tick0: u64,
     /// sequencer ticks per slot (0..9)
     pub ticks: [u64; 10],
+    /// diagnostics: executed sequence commands E0..FF
+    pub cmd_stats: [u32; 32],
 }
 
 
@@ -76,7 +78,7 @@ impl KDriver {
     /// `ip` = main-CPU IP image starting at M:0xFF0000; `fmwr` = FMWR_1.BIN.
     pub fn new(ip: Vec<u8>, fmwr: Vec<u8>) -> Self {
         let mut d = KDriver { ram: vec![0; (RAM_END - RAM_BASE) as usize], ip, z80: vec![0; 0x2000],
-                              wram: fmwr, ym: Ym2612::new(), a3: 0, drums: Vec::new(), e030: 0, f9_ramp_hits: 0, tick0: 0, ticks: [0; 10] };
+                              wram: fmwr, ym: Ym2612::new(), a3: 0, drums: Vec::new(), e030: 0, f9_ramp_hits: 0, tick0: 0, ticks: [0; 10], cmd_stats: [0; 32] };
         d.boot_load();
         d.wb(VOLW, 0xFF); d.wb(VOLW + 1, 0xFF);
         d
@@ -678,6 +680,7 @@ impl KDriver {
 
     /// M:0xFF48BC: sequence command dispatch (E0..FF), table M:0xFF400A
     fn seq_cmd(&mut self, a1: u32, d3: u8, a0: &mut u32, c: u8) {
+        self.cmd_stats[(c - 0xE0) as usize] += 1;
         match c {
             0xE0 => { // rest
                 let x = self.rb(*a0); self.wb(a1 + 0x1B, x); self.wb(a1 + 0x1E, x); *a0 += 1;
@@ -1068,6 +1071,8 @@ impl KDriver {
         let a = 0xFF7A00 + slot * 0x80;
         (0..0x80u32).filter(|o| !SKIP.contains(o)).map(|o| self.rb(a + o)).collect()
     }
+
+    pub fn peek(&self, a: u32) -> u8 { self.rb(a) }
 
     pub fn track_active(&self, slot: u32) -> bool { self.rb(0xFF7A00 + slot * 0x80) != 0 }
 

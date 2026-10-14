@@ -149,3 +149,16 @@ unsigned int core_disasm(int c, uint32_t pc, char *buf) {
 void core_pc_ring(int c, uint32_t *out) {
     for (int i = 0; i < 256; i++) out[i] = ring[c][(uint8_t)(ringpos[c] + i)];
 }
+
+/* ---- save states ---- */
+unsigned int core_ctx_size(void) { return m68k_context_size(); }
+void core_save_ctx(int c, uint8_t *dst) {
+    if (c == cur) m68k_get_context(ctx[c]);
+    memcpy(dst, ctx[c], m68k_context_size());
+    memcpy(dst + m68k_context_size(), &irq_level[c], sizeof(int));
+}
+void core_load_ctx(int c, const uint8_t *src) {
+    memcpy(ctx[c], src, m68k_context_size());
+    memcpy(&irq_level[c], src + m68k_context_size(), sizeof(int));
+    if (c == cur) m68k_set_context(ctx[c]);
+}

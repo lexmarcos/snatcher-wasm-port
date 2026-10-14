@@ -132,6 +132,7 @@ version = "0.1.0"
 name = "snengine"
 version = "0.1.0"
 dependencies = [
+ "png",
  "sncore",
  "wasm-bindgen",
 ]

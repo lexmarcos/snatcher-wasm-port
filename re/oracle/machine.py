@@ -160,6 +160,7 @@ class Machine:
         self.ym_addr = (0, 0)
         self.ym_frame = []
         self.sub_pending = set()
+        self.main_pending = set()
         # CDC / drive HLE
         self.cd_lba = 0
         self.cd_left = 0
@@ -215,6 +216,8 @@ class Machine:
         L.core_map(SUB, 0xFE0000, 0x10000, p(self.bram))
 
     def _mmio_r(self, cpu, addr, size):
+        if not hasattr(self, 'sub'):
+            return 0                                  # reset vector fetch during core_init
         try:
             return (self._main_r if cpu == MAIN else self._sub_r)(addr, size)
         except Exception as e:
@@ -587,6 +590,11 @@ class Machine:
             self.log({'t': 'py_error', 'where': 'hook', 'pc': pc, 'err': traceback.format_exc()})
 
     def _ack(self, cpu, level):
+        if cpu == MAIN:
+            self.main_pending.discard(level)
+            if self.main_pending:
+                self.lib.core_set_irq(MAIN, max(self.main_pending))
+            return
         if cpu == SUB:
             self.sub_pending.discard(level)
             if level == 2:
@@ -755,7 +763,7 @@ class Machine:
             self.music_status = 0x0100
             self.log({'t': 'music', 'fn': name, 'track': tr})
         elif fn in (0x02, 0x03, 0x04):
-            self.music_status = {0x02: 0x0000, 0x03: 0x0300, 0x04: 0x0100 if self.music else 0}[fn]
+            self.music_status = {0x02: 0x0000, 0x03: 0x0500, 0x04: 0x0100 if self.music else 0}[fn]
             self.log({'t': 'music', 'fn': name})
         else:
             self.log({'t': 'cdbios', 'fn': name, 'd1': s.d(1), 'a0': s.a(0)})
@@ -805,7 +813,56 @@ class Machine:
         self.sub_pending.add(level)
         self.lib.core_set_irq(SUB, max(self.sub_pending))
 
-    def step_frame(self):
+    # ------------------------------------------------------------ save states
+    STATE_ATTRS = ['frame', 'pad', 'comflag_main', 'comflag_sub', 'comcmd', 'comstat', 'memmode', 'wp',
+                   'intmask', 'timer', 'timer_acc', 'ifl2', 'cdc_mode', 'cdc_dma', 'cdc_host', 'stopwatch',
+                   'asic', 'main_vint', 'main_hint_vec', 'pad_th', 'pad_ctrl', 'ym_addr', 'sub_pending',
+                   'main_pending', 'cd_lba', 'cd_left', 'cd_ready', 'cd_cur', 'cd_first_dest', 'music',
+                   'music_status', 'last_seq_busy', 'last_script', 'z80']
+
+    def save_state(self, path):
+        import pickle
+        n = self.lib.core_ctx_size() + 4
+        ctxs = []
+        for c in (MAIN, SUB):
+            b = (ctypes.c_ubyte * n)()
+            self.lib.core_save_ctx(c, b)
+            ctxs.append(bytes(b))
+        st = {k: getattr(self, k) for k in self.STATE_ATTRS}
+        st['bram_files'] = getattr(self, 'bram_files', {})
+        st['mem'] = {k: bytes(getattr(self, k)) for k in ('mrom', 'prg', 'wram', 'mram', 'bram')}
+        st['ctx'] = ctxs
+        st['halted_waiting'] = [(c.halted, c.waiting) for c in (self.main, self.sub)]
+        st['vdp'] = {k: getattr(self.vdp, k) for k in ('vram', 'cram', 'vsram', 'reg', 'addr', 'code',
+                                                    'pending', 'fill_pending', 'vblank', 'line')}
+        st['vdp']['fill_len'] = getattr(self.vdp, 'fill_len', 0)
+        st['pcm'] = self.pcm.__dict__
+        with open(path, 'wb') as f:
+            pickle.dump(st, f)
+
+    def load_state(self, path):
+        import pickle
+        with open(path, 'rb') as f:
+            st = pickle.load(f)
+        for k in self.STATE_ATTRS:
+            setattr(self, k, st[k])
+        self.bram_files = st['bram_files']
+        for k, v in st['mem'].items():
+            ctypes.memmove(getattr(self, k), v, len(v))
+        for c, b in zip((MAIN, SUB), st['ctx']):
+            self.lib.core_load_ctx(c, (ctypes.c_ubyte * len(b)).from_buffer_copy(b))
+        for c, (h, w) in zip((self.main, self.sub), st['halted_waiting']):
+            c.halted, c.waiting = h, w
+        for k, v in st['vdp'].items():
+            setattr(self.vdp, k, v)
+        self.pcm.__dict__.update(st['pcm'])
+        struct.pack_into('>I', self.mrom, 0x70, 0xFF0000 | self.main_hint_vec)
+
+    def _set_main_irq(self, level):
+        self.main_pending.add(level)
+        self.lib.core_set_irq(MAIN, max(self.main_pending))
+
+    def step_frame(self, capture=False):
         if self.inputs:
             n, bits = self.inputs[0]
             self.pad = bits
@@ -814,37 +871,55 @@ class Machine:
                 self.inputs.pop(0)
         else:
             self.pad = 0
-        slices = 33
-        mcyc = MAIN_HZ // 60 // slices
-        scyc = SUB_HZ // 60 // slices
-        CH = 400                          # main cycles per interleave step; sub gets 1.63x
-        dt = 1.0 / 60 / slices
-        for k in range(slices):
-            line = int(k * self.LINES / slices)
+        L = self.LINES
+        mcyc = MAIN_HZ / 60 / L
+        scyc = SUB_HZ / 60 / L
+        dt = 1.0 / 60 / L
+        if capture:
+            self.vdp.begin_frame()
+        hcount = self.vdp.reg[10]
+        macc = sacc = 0.0
+        for line in range(L):
             self.vdp.line = line
+            if capture and line < 224:
+                self.vdp.render_line(line)
             vint_delay = None
-            if line >= 224 and not self.vdp.vblank:
-                # The V-blank status flag rises at the end of line 223 (HBLANK), the VINT is
-                # asserted ~one HBLANK later (per GPGX vdp timing). The game relies on this window:
-                # M:0xFF2D34 polls the flag with interrupts enabled.
+            if line == 224:
+                # V-blank flag rises at the end of line 223; VINT asserted ~one HBLANK later
+                # (GPGX timing). The game relies on it: M:0xFF2D34 polls the flag with ints on.
                 self.vdp.vblank = True
                 if self.vdp.reg[1] & 0x20 and self.main_vint:
                     vint_delay = 180
-            if line < 224 and self.vdp.vblank:
+            elif line == 0:
                 self.vdp.vblank = False
+            # H-interrupt line counter (Sega VDP manual: reloaded from reg 10 outside the display)
+            if line <= 224:
+                if hcount == 0:
+                    hcount = self.vdp.reg[10]
+                    if self.vdp.reg[0] & 0x10:
+                        self._set_main_irq(4)
+                else:
+                    hcount -= 1
+            else:
+                hcount = self.vdp.reg[10]
             if self.intmask & 0x08 and self.timer:
                 self.timer_acc += dt
                 period = (self.timer + 1) * 30.72e-6
                 if self.timer_acc >= period:
                     self.timer_acc %= period
                     self._set_sub_irq(3)
-            mleft, sleft = mcyc, scyc
+            macc += mcyc
+            sacc += scyc
+            mleft, sleft = int(macc), int(sacc)
+            macc -= mleft
+            sacc -= sleft
+            CH = 250
             while mleft > 0 or sleft > 0:
                 if self.ifl2 and self.intmask & 0x04 and 2 not in self.sub_pending:
                     self._set_sub_irq(2)
                 if vint_delay is not None and mleft > 0 and not self.main.halted:
                     mleft -= max(self.main.run(vint_delay), 1)
-                    self.lib.core_set_irq(MAIN, 6)
+                    self._set_main_irq(6)
                     vint_delay = None
                 if mleft > 0:
                     if self.main.halted:

@@ -16,11 +16,10 @@ fn main() {
         d.tick();
         if d.tick0 != last {
             last = d.tick0;
-            let k = d.state_key();
-            let n = k.len() / 8;
-            for t in 0..8 { hist[t].push(k[t * n..(t + 1) * n].to_vec()); }
+            for t in 0..8 { hist[t].push(d.track_key(t as u32)); }
         }
     }
+    println!("cmds: {}", d.cmd_stats.iter().enumerate().filter(|(_, &n)| n > 0).map(|(i, n)| format!("{:02x}:{}", i + 0xE0, n)).collect::<Vec<_>>().join(" "));
     for t in 0..8 {
         let h = &hist[t];
         let mut first: HashMap<&Vec<u8>, usize> = HashMap::new();
@@ -30,6 +29,6 @@ fn main() {
             first.entry(k).or_insert(i);
         }
         let ptrs: Vec<String> = h.iter().rev().take(1).map(|k| format!("{:02x?}", &k[k.len()-4..])).collect();
-        println!("track {t}: id {:02x} tempo {:02x} ticks", h.last().unwrap()[0], h.last().unwrap()[3]); println!("   ticks {} first-repeat {:?} active-at-end {} ptr {:?}", h.len(), res, h.last().map(|k| k[0]).unwrap_or(0), ptrs);
+        println!("   ticks {} first-repeat {:?} active-at-end {} ptr {:?}", h.len(), res, h.last().map(|k| k[0]).unwrap_or(0), ptrs);
     }
 }

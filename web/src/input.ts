@@ -20,7 +20,7 @@ export class Input {
     addEventListener("blur", () => { this.keys = 0; });
     canvas.addEventListener("mousemove", (e) => {
       const r = canvas.getBoundingClientRect();
-      this.mouseX = Math.floor(((e.clientX - r.left) / r.width) * 320);
+      this.mouseX = Math.floor(((e.clientX - r.left) / r.width) * 256);
       this.mouseY = Math.floor(((e.clientY - r.top) / r.height) * 224);
     });
     canvas.addEventListener("mousedown", () => { this.mouseDown = true; });

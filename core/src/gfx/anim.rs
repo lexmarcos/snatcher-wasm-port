@@ -106,6 +106,12 @@ pub struct Runtime {
     pub cd_time: u32, // $787A
     pub pause_groups: u8, // $78C6
     pub events: Vec<Event>,
+    /// S:$7866 (anim op A3): load the default text palette at the next scene reset (S:0xF5FC)
+    pub f7866: u8,
+    /// S:$788A (anim ops A4 bit0, AE bit1): palette black-out control for S:0xF560
+    pub f788a: u8,
+    /// S:$788B (anim ops 9B/9C): keep palettes on scene clear
+    pub f788b: u8,
 }
 
 impl Default for Runtime {
@@ -116,6 +122,7 @@ impl Default for Runtime {
             tilech: [TileCh::default(); 7], tilebuf: vec![vec![0u8; 0x2000]; 4],
             fx_a: 0, fx_b: 0, fx_reset: 0, mail: (0, 0), split_req: 0,
             rng: [0; 4], frame: 0, budget: 1, cd_time: 0, pause_groups: 0, events: vec![],
+            f7866: 0, f788a: 0, f788b: 0,
         }
     }
 }
@@ -409,8 +416,11 @@ impl Runtime {
                 0x17 => { self.objs[i].flags |= 2; self.set_delay(i, &b); return; }
                 0x18 => { self.objs[i].f4e |= 2; }
                 0x19 => { self.objs[i].wait_time = u32::from_be_bytes([b[1], b[2], b[3], 0]); self.objs[i].flags |= 4; }
-                0x1B => { self.objs[i].f4e |= 1; }
-                0x1C => { self.objs[i].f4e |= 0x80; }
+                0x1B => { self.objs[i].f4e |= 1; self.f788b = b[1]; }
+                0x1C => { self.objs[i].f4e |= 0x80; self.f788b = self.objs[i].f4e; }
+                0x23 => { self.f7866 = 1; }
+                0x24 => { self.f788a |= 1; }
+                0x2E => { self.f788a |= 2; }
                 0x1D => { self.events.push(Event::Sound { id: b[1], kind: 0 }); }
                 0x1F => { if self.frame & 7 == 0 { self.events.push(Event::Periodic { id: b[1] }); } }
                 0x20 => { self.objs[i].flip = b[3]; }

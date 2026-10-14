@@ -10,3 +10,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 sncore = { path = "../core" }
 wasm-bindgen = "=0.2.129"
+
+[dev-dependencies]
+png = "0.17"

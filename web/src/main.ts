@@ -1,10 +1,10 @@
 // Snatcher web port – browser front end.
-// The engine (Rust → wasm) owns all game logic and renders a 320x224 RGBA frame.
+// The engine (Rust → wasm) owns all game logic and renders a 256x224 RGBA frame (H32 mode).
 // This file handles: asset loading, the 60 Hz loop, canvas scaling, input, audio and saves.
 import { AudioOut } from "./audio";
 import { Input } from "./input";
 
-const W = 320, H = 224;
+const W = 256, H = 224;
 const params = new URLSearchParams(location.search);
 const msg = document.getElementById("msg")!;
 const canvas = document.getElementById("screen") as HTMLCanvasElement;
@@ -62,8 +62,8 @@ async function main() {
   } catch (e) {
     msg.textContent = String(e) + " – or pick the extracted files folder";
   }
-  if (params.has("scene")) game.debug_jump?.(params.get("scene")!);
-  game.boot?.();
+  if (params.has("scene")) game.debug_jump(params.get("scene")!);
+  else game.boot();
 
   const audio = new AudioOut("/assets/web/");
   const input = new Input(canvas);
@@ -91,6 +91,8 @@ async function main() {
       case "music_stop": audio.stopMusic(e.fade ?? 0); break;
       case "voice": audio.voice(e.id); break;
       case "sfx": audio.sfx(e.id); break;
+      case "pcm": audio.sfx(e.id); break;
+      case "log": console.log("[engine]", e.msg); break;
       case "save": try { localStorage.setItem(`snatcher.save.${e.slot}`, e.data); } catch {} break;
       case "load": { let d: string | null = null; try { d = localStorage.getItem(`snatcher.save.${e.slot}`); } catch {} game.save_loaded?.(e.slot, d ?? ""); break; }
     }
