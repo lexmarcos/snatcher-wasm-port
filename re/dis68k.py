@@ -6,7 +6,7 @@ $FF4372 as `jsr $4372.w`), and its jump-table recovery misses Konami's tables.
 This tool masks every address to 24 bits, follows code from labelled entry
 points and annotated jump tables, and prints a full listing (code + data).
 
-usage: dis68k.py <image> <base-hex> <labels.txt> [-t tables.txt] [-o out.asm]
+usage: dis68k.py <image> <base-hex> <labels.txt[,more.txt,glob*.txt]> [-t tables.txt] [-o out.asm]
 labels.txt lines: ADDR NAME [f]        (f = function entry / code seed)
 tables.txt lines: ADDR KIND COUNT [BASE] [NAME]
    KIND w_rel   : COUNT words, target = BASE(default ADDR) + sext(word)
@@ -20,11 +20,18 @@ import capstone
 M = 0xFFFFFF
 
 
-def load_labels(path):
+def load_labels(paths):
     labels, funcs = {}, set()
-    if not path:
+    if not paths:
         return labels, funcs
-    for line in open(path):
+    import glob as _g
+    files = []
+    for p in paths.split(','):
+        files += sorted(_g.glob(p)) or [p]
+    lines = []
+    for f in files:
+        lines += open(f).read().splitlines()
+    for line in lines:
         line = line.split('#', 1)[0].strip()
         if not line:
             continue

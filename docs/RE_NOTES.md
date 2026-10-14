@@ -50,3 +50,21 @@ Full list with LBAs: `assets/raw/filelist.tsv` (generated).
   display/input slave; **HYPOTHESIS: game logic (script VM) runs on the sub CPU**.
 - M:0xFF07D4: copies 0xB4 longs from Word RAM 0x237800 to RAM 0xFFE100 (main code
   provided by the sub CPU through Word RAM), then calls `jsr $E100.w`/`jmp $E106.w`.
+
+## 3. Script VM (summary; details in docs/re/script.md)
+
+- Sub CPU main loop `subfn_20` S:0x166BA, state word S:$9808 (table S:0x166D4).
+- Scenario scripts = SPxx.BIN (file idx 57+xx), loaded at S:0x1A800 (`script_buf`);
+  current script file id in S:$980C; command 0x11 in the action queue loads a file
+  (S:0x17130: `move.w #$11,(a5)+; move.l #$1A800,(a5)+; move.w id,(a5)+`).
+- Bytecode region 0x0000–0x37FF (padded with 0xFF), text/data from file offset 0x3800
+  (verified on all 39 SP files by `re/py/spcov.py`: tree parse from 0 runs until the 0xFF pad).
+- Dispatch S:0x16974: opcode byte at (a2=script_buf + a3) → table S:0x16CDC, 4 bytes/opcode
+  `[type1][type2<<4|type3][handler-0x15400]`, 0x4B opcodes (0x00–0x4A).
+- Operand types: 0/7 none (7 also marks list end), 1 variable descriptor (2 bytes),
+  2/3/5/6 16-bit immediates (meaning per opcode), 4 nested node, 8 = "link": a 2-byte
+  pointer follows the opcode (S:0x16A64 tests (t2|t3)&8; S:0x16A20 follows it).
+- Variables are bit-fields in a bit array at S:$9C60: descriptor bits 15..7 = byte offset,
+  6..4 = bit shift, 3..0 = width-1 (read S:0x16B14, write S:0x16B80).
+- Action queue at S:$9940 (a5), executed by the sequencer S:0xFFC4 (36 commands,
+  table S:0xFFE2), progress index S:$9B40, busy flag S:$9B44.

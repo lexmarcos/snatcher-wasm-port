@@ -11,3 +11,5 @@ web/dist/
 web/pkg/
 *.wasm
 third_party/
+re/out/
+re/images/
