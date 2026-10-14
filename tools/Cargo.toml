@@ -9,3 +9,4 @@ path = "src/main.rs"
 
 [dependencies]
 sncore = { path = "../core" }
+png = "0.17"
