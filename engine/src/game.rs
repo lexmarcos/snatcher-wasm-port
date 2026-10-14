@@ -295,6 +295,7 @@ impl Engine {
 
     pub fn tick(&mut self, pad: u8) {
         self.frame += 1;
+        if self.fid_rng { self.disp.sub.rng = [0; 4]; } // harness: the oracle pokes $786A..D = 0 before every frame
         if self.voice_left > 0 { self.voice_left -= 1; }
         if self.voice_music_left > 0 && self.voice_music_left != u32::MAX { self.voice_music_left -= 1; if self.voice_music_left == 0 { self.regs.set_b(0x980E, 0); } }
         if self.sfx_left > 0 && self.sfx_left != u32::MAX { self.sfx_left -= 1; if self.sfx_left == 0 { self.regs.set_b(0x980F, 0); } }
@@ -311,6 +312,8 @@ impl Engine {
             self.fb = fb;
             return;
         }
+        // S:0xD644 (frame handler, before the pad read and the sequencer): one step of the sub RNG `$786A..D` per frame
+        self.disp.sub.rand();
         self.menu_in = self.menu_in_cur;
         if let Some(inp) = self.input.as_mut() { inp.update(pad); self.menu_in_cur = (inp.pressed, inp.held, inp.repeat); }
 

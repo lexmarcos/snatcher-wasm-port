@@ -521,7 +521,8 @@ fn spawner(e: &mut Engine, s: &mut Shoot) {
         1 => {
             let d2 = rand_tab(e);
             let t = O_T0 + (d2 as usize % 9);
-            ww(e, 0x791C, t as u16);
+            // `move.l a0,$791C` (a0 = $8400 + 0x50 * cell)
+            ww(e, 0x791C, 0); ww(e, 0x791E, (0x7A00 + 0x50 * t) as u16);
             if s.f24[t] == 0xFF || s.f24[t] & 0x0F != 0 { return; }
             ww(e, 0x78FC, 2);
             inc(e, 0x7906);
@@ -530,7 +531,7 @@ fn spawner(e: &mut Engine, s: &mut Shoot) {
             if s.f24[t] == 0x20 { inc(e, 0x7914); ww(e, 0x7906, rw(e, 0x7906).wrapping_sub(1)); }
         }
         _ => {
-            let t = rw(e, 0x791C) as usize & 63;
+            let t = ((rw(e, 0x791E) as usize).wrapping_sub(0x7A00) / 0x50) & 63;
             let mut d5 = script_b(e, t, 0);
             if d5 != 2 { d5 += 2; }
             e.disp.sub.objs[t].idx = d5;

@@ -888,6 +888,10 @@ class Machine:
         self.lib.core_set_irq(MAIN, max(self.main_pending))
 
     def step_frame(self, capture=False):
+        # zero-length script entries ([0, bits]) are skipped: scripts built as [[f-t-1,0],[1,b],...] produce them for
+        # consecutive frames and each one used to eat a frame with pad = 0 (held buttons arrived every other frame)
+        while self.inputs and self.inputs[0][0] <= 0:
+            self.inputs.pop(0)
         if self.inputs:
             n, bits = self.inputs[0]
             self.pad = bits
