@@ -313,9 +313,15 @@ impl Engine {
             return;
         }
         // S:0xD644 (frame handler, before the pad read and the sequencer): one step of the sub RNG `$786A..D` per frame
+        // harness (re/oracle/shoot_rec.py): RNG state = f(handler run counter) before the step, like the oracle's S:0xD644 hook
+        if let Some(n) = self.ix.rng_seq.as_mut() { *n = n.wrapping_add(1); self.disp.sub.rng = n.wrapping_mul(2654435761).to_be_bytes(); }
         self.disp.sub.rand();
         self.menu_in = self.menu_in_cur;
-        if let Some(inp) = self.input.as_mut() { inp.update(pad); self.menu_in_cur = (inp.pressed, inp.held, inp.repeat); }
+        if let Some(inp) = self.input.as_mut() {
+            inp.update(pad);
+            if let Some((h, p, r)) = self.ix.force_in { inp.held = h; inp.pressed = p; inp.repeat = r; }
+            self.menu_in_cur = (inp.pressed, inp.held, inp.repeat);
+        }
 
         // VM thread (runs while the sequencer is idle)
         crate::menus::frame_hook(self);

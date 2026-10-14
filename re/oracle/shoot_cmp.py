@@ -55,6 +55,20 @@ def main():
                 if diffs:
                     tot += 1
                     print('obj %2s %-6s %4d frames differ, first: %s' % (s, fld, len(diffs), ' '.join('f%d:%x/%x' % d for d in diffs[:a.n])))
+    # summary: phase timeline and final counters of both sides
+    def tl(tr):
+        out, last = [], None
+        for r in tr:
+            v = r['w']['78E8']
+            if v != last:
+                out.append('f%d:%x' % (r['f'], v)); last = v
+        return ' '.join(out)
+
+    def fin(tr):
+        w = tr[-1]['w']
+        return 'shots=%d hits=%d miss=%d kills=%d civ=%d life=%d af=%x' % (w['7908'], w['790C'], w['790E'], w['790A'], w['7914'], w['7910'], w['78AF'])
+    print('phases oracle:', tl(o)); print('phases engine:', tl(e))
+    print('final oracle:', fin(o)); print('final engine:', fin(e))
     print('compared %d frames, %d differing fields' % (n - a.frm, tot))
 
 

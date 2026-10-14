@@ -36,6 +36,10 @@ pub struct Ix {
     pub gun_buttons: u8,
     gun_prev: u8,
     pub shoot: Option<crate::shoot::Shoot>,
+    /// fidelity harness: sub RNG seeded from this counter before every frame-handler run (None = normal)
+    pub rng_seq: Option<u32>,
+    /// fidelity harness: logical (held, pressed, repeat) = $7990/$7991/$7992 the original's handler run saw (overrides the pad)
+    pub force_in: Option<(u8, u8, u8)>,
     /// pointer mode (`$79FE == 1`): B is held, the view is being moved
     pub ptr_moving: bool,
     /// text entry finished, waiting for the close effect (`$7892 == 0`, S:0x11C28): (result, frames waited)

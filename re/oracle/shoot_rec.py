@@ -95,6 +95,8 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
     # and the sound calls subfn_06 S:0x1530E (PCM effect, d0) / subfn_12 S:0x15EB4 (PCM/voice with done flag, d0)
     hooks = {0x1530E: '06', 0x15EB4: '12', 0xD6EE: 'h', 0xD644: 'rng'}
     ev = []
+    sched = ['0 1 0 0 0']
+    cnt = [0]   # handler runs since the recording started (engine: Engine::ix.rng_seq)
     orig = m._sub_bios
 
     def hk(pc):
@@ -102,7 +104,11 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
             # S:0xD644 = the RNG step at the start of every frame handler run: pin the state before it (a handler overrun by a PCM sample copy
             # S:0x15C32 straddles frames, so a per-frame poke would not equal the engine's per-tick pin)
             if rng:
-                s.write(0x786A, bytes(4))
+                cnt[0] += 1
+                s.write(0x786A, ((cnt[0] * 2654435761) & 0xFFFFFFFF).to_bytes(4, 'big'))
+        elif pc == 0xD6EE:
+            # logical pad bytes this handler run works with (sampled earlier in the handler: S:0xD664 / S:0xDFD6)
+            ev.append(('h', s.r8(0x7990), s.r8(0x7991), s.r8(0x7992)))
         elif pc in hooks:
             ev.append((hooks[pc], s.d(0) & 0xFFFF))
         else:
@@ -121,6 +127,7 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
         m.step_frame(capture=(f in shots))
         h = sum(1 for x in ev if x[0] == 'h')
         snd = [list(x) for x in ev if x[0] != 'h']
+        sched.append('%d %d %s' % (f, h, ' '.join('%d %d %d' % x[1:] for x in ev if x[0] == 'h')))
         if f in shots:
             Image.fromarray(m.vdp.frame_image()).save(os.path.join(outdir, 'o%05d.png' % f))
         recs.append(dict(f=f, h=h, s=snd, **snap(s)))
@@ -128,6 +135,7 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
             print('HALT', m.main.err, m.sub.err); break
     m._sub_bios = orig
     record.pad = pad
+    record.sched = sched
     return recs
 
 
@@ -159,6 +167,7 @@ if __name__ == '__main__':
     outdir = os.path.dirname(os.path.abspath(a.out)); os.makedirs(outdir, exist_ok=True)
     auto = Auto(a.auto, a.acc, a.idle) if a.auto is not None else None
     recs = record(m, json.loads(a.script), a.frames, rng=not a.norng, shots=set(int(x) for x in a.shots.split(',') if x), outdir=outdir, auto=auto)
+    open(a.out + '.sched', 'w').write('\n'.join(record.sched) + '\n')
     if auto is not None:
         json.dump([[f, b] for f, b in sorted(record.pad.items()) if b], open(a.out + '.script.json', 'w'))
     with open(a.out, 'w') as fh:

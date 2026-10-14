@@ -42,13 +42,15 @@ fn main() {
         }
     }
 
-    // SCHED=oracle.jsonl: reproduce the oracle's sub-CPU frame schedule ("h": frame-handler entries per frame; PCM sample copies
-    // S:0x15C32 overrun a frame so 0 or 2 entries happen) – only to compare logic frame-exact, not part of the engine
-    let mut sched: Vec<u8> = vec![];
+    // SCHED=oracle.jsonl.sched: per frame the logical pad bytes ($7990/$7991/$7992) of every sub handler run that frame (shoot_rec.py).
+    // PCM sample copies (S:0x15C32) overrun a frame, so a frame has 0, 1 or 2 runs and a run can see a pad sampled in an earlier frame;
+    // this reproduces that schedule so the logic can be compared frame-exact (it is not part of the engine).
+    let mut sched: Vec<Vec<(u8, u8, u8)>> = vec![];
     if let Ok(sp) = std::env::var("SCHED") {
         for l in std::fs::read_to_string(sp).unwrap().lines() {
-            let h = l.split("\"h\": ").nth(1).and_then(|r| r.split(',').next()).and_then(|x| x.trim().parse().ok()).unwrap_or(1);
-            sched.push(h);
+            let v: Vec<u32> = l.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+            let n = v[1] as usize;
+            sched.push((0..n).map(|k| (v[2 + 3 * k] as u8, v[3 + 3 * k] as u8, v[4 + 3 * k] as u8)).collect());
         }
     }
     let raw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/raw/files");
@@ -57,29 +59,36 @@ fn main() {
         if *n == "PCMLD_01.BIN" { continue; }
         if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); }
     }
-    e.fid_rng = true;
     e.jump(57 + 1, 0);
 
-    let mut nav: Vec<(u8, u32)> = vec![(0, 100), (0x20, 3), (0, 60)];
-    for _ in 0..5 { nav.push((2, 3)); nav.push((0, 25)); }
-    nav.extend([(0x20, 3), (0, 80), (0x20, 3), (0, 80)]);
-    for _ in 0..group { nav.push((2, 3)); nav.push((0, 25)); }
-    nav.extend([(0x20, 3), (0, 100)]);
-    for _ in 0..item { nav.push((2, 3)); nav.push((0, 25)); }
-    nav.push((0x20, 3));
-    let mut it = nav.into_iter().flat_map(|(b, n)| std::iter::repeat(b).take(n as usize));
-    let mut k = 0u32;
-    // navigation phase: until the shooting sequencer ran its first step ($78EA == 1)
+    // navigation with feedback: root menu -> item 5 (SHOOTING), act menu -> `group`, stage list -> `item`; messages are confirmed
+    let targets = [5usize, group, item];
+    let (mut menu_no, mut prev_ws, mut since, mut last_press, mut k) = (0usize, 0u8, 0u32, 0u32, 0u32);
+    for _ in 0..100 { e.tick(0); e.out.clear(); k += 1; }
     loop {
-        let mut pad = it.next().unwrap_or(if k % 50 == 49 { 0x20 } else { 0 });
-        if it.size_hint().0 == 0 { pad = if k % 50 == 49 { 0x20 } else { 0 }; }
+        let ws = e.wait_state();
+        if ws == 2 && prev_ws != 2 { menu_no += 1; since = 0; }
+        prev_ws = ws;
+        since += 1;
+        let mut pad = 0u8;
+        if k - last_press > 12 {
+            if ws == 1 { pad = 0x20; last_press = k; }
+            else if ws == 2 && since > 8 {
+                let cur = e.menu.as_ref().map(|(m, _)| m.cursor as usize).unwrap_or(0);
+                let tgt = targets.get(menu_no.wrapping_sub(1)).copied().unwrap_or(0);
+                if menu_no == 0 { pad = 0; }
+                else if cur != tgt { pad = 2; last_press = k; } else { pad = 0x20; last_press = k; }
+            }
+        }
+        if menu_no == 0 && ws == 0 && k % 50 == 49 { pad = 0x20; }
         k += 1;
         e.tick(pad);
         e.out.clear();
         if e.regs.get(0x78EA) == 1 && e.regs.get(0x78E8) == 0 { break; }
-        if k > 6000 { eprintln!("stage did not start"); std::process::exit(1); }
+        if k > 8000 { eprintln!("stage did not start (menu {menu_no})"); std::process::exit(1); }
     }
     eprintln!("stage started after {k} frames: $78E0={:04x}", e.regs.get(0x78E0));
+    e.ix.rng_seq = Some(0); // counting starts with the first recorded handler run
     let mut f = std::fs::File::create(&out).unwrap();
     let mut gpos = (0i32, 0i32, false);
     let mut snd: Vec<String> = vec![];
@@ -89,11 +98,13 @@ fn main() {
             let mut gb = 0u8;
             for g in &guns { if g.0 <= fr { gpos = (g.1, g.2, true); } if g.0 == fr { gb = g.3; } }
             if gpos.2 { e.ix.gun_present = true; e.ix.gun_x = gpos.0; e.ix.gun_y = gpos.1; e.ix.gun_buttons = gb; }
-            e.pin_sub_rng();
-            let h = sched.get(fr as usize).copied().unwrap_or(1);
-            if h == 0 { e.sub_stall = 1; }
-            e.tick(pad);
-            if h >= 2 { e.pin_sub_rng(); e.tick(pad); }
+            match sched.get(fr as usize) {
+                Some(runs) => {
+                    if runs.is_empty() { e.sub_stall = 1; e.tick(0); }
+                    for r in runs { e.ix.force_in = Some(*r); e.tick(0); }
+                }
+                None => { e.tick(pad); }
+            }
             snd.clear();
             for o in e.out.drain(..) {
                 match o {
