@@ -1,0 +1,12 @@
+# Main CPU memory map: ADDR SIZE NAME
+0x000000 0x20000 bios_rom          # main-side BIOS ROM (not available)
+0x020000 0x20000 prg_ram_window    # sub PRG-RAM bank window
+0x200000 0x40000 word_ram
+0xA00000 0x10000 io_z80
+0xA10000 0x20 io_ctrl
+0xA11000 0x200 io_z80bus
+0xA12000 0x40 io_gate
+0xA130F0 0x10 io_bank
+0xC00000 0x20 io_vdp
+0xFF6600 0x9A00 ram_main
+0xFFFF0000 0x10000 ram_short       # absolute-short sign-extended addresses (mirror of 0xFF0000)

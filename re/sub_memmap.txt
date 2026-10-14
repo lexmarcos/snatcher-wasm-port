@@ -1,0 +1,7 @@
+# Sub-CPU (CD side) memory map: ADDR SIZE NAME
+0x000000 0x5F00 bios_prg     # sub BIOS occupies low PRG-RAM (not available, uninitialized)
+0x005F00 0x100 bios_jmptbl   # BIOS jump table area (_CDBIOS etc.)
+0x080000 0x40000 word_ram_2m
+0x0C0000 0x20000 word_ram_1m
+0xFF0000 0x4000 io_pcm
+0xFF8000 0x200 io_gate_sub

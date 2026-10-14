@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["core", "tools"]
+
+[profile.release]
+opt-level = 3
+debug = false

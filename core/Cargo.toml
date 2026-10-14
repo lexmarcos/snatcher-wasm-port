@@ -1,0 +1,7 @@
+[package]
+name = "sncore"
+version = "0.1.0"
+edition = "2021"
+description = "Snatcher (Sega CD) data formats: disc image, ISO9660, LZKN1, graphics, script"
+
+[dependencies]

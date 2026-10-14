@@ -1,0 +1,13 @@
+*.chd
+*.bin
+*.cue
+*.iso
+assets/
+work/
+re/ghidra/
+target/
+node_modules/
+web/dist/
+web/pkg/
+*.wasm
+third_party/

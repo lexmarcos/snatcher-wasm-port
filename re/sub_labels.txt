@@ -1,0 +1,98 @@
+# Sub-CPU labels. HYPOTHESIS for BIOS entry points (Sega CD BIOS manual jump table); verify.
+0x5F0A _SETJMPTBL
+0x5F10 _WAITVSYNC
+0x5F16 _BURAM
+0x5F1C _CDBOOT
+0x5F22 _CDBIOS
+0x5F28 _USERCALL0
+0x5F2E _USERCALL1
+0x5F34 _USERCALL2
+0x5F3A _USERCALL3
+0xFF8000 GA_RESET
+0xFF8002 GA_MEMMODE
+0xFF8004 GA_CDC_MODE
+0xFF8006 GA_CDC_RS1
+0xFF8008 GA_CDC_HOSTDATA
+0xFF800A GA_CDC_DMAADDR
+0xFF800C GA_STOPWATCH
+0xFF800E GA_COMFLAGS
+0xFF8010 GA_COMCMD0
+0xFF8012 GA_COMCMD1
+0xFF8014 GA_COMCMD2
+0xFF8016 GA_COMCMD3
+0xFF8018 GA_COMCMD4
+0xFF801A GA_COMCMD5
+0xFF801C GA_COMCMD6
+0xFF801E GA_COMCMD7
+0xFF8020 GA_COMSTAT0
+0xFF8022 GA_COMSTAT1
+0xFF8024 GA_COMSTAT2
+0xFF8026 GA_COMSTAT3
+0xFF8028 GA_COMSTAT4
+0xFF802A GA_COMSTAT5
+0xFF802C GA_COMSTAT6
+0xFF802E GA_COMSTAT7
+0xFF8030 GA_TIMER
+0xFF8032 GA_INTMASK
+0xFF8058 GA_STAMPSIZE
+0xFF805A GA_STAMPMAP
+0xFF805C GA_IMGVCELL
+0xFF805E GA_IMGSTART
+0xFF8060 GA_IMGOFFSET
+0xFF8062 GA_IMGHDOT
+0xFF8064 GA_IMGVDOT
+0xFF8066 GA_TRACEVEC
+0x6000 sp_header
+0x6020 sp_jumptable
+0x602e sp_init f
+0x60a8 sp_main f
+0x60be sp_vint f
+0x629c sp_user f
+0xD400 subcode_base
+0xA400 fs_work           # file engine work area (A5/A6 = 0xA400)
+0xd404 subjt_00 f
+0xd4c4 subfn_00 f
+0xd40a subjt_01 f
+0xd48e subfn_01 f
+0xd410 subjt_02 f
+0xe046 subfn_02 f
+0xd416 subjt_03 f
+0xeeb6 subfn_03 f
+0xd41c subjt_04 f
+0xd7ea subfn_04 f
+0xd422 subjt_05 f
+0xd4c0 subfn_05 f
+0xd428 subjt_06 f
+0x150ee subfn_06 f
+0xd42e subjt_07 f
+0xf326 subfn_07 f
+0xd434 subjt_08 f
+0xe41a subfn_08 f
+0xd43a subjt_09 f
+0x150e8 subfn_09 f
+0xd440 subjt_10 f
+0xe322 subfn_10 f
+0xd446 subjt_11 f
+0xeea0 subfn_11 f
+0xd44c subjt_12 f
+0x150fa subfn_12 f
+0xd452 subjt_13 f
+0xf3f8 subfn_13 f
+0xd458 subjt_14 f
+0xe4a0 subfn_14 f
+0xd45e subjt_15 f
+0xe81a subfn_15 f
+0xd464 subjt_16 f
+0xf68e subfn_16 f
+0xd46a subjt_17 f
+0xf5e8 subfn_17 f
+0xd470 subjt_18 f
+0xe2fe subfn_18 f
+0xd476 subjt_19 f
+0xe30a subfn_19 f
+0xd47c subjt_20 f
+0x166ba subfn_20 f
+0xd482 subjt_21 f
+0xd4dc subfn_21 f
+0xd488 subjt_22 f
+0xf446 subfn_22 f

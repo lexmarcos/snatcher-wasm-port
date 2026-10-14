@@ -1,0 +1,11 @@
+[package]
+name = "sntools"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "snt"
+path = "src/main.rs"
+
+[dependencies]
+sncore = { path = "../core" }
