@@ -359,6 +359,14 @@ impl Engine {
                     if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 { self.out.push(Out::PcmSfx { id: id as u16, bank: self.pcm_bank }); }
                 }
                 gfx::anim::Event::Byte7893(b) => self.regs.set_b(0x7893, b),
+                // scene chunk 8 (S:0xF7D6 → M:$236406): main VBlank M:0xFF330C → sub_ff1538 (0xFF = 32x64 planes) / sub_ff1540 (64x32):
+                // sub_ff15b0 clears VRAM 0x0000-0xBFFF, the 4 KiB at 0xC000 and 0xE000, hscroll, CRAM and VSRAM
+                gfx::anim::Event::ScreenMode(w) => {
+                    let v = &mut self.disp.vdp;
+                    if w == 0xFF { v.plane_w = 32; v.plane_h = 64; } else { v.plane_w = 64; v.plane_h = 32; }
+                    for b in v.vram[..0xC000].iter_mut() { *b = 0; }
+                    for r in [0xC000usize..0xD000, 0xE000..0xF000, 0xF800..0xFA00] { for b in v.vram[r].iter_mut() { *b = 0; } }
+                }
                 _ => {}
             }
         }
@@ -738,7 +746,13 @@ impl Engine {
                     }
                 }
             }
-            0x0E => { let t = w(0); self.cd_play(t); true }
+            0x0E => {
+                // S:0x1024E / 0x10258 (3-state command, `$7856`): step 0 `cd_play_track`; step 1 waits for CDBSTAT = 0x100
+                // (playing) and then `clr.l $787A`, so a following cmd 1B counts from the new track's start
+                // (oracle: 0E[9] 1B[0,37,47] waited 2260 frames; the port completed 1B at once with the old track's time).
+                if self.seq_step == 0 { let t = w(0); self.cd_play(t); self.seq_step = 1; return false; }
+                if self.cd_status() == crate::modules::CD_PLAYING { self.cd_time_reset(); true } else { false }
+            }
             0x0F => {
                 // S:0x1027E: step 0 black-out (S:0xF560, once) and wait a frame, then subfn_17 (S:0xF5E8) which raises `$7887`;
                 // the sequencer is blocked until the handshake finished, then the command completes (oracle: 463 / 464 / 466)

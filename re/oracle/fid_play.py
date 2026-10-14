@@ -70,8 +70,8 @@ for rel in range(1, a.frames + 1):
         if msg_ready and rel - ready_since['msg'] >= a.settle:
             pad = 0x20; pkind = 'm'; psince = rel - ready_since['msg']
         elif entry_ready and rel - ready_since['entry'] >= a.settle and rel - last_press > 20:
-            # type three keys under the cursor (C), then OK with START
-            pad = 0x20 if ecount < 3 else 0x80; ecount += 1; pkind = 'e'; psince = rel - ready_since['entry']
+            # type keys under the cursor (C; keypad: until the direct-dial length is reached, the dial completes by itself), then OK with START (S:0x116AA)
+            pad = 0x20 if ecount < (12 if s.r8(0x79FF) == 2 else 4) else 0x80; ecount += 1; pkind = 'e'; psince = rel - ready_since['entry']
             if not a.quiet: print(rel, 'ENTRY key', hex(pad))
         elif menu_ready and rel - ready_since['menu'] >= a.settle and s.r8(0x9853) > 0 and s.r8(0x7A25) == 0 and s.r16(0x788C) != 0 and s.r8(0x79F4) == 0 and s.r8(0x9B44) == 0 and s.r8(0x7A00 + 1) == 1:
             n = s.r8(0x9853); cur = s.r8(0x9710)

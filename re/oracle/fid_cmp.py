@@ -112,6 +112,7 @@ def parse_engine_passes(logfile, base):
             words = []
             for c, ar in re.findall(r'\((\d+), \[([^\]]*)\]\)', m.group(3)):
                 words.append(int(c)); words += [int(x) & 0xFFFF for x in ar.split(',') if x.strip()]
+            words = words[:64]   # the oracle trace keeps only the first 64 words of a queue
             while words and words[-1] == 0: words.pop()
             res.append((f, words))
     return res
@@ -139,7 +140,7 @@ if not a.skip_engine:
     subprocess.run(['cargo', 'build', '--release', '-p', 'snengine', '--example', 'run', '-q'], cwd=ROOT, check=True)
     if a.sync:
         run_engine({})      # pass 1: passes only
-        ops = [(f, w) for f, w in oracle_passes() if not (len(w) == 0 or w[0] in (0x22, 0x16, 0x05) or w == [0x1C, 0x1D])]
+        ops = [(f, w) for f, w in oracle_passes() if not (len(w) == 0 or w[0] in (0x22, 0x16, 0x05, 0x23) or w == [0x1C, 0x1D])]
         eps = [(f, w) for f, w in parse_engine_passes(os.path.join(out, 'engine', 'log.txt'), a.ebase) if len(w) > 0]
         key0 = lambda w: ' '.join('%04X' % x for x in w)
         sm0 = difflib.SequenceMatcher(None, [key0(w) for _, w in ops], [key0(w) for _, w in eps], autojunk=False)
@@ -165,7 +166,7 @@ op, ep = oracle_passes(), engine_passes()
 # the engine does not log menu-driven commands (1C) in the queue; drop single-command 1C passes from the oracle list
 def menu_noise(w):   # menu-bar / window redraw passes: the engine draws these natively (menus.rs), not via the queue
     cmds = []; i = 0
-    return len(w) == 0 or w[0] in (0x22, 0x16, 0x05) or w == [0x1C, 0x1D]
+    return len(w) == 0 or w[0] in (0x22, 0x16, 0x05, 0x23) or w == [0x1C, 0x1D]
 op_f = [(f, w) for f, w in op if not menu_noise(w)]
 ep = [(f, w) for f, w in ep if len(w) > 0]
 key = lambda w: ' '.join('%04X' % x for x in w)
@@ -197,7 +198,7 @@ if a.refine and not a.skip_engine:
             oo, ee = np.asarray(Image.open(o_).convert('RGB')).astype(int), np.asarray(Image.open(e_).convert('RGB')).astype(int)
             if int((np.abs(oo - ee).sum(2) > 24).sum()) > a.refine: bad.append(sh)
     if bad:
-        offs = list(range(-a.refine_range, a.refine_range + 1, 2))
+        offs = list(range(-a.refine_range, a.refine_range + 1, 1))
         extra = {shot_map[sh] + a.ebase + o: 'x%05d_%+d' % (sh, o) for sh in bad for o in offs}
         keep = {v + a.ebase: 'r%05d' % k for k, v in shot_map.items()}
         shutil.rmtree(os.path.join(out, 'engine', 'keep'), ignore_errors=True)

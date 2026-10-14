@@ -114,6 +114,12 @@ fn main() {
                 v.vscroll_a, v.vscroll_b, v.hscroll_a, v.hscroll_b, sc.pos, sc.delta, sc.mode, m.eb00, m.e700, m.e076, m.e078, v.plane_a, v.plane_b, v.plane_w, v.plane_h, v.display);
         }
         if let Ok(v) = std::env::var("VRAMDUMP") { if f == frames { std::fs::write(v, &e.disp.vdp.vram).unwrap(); } }
+        if std::env::var("RASTERDBG").is_ok() && (shot_at.contains(&f) || f == frames) { // per-line vscroll/hscroll/display runs
+            if let Some(r) = &e.disp.vdp.raster {
+                let mut prev = None;
+                for (y, l) in r.lines.iter().enumerate() { let k = (l.vscroll_a, l.vscroll_b, l.display, l.hscroll_zero); if prev != Some(k) { println!("raster f{f} line {y}: {k:?}"); prev = Some(k); } }
+            }
+        }
         if std::env::var("OBJDUMP").is_ok() && f == frames {
             for (i, o) in e.disp.sub.objs.iter().enumerate() { if o.active == 1 { println!("obj {i} x {} y {} flags {:02x} idx {} script {:x} frame {:x}", o.x >> 16, o.y >> 16, o.flags, o.idx, o.script, o.frame); } }
             for (i, sp) in e.disp.vdp.sprites.iter().enumerate() { println!("spr {i} {:?}", sp); }
