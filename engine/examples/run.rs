@@ -25,6 +25,10 @@ fn main() {
         if *n == "PCMLD_01.BIN" { continue; }
         if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); }
     }
+    // main-CPU boot screens need the IP image (HEADER.BIN + IP.BIN of the disc, assets/raw/{header,ip}.bin)
+    for (n, f) in [("HEADER.BIN", "header.bin"), ("IP.BIN", "ip.bin")] {
+        if let Ok(d) = std::fs::read(raw.join("..").join(f)) { e.load_file(n, d); }
+    }
     match a.get(5) {
         Some(j) if j == "boot" => e.boot(),
         Some(j) => {
@@ -51,6 +55,13 @@ fn main() {
         let pad = if inputs == "auto" { if f % 40 == 0 { 0x20 } else { 0 } } else { *presses.get(&f).unwrap_or(&0) };
         if let Ok(v) = std::env::var("POKE") { // "frame:hexaddr:value,..." word pokes of sub-CPU registers before the tick
             for it in v.split(',') { let p: Vec<&str> = it.split(':').collect(); if p.len() == 3 && p[0].parse::<u64>().ok() == Some(f) { e.regs.set(u32::from_str_radix(p[1], 16).unwrap(), p[2].parse().unwrap()); } }
+        }
+        if let Ok(v) = std::env::var("GUN") { // light gun: "x:y:from_frame" (screen px), buttons via GUNB="frame:bits,.." (0x20 trigger, 0x40 aux, held 1 frame)
+            let p: Vec<u64> = v.split(':').filter_map(|x| x.parse().ok()).collect();
+            if p.len() == 3 && f >= p[2] {
+                let b = std::env::var("GUNB").ok().and_then(|g| g.split(',').filter_map(|it| it.split_once(':')).find(|(a, _)| a.parse::<u64>().ok() == Some(f)).and_then(|(_, b)| b.parse::<u8>().ok())).unwrap_or(0);
+                e.ix.gun_present = true; e.ix.gun_x = p[0] as i32; e.ix.gun_y = p[1] as i32; e.ix.gun_buttons = b;
+            }
         }
         e.tick(pad);
         if let Ok(v) = std::env::var("WATCH") { // "hexaddr,..." word registers printed every frame

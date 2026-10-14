@@ -1,5 +1,5 @@
 // Keyboard + Gamepad API → Genesis 3-button pad bits (must match engine::pad).
-// Mouse position/buttons are kept for the light-gun (Justifier) shooting sections.
+// The mouse acts as the light gun (Konami Justifier) for the shooting sections.
 export const PAD = { UP: 1, DOWN: 2, LEFT: 4, RIGHT: 8, B: 16, C: 32, A: 64, START: 128 } as const;
 
 const KEYMAP: Record<string, number> = {
@@ -8,26 +8,63 @@ const KEYMAP: Record<string, number> = {
   KeyA: PAD.A, KeyS: PAD.B, KeyD: PAD.C,
 };
 
+/** Minimal view of the wasm `Game` used here. */
+interface GunSink { set_gun(present: boolean, x: number, y: number, trigger: boolean, aux: boolean): void }
+
 export class Input {
   keys = 0;
-  mouseX = 0; mouseY = 0; mouseDown = false;
+  /** Mouse position in game screen pixels (0..W-1, 0..H-1; the canvas backing size is the game's). */
+  mouseX = 0; mouseY = 0;
+  /** bit0 = left button (gun trigger), bit1 = right button (gun second button: draw / holster). */
+  mouseButtons = 0;
+  /**
+   * Light-gun mode: switched on by the first mouse click on the canvas and off again when a pad
+   * input (keyboard or gamepad) is used, so the pad keeps working for aiming. While on, the engine
+   * runs the shooting sections with the gun rules (S:0x12516 maps the position to the 3x3 cells:
+   * x < 0x60 / < 0xA0, y < 0x30 / < 0x58 in game pixels, trigger = bit5, second button = bit6 of $7985).
+   */
+  gunMode = false;
+  /** Set by main (`input.game = game`); falls back to `window.snatcher.game`. */
+  game: GunSink | null = null;
   /** Scripted inputs for headless tests: window.snatcher.input.script = [[frames, bits], ...] */
   script: [number, number][] = [];
 
-  constructor(canvas: HTMLCanvasElement) {
-    addEventListener("keydown", (e) => { const b = KEYMAP[e.code]; if (b) { this.keys |= b; e.preventDefault(); } });
-    addEventListener("keyup", (e) => { const b = KEYMAP[e.code]; if (b) { this.keys &= ~b; e.preventDefault(); } });
-    addEventListener("blur", () => { this.keys = 0; });
-    canvas.addEventListener("mousemove", (e) => {
-      const r = canvas.getBoundingClientRect();
-      this.mouseX = Math.floor(((e.clientX - r.left) / r.width) * 256);
-      this.mouseY = Math.floor(((e.clientY - r.top) / r.height) * 224);
+  constructor(private canvas: HTMLCanvasElement) {
+    addEventListener("keydown", (e) => {
+      const b = KEYMAP[e.code];
+      if (b) { this.keys |= b; this.gunMode = false; e.preventDefault(); }
     });
-    canvas.addEventListener("mousedown", () => { this.mouseDown = true; });
-    addEventListener("mouseup", () => { this.mouseDown = false; });
+    addEventListener("keyup", (e) => { const b = KEYMAP[e.code]; if (b) { this.keys &= ~b; e.preventDefault(); } });
+    addEventListener("blur", () => { this.keys = 0; this.mouseButtons = 0; });
+    canvas.addEventListener("mousemove", (e) => this.track(e));
+    canvas.addEventListener("mousedown", (e) => {
+      this.track(e);
+      this.gunMode = true;
+      this.mouseButtons |= e.button === 2 ? 2 : 1;
+      e.preventDefault();
+    });
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    addEventListener("mouseup", (e) => { this.mouseButtons &= ~(e.button === 2 ? 2 : 1); });
   }
 
+  private track(e: MouseEvent) {
+    const r = this.canvas.getBoundingClientRect();
+    const w = this.canvas.width || 256, h = this.canvas.height || 224;
+    const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi - 1, v));
+    this.mouseX = clamp(Math.floor(((e.clientX - r.left) / r.width) * w), w);
+    this.mouseY = clamp(Math.floor(((e.clientY - r.top) / r.height) * h), h);
+  }
+
+  /** Pad bits for this frame; also sends the light-gun state to the engine. */
   poll(): number {
+    let bits = this.pad();
+    if (bits) this.gunMode = false;
+    const g = this.game ?? (window as any).snatcher?.game;
+    g?.set_gun(this.gunMode, this.mouseX, this.mouseY, (this.mouseButtons & 1) !== 0, (this.mouseButtons & 2) !== 0);
+    return bits;
+  }
+
+  private pad(): number {
     if (this.script.length) {
       const s = this.script[0];
       const bits = s[1];

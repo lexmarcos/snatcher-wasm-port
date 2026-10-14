@@ -99,8 +99,10 @@ pub fn list_close(e: &mut Engine) { e.disp.sub.objs[0].flags = 3; }
 /// Called every frame before the VM thread: light-gun registers (S:0xD760, S:0xD7B2) and
 /// the pointer-mode view jitter (S:0x10990).
 pub fn frame_hook(e: &mut Engine) {
-    // $7972 = gun mode: option on ($78B8) and a gun on port 2 ($7983 == 1)
-    let gun = e.regs.get(0x78B8) != 0 && e.ix.gun_present;
+    // $7972 = gun mode: the original needs the GUN option ($78B8) and a gun on port 2 ($7983 == 1)
+    // (S:0xD766). The web front end only reports a gun after the player used the mouse, so that
+    // choice replaces the option here. `$7972` is read by the shooting code only (S:0x1205C–0x13086).
+    let gun = e.ix.gun_present;
     e.regs.set(0x7972, gun as u16);
     e.regs.set_b(0x7983, if e.ix.gun_present { 1 } else { 0x0D });
     // gun buttons: edges like the main CPU's M:0xFF13F6 ($7985 bit5 trigger, bit6 second button)
@@ -584,4 +586,77 @@ pub fn cmd15(e: &mut Engine, n: u16, pos: u16) -> bool {
     set_x(e, 1, x);
     set_y(e, 1, y);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Engine with a script image whose text area (0x3800) holds `texts` (FF-terminated); returns the
+    /// item offsets.
+    fn engine_with(texts: &[&str]) -> (Engine, Vec<u16>) {
+        let mut e = Engine::new();
+        let mut script = vec![0u8; 0x3800];
+        let mut offs = vec![];
+        for t in texts {
+            offs.push((script.len() - 0x3800) as u16);
+            script.extend_from_slice(t.as_bytes());
+            script.push(0xFF);
+        }
+        e.script = script;
+        (e, offs)
+    }
+
+    #[test]
+    fn exact_match_returns_one_based_index() {
+        let (e, items) = engine_with(&["NO MATCH", "ALICE", "ALICEGIBSON", "JOHN"]);
+        assert_eq!(match_items(&e, &items, b"ALICE"), 2);
+        assert_eq!(match_items(&e, &items, b"ALICEGIBSON"), 3);
+        assert_eq!(match_items(&e, &items, b"JOHN"), 4);
+    }
+
+    #[test]
+    fn no_match_selects_first_item() {
+        // S:0x11AA8: the script's first item is the "no matches" branch
+        let (e, items) = engine_with(&["NO MATCH", "ALICE", "JOHN"]);
+        assert_eq!(match_items(&e, &items, b"BOB"), 1);
+        assert_eq!(match_items(&e, &items, b"ALIC"), 1, "prefixes do not match in the exact step");
+        assert_eq!(match_items(&e, &items, b" "), 1);
+    }
+
+    #[test]
+    fn first_step_matches_by_first_letter() {
+        // `$971A == 1`: first item whose text contains the first typed character (the "ABCDE" menu)
+        let (mut e, items) = engine_with(&["ABCDE", "ADACHI", "JOHN", "KATE"]);
+        e.regs.set(0x971A, 1);
+        assert_eq!(match_items(&e, &items, b"J"), 3);
+        assert_eq!(match_items(&e, &items, b"KONAMI"), 4);
+        assert_eq!(match_items(&e, &items, b"A"), 1);
+        assert_eq!(match_items(&e, &items, b"Z"), 1, "nothing contains Z: item 1");
+    }
+
+    #[test]
+    fn empty_input_is_a_single_space() {
+        // S:0x11966: the typed string $9759 is the non-zero characters of $97D0.., or " " when empty
+        let (e, items) = engine_with(&["NO MATCH", " ", "X"]);
+        let mut ent = Entry {
+            style: 3, items: vec![], stage: Stage::Active, grid: 0, cell: 0, stride: 0, x0: 0, y0: 0, text_x: 0x30,
+            max: 0x11, buf: [0; 0x12], pos: 0, blink: 0, blink_t: 0, key_state: 0, key_t0: 0, saved62: (0, 0),
+            pending: None, typed: vec![], result: None,
+        };
+        assert_eq!(ent.typed_now(), b" ");
+        assert_eq!(match_items(&e, &items, &ent.typed_now()), 2);
+        ent.buf[0] = b'A'; ent.buf[2] = b'B'; // a hole (backspace) is skipped
+        assert_eq!(ent.typed_now(), b"AB");
+    }
+
+    #[test]
+    fn pointer_bounds_follow_the_original_unsigned_compares() {
+        // X: 0 <= v < 0x450000 or -0x470000 <= v < 0 (S:0x10950/0x10962)
+        assert!(in_bounds(0x44FE00, 0x450000, -0x470000));
+        assert!(!in_bounds(0x450000, 0x450000, -0x470000));
+        assert!(in_bounds(-0x470000, 0x450000, -0x470000));
+        assert!(!in_bounds(-0x470200, 0x450000, -0x470000));
+        assert!(in_bounds(0, 0x450000, -0x470000));
+    }
 }
