@@ -1,0 +1,41 @@
+# INTERACT workstream labels (sub CPU, SUBCODE) – menus, text entry, pointer mode, shooting
+0x10846 pointer_mode f              # $79FE==1: B held moves the view ($96D0/$96D4, 0x200/iteration), release → region id $96DC
+0x1086E pointer_region f            # map S:0x109E8, 36 bytes/row
+0x10990 pointer_jitter f            # per-frame ±1 px view jitter
+0x10EFA menu_arrow_up_stream        # render stream, glyphs 0x80–0x82 at (0x7C, 0)
+0x10F10 menu_arrow_down_stream      # glyphs 0x83–0x85 at (0x7C, 0x36)
+0x10F26 menu_arrow_down_wide_stream # same at y 0x2D ($7893 layout)
+0x10F3C menu_line_xy f              # $96E7 = 0x10, $96E8 = 9*line
+0x10F5C menu_line_draw f            # push cmd 05 + wait for the sequencer
+0x10F84 menu_depth f                # Z = ($9893 == 0)
+0x10F90 menu_cursor_place f         # object 0 X = 0x10, Y = 0x8F + 9*line (+0x10 with $7893), $7A25 = 0 (bar visible)
+0x1106E menu_close f                # $7A25 = 3 (bar hidden), then loc_011DCE
+0x11150 menu_navigate f
+0x113A0 entry_open f                # keypad/keyboard layout
+0x11496 entry_cursor_init f
+0x11B7A entry_blink_tick f
+0x11B86 entry_blink_draw f
+0x11BDE keypad_open_effect f        # scroll_mode(0x0F)
+0x11BEE kbd_open_effect f           # $78AC=1, scroll_mode(0x10), waits for $788C (= main $E06E)
+0x11C10 kbd_close_effect f          # scroll_mode(0x11), waits while $7892 (= main $E061) != 0
+0x11C30 entry_placeholders f        # '_' x $9719 at (i*9 + $97F6, 0x21)
+0x11CB0 entry_clear_buffer f
+0x11D62 entry_place_cursor f        # objects 62/63 at the cell (row from 1, 8 px grid)
+0x11DCE entry_finish f              # style 2: scroll_mode(0xFE); style 3: kbd_close_effect; $971A step logic
+0x11710 entry_backspace_key f
+0x11792 entry_start_key f           # Start = OK
+0x11808 entry_confirm f             # confirm: key-press animation, append char (cell 8 = OK, 9 = backspace)
+0x118D4 entry_redraw f              # clear line, draw typed text, blink; direct dial completion check
+0x11938 dial_length_table           # expected length by first digit ($971E direct dial)
+0x11966 entry_typed_string f        # $97D0 → $9759 (" " when empty)
+0x119E0 entry_grid_step f           # navigation codes: 0 wall 1 skip 2/3 wrap 4/5 jump rows 6/7 row start/end
+0x11A64 entry_delete_char f
+0x114D4 entry_grid_ptrs             # $79F6 per style
+0x115CA kbd_key_anim_table          # object 62 script index per keyboard cell
+0x1209A shoot_phase_table
+0x1220C shoot_init_targets f
+0x12400 shoot_input f
+0x1254E shoot_recoil f
+0x125F2 shoot_shot f                # object 21 state machine $78FA
+0x1274A shoot_hit_test f
+0x8B80 shoot_countdown_obj0         # objects: slot = (addr-0x7A00)/0x50 → 56/57 READY/GO!, 58/59 counters ($8C20/$8C70), 48 life meter
