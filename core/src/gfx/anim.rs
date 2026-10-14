@@ -17,6 +17,8 @@ pub enum Event {
     Periodic { id: u8 },
     /// Chunk type 8: screen mode word for M:$236406.
     ScreenMode(u16),
+    /// Chunk types 5/6/7 (S:0xF7CA): `$7893 = payload[1]` (portrait/wide text-window layout).
+    Byte7893(u8),
     /// $B6403 request: bit0 clear plane A (0xE000, 4 KiB), bit1 clear plane B (0xC000, 4 KiB).
     ClearPlanes(u8),
 }
@@ -195,6 +197,7 @@ impl Runtime {
                     }
                 }
                 Chunk::ScreenMode(w) => self.events.push(Event::ScreenMode(w)),
+                Chunk::Byte7893(b) => self.events.push(Event::Byte7893(b)),
                 _ => {}
             }
         }

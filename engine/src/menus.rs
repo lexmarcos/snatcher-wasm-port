@@ -38,6 +38,8 @@ pub struct Ix {
     pub shoot: Option<crate::shoot::Shoot>,
     /// pointer mode (`$79FE == 1`): B is held, the view is being moved
     pub ptr_moving: bool,
+    /// text entry finished, waiting for the close effect (`$7892 == 0`, S:0x11C28): (result, frames waited)
+    pub closing: Option<(u8, u16)>,
 }
 
 // ------------------------------------------------------------------ object helpers
@@ -150,6 +152,7 @@ pub fn open_menu_hook(e: &mut Engine, items: &[u16]) -> bool {
     let style = e.regs.get(0x79FE);
     if style >= 2 {
         let ent = Entry::open(e, style as u8, items.to_vec());
+        if e.trace { e.out.push(Out::Log(format!("text entry opened: style {style}, {} items", items.len()))); }
         e.ix.entry = Some(ent);
         e.phase = VmPhase::Menu;
         return true;
@@ -159,10 +162,21 @@ pub fn open_menu_hook(e: &mut Engine, items: &[u16]) -> bool {
 
 /// Called at the start of `menu_frame`. Returns true when the frame was consumed here.
 pub fn menu_frame_hook(e: &mut Engine) -> bool {
+    if let Some((r, t)) = e.ix.closing {
+        // `$7892` = main `$E061` (M:0xFF321C): wait until the closing window effect has finished
+        if e.disp.main.e061 != 0 && t < 240 { e.ix.closing = Some((r, t + 1)); return true; }
+        e.ix.closing = None;
+        finish_entry(e, r, true);
+        return true;
+    }
     if let Some(mut ent) = e.ix.entry.take() {
         let done = ent.frame(e);
         match done {
-            Some(r) => { e.ix.typed = ent.typed.clone(); finish_entry_ui(e, &ent); finish_entry(e, r, true); }
+            Some(r) => {
+                e.ix.typed = ent.typed.clone();
+                finish_entry_ui(e, &ent);
+                if ent.style == 3 { e.ix.closing = Some((r, 0)); } else { finish_entry(e, r, true); }
+            }
             None => e.ix.entry = Some(ent),
         }
         return true;

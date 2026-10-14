@@ -302,6 +302,7 @@ impl Engine {
                 gfx::anim::Event::Periodic { id } => {
                     if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 { self.out.push(Out::PcmSfx { id: id as u16, bank: self.pcm_bank }); }
                 }
+                gfx::anim::Event::Byte7893(b) => self.regs.set_b(0x7893, b),
                 _ => {}
             }
         }
@@ -534,7 +535,7 @@ impl Engine {
                 self.seq_timer == 0
             }
             0x11 => { self.cmd_load(((w(0) as u32) << 16) | w(1) as u32, w(2)); true }
-            0x12 => { self.disp.sub.f788a &= !1; self.disp.load_scene(&self.mem, w(0) as usize); true } // HYPOTHESIS: bit0 re-armed per scene
+            0x12 => { self.disp.sub.f788a &= !1; self.disp.load_scene(&self.mem, w(0) as usize); self.apply_7893(); true } // HYPOTHESIS: bit0 re-armed per scene
             0x13 => { self.seq_timer += 1; self.regs.get_b(0x980E) == 0 || self.seq_timer >= 0xA8C }
             0x15 => crate::menus::cmd15(self, w(0), w(1)),
             0x16 => { self.text_window_init(); true }
@@ -555,10 +556,20 @@ impl Engine {
                 true
             }
             0x1F => true,
-            0x20 => { self.disp.load_scene(&self.mem, w(0) as usize); true }
+            0x20 => { self.disp.load_scene(&self.mem, w(0) as usize); self.apply_7893(); true }
             0x21 => { self.input.as_ref().map(|i| i.pressed & btn::START != 0).unwrap_or(true) }
             c => { self.out.push(Out::Log(format!("seq cmd {c:#x} ignored"))); true }
         }
+    }
+
+    /// Scene chunk types 5/6/7 set `$7893` (S:0xF7CA); apply them right after a scene record ran so
+    /// the following sequencer commands (message box, menu) see the layout.
+    fn apply_7893(&mut self) {
+        let mut keep = vec![];
+        for ev in self.disp.sub.events.drain(..) {
+            match ev { gfx::anim::Event::Byte7893(b) => self.regs.set_b(0x7893, b), o => keep.push(o) }
+        }
+        self.disp.sub.events = keep.into();
     }
 
     /// `subfn_12`: FM request. Music sets `$980E`, sfx `$980F` (0x3D/0xFF → 0); the main CPU
