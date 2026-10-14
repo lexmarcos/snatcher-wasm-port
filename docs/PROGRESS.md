@@ -35,7 +35,6 @@ State after resume (commit after cfc038a): build is green (`cargo build --releas
 `Top::Title` runs the boot screens + DATA_D2 title module (engine/src/modules/title.rs, docs/re/modules.md). `boot()` → intro
 DATA_D1/D0 intro and the DATA_Y16 staff roll play completely (the old "stall" was the display bit left off after the
 dedication shutters, docs/re/modules.md §3.2; the oracle's missing CD time `$787A` §1). MODULES: done, see its Status.
-Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, AUDIO-VERIFY.
 1. **MODULES – DONE** (docs/re/modules.md): boot screens + DATA_D2 title/options/continue,
    intro D1/D0 and ending Y16 (staff roll) verified frame-by-frame vs the oracle (D1 70/80
    samples exact). No H40 needed (VDP reg 12 = 0 in all oracle frames). HYPOTHESIS: display
@@ -47,7 +46,11 @@ Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, A
 3. **AUDIO-VERIFY – DONE**: FM driver translation equal to the original write-for-write on
    all oracle logs (~3M YM writes, all 122 ids), drum key-ons equal; YM2612 LFO period fixed.
    Remaining: YM2612 output vs hardware (no chip reference), mix levels.
-4. **FIDELITY** (running, docs/re/fidelity.md): engine vs oracle through Act 1; engine frames vs oracle (`re/oracle/probe.py`, `probe_mem.py`).
+4. **FIDELITY Act 1 – DONE** (docs/re/fidelity.md): 58,000-frame session (Junker HQ → tour →
+   factory interior, SP06→SP07) replays with 158/159 action queues identical vs the oracle,
+   screens differ only by animation phase/drift. Harness: re/oracle/fid_cmp.py (--rng --sync).
+   Next: Acts 2 and 3 (start both sides via SP01 debug jumps), shooting stages after fixing the
+   oracle's held-pad model, the ending path end-to-end.
 5. Ghidra DB: done once after resume (sub_prg: 406 functions, 303 named; main_ip: 180) via
    `re/analyze.sh` with the concatenated label files; re-run after new labels.
 
