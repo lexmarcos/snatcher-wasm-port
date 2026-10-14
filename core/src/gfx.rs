@@ -285,13 +285,13 @@ impl Vdp {
         let mut cram = self.cram;
         let split = match &self.raster { Some(r) => r.pal_split, None => self.split_line };
         for y in 0..SCREEN_H {
-            let (vsa, vsb, disp, hsb) = match &self.raster {
+            let (vsa, vsb, disp, hsb, hsa) = match &self.raster {
                 Some(r) => {
                     let l = r.lines[y];
                     let hb = r.line_hscroll_b.as_ref().map(|v| v[y]).unwrap_or(self.hscroll_b);
-                    (l.vscroll_a, l.vscroll_b, l.display, hb)
+                    if l.hscroll_zero { (l.vscroll_a, l.vscroll_b, l.display, 0, 0) } else { (l.vscroll_a, l.vscroll_b, l.display, hb, self.hscroll_a) }
                 }
-                None => (self.vscroll_a, self.vscroll_b, self.display, self.hscroll_b),
+                None => (self.vscroll_a, self.vscroll_b, self.display, self.hscroll_b, self.hscroll_a),
             };
             if let Some(sl) = split {
                 let y16 = y as u16;
@@ -308,7 +308,7 @@ impl Vdp {
             self.sprite_line(y, &mut line_spr);
             for x in 0..SCREEN_W {
                 let (b, bp) = self.plane_px(self.plane_b, hsb, vsb, x, y);
-                let (a, ap) = self.plane_px(self.plane_a, self.hscroll_a, vsa, x, y);
+                let (a, ap) = self.plane_px(self.plane_a, hsa, vsa, x, y);
                 let (s, sp) = line_spr[x];
                 // Priority order (high to low): S(hi) A(hi) B(hi) S(lo) A(lo) B(lo).
                 let layers = [(s, sp), (a, ap), (b, bp), (s, false), (a, false), (b, false)];

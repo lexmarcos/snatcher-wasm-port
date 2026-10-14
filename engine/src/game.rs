@@ -254,6 +254,13 @@ impl Engine {
         self.phase = VmPhase::Draining;
     }
 
+    /// Debug: like `jump`, with the menu selection path preset (text offsets of the chosen CHOICE
+    /// items, e.g. SP01 `[0x1F, 0x1AB]` = "ACT2 IN" → "HOSPITAL QUEENS 1").
+    pub fn jump_path(&mut self, script_id: u16, pc: u16, path: &[u16]) {
+        self.jump(script_id, pc);
+        for &p in path { self.vm.path.push(p); }
+    }
+
     fn start_queue(&mut self, q: Vec<Action>) {
         self.queue = q;
         self.qi = 0;
@@ -378,6 +385,7 @@ impl Engine {
         let depth = self.vm.path.len() as usize;
         let remembered = self.regs.get_b(0x9716);
         let wide = self.regs.get_b(0x7893) != 0;
+        if self.trace { self.out.push(Out::Log(format!("menu opened: {} items", items.len()))); }
         let (m, rem) = TextMenu::new(items.len(), depth, remembered, wide);
         self.regs.set_b(0x9716, rem);
         self.menu = Some((m, items));

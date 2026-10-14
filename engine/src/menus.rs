@@ -40,6 +40,7 @@ pub struct Ix {
     pub ptr_moving: bool,
     /// text entry finished, waiting for the close effect (`$7892 == 0`, S:0x11C28): (result, frames waited)
     pub closing: Option<(u8, u16)>,
+    pub ptr_logged: bool,
 }
 
 // ------------------------------------------------------------------ object helpers
@@ -115,6 +116,7 @@ pub fn frame_hook(e: &mut Engine) {
     e.regs.set_b(0x798A, gx as u8);
     e.regs.set_b(0x798B, gy as u8);
 
+    if e.trace && e.regs.get(0x79FE) == 1 && !e.ix.ptr_logged { e.ix.ptr_logged = true; e.out.push(Out::Log("pointer mode on".into())); }
     if e.regs.get(0x79FE) == 1 {
         // S:0x10990: view follows $96D0/$96D4 with ±1 px random jitter
         let mut x = e.regs.get(0x96D0) as i16 as i32;
@@ -193,9 +195,11 @@ pub fn menu_frame_hook(e: &mut Engine) -> bool {
 
 /// `pointer_mode` S:0x10846 (only at menu depth 0). While B (logical bit 4) is held the view
 /// moves 0x200 per loop iteration; the original polls in a tight loop, so per frame we apply
-/// `PTR_STEPS` iterations (HYPOTHESIS: ≈1.5 px per frame). Releasing B computes the region
+/// `PTR_STEPS` = 261 iterations (oracle: `$96D0` grows by 0x2.0A00 = 261 × 0x200 per frame; re/oracle/interact_jump.py --watch 96D0,96D4). Releasing B computes the region
 /// id `$96DC` from the map at S:0x109E8 and shows the menu bar again.
-const PTR_STEPS: i32 = 200;
+const PTR_STEPS: i32 = 261;
+/// diagonal (two D-pad bits): the loop body is longer, oracle ≈ 1.55 px/frame (HYPOTHESIS: ~200 iterations)
+const PTR_STEPS_DIAG: i32 = 200;
 fn pointer_frame(e: &mut Engine) -> bool {
     let held = e.input.as_ref().map(|i| i.held).unwrap_or(0);
     if held & btn::L_CANCEL == 0 {
@@ -216,7 +220,8 @@ fn pointer_frame(e: &mut Engine) -> bool {
     e.disp.sub.objs[0].flags = 3;
     let rd = |e: &Engine, a: u32| ((e.regs.get(a) as u32) << 16 | e.regs.get(a + 2) as u32) as i32;
     let mut px = rd(e, 0x96D0); let mut py = rd(e, 0x96D4);
-    for _ in 0..PTR_STEPS {
+    let steps = if (held & 0x0F).count_ones() >= 2 { PTR_STEPS_DIAG } else { PTR_STEPS };
+    for _ in 0..steps {
         // order of S:0x108D6..: up, down, right, left; bounds of S:0x10950/S:0x10962
         if held & 1 != 0 { let v = py - 0x200; if in_bounds(v, 0x250000, -0x270000) { py = v } }
         if held & 2 != 0 { let v = py + 0x200; if in_bounds(v, 0x250000, -0x270000) { py = v } }
