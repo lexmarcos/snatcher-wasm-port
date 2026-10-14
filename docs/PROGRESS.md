@@ -42,9 +42,10 @@ Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, A
 2. **INTERACT – DONE (except shooting details)**: menu bar pixel-identical to the oracle,
    keyboard/keypad/pointer verified vs oracle (docs/re/interact.md). Remaining: steady held-pad
    input in the oracle, then compare ACT2/ACT3 shooting stages and results phases; gun calibration.
-3. **AUDIO-VERIFY** (docs/re/audio.md; core/src/audio/verify.rs WIP): compare kdriver YM writes
-   with the oracle trace `ym` field.
-4. Fidelity loop: engine frames vs oracle (`re/oracle/probe.py`, `probe_mem.py`).
+3. **AUDIO-VERIFY – DONE**: FM driver translation equal to the original write-for-write on
+   all oracle logs (~3M YM writes, all 122 ids), drum key-ons equal; YM2612 LFO period fixed.
+   Remaining: YM2612 output vs hardware (no chip reference), mix levels.
+4. **FIDELITY** (running, docs/re/fidelity.md): engine vs oracle through Act 1; engine frames vs oracle (`re/oracle/probe.py`, `probe_mem.py`).
 5. Ghidra DB: `re/analyze.sh` with `cat re/labels/sub_*.txt`.
 
 ## Blockers
