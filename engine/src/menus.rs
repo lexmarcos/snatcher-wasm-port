@@ -69,7 +69,7 @@ pub fn draw_stream(e: &mut Engine, s: &[u8]) {
     e.text_dirty = true;
 }
 
-fn stream_at(e: &Engine, addr: u32) -> Vec<u8> {
+pub(crate) fn stream_at(e: &Engine, addr: u32) -> Vec<u8> {
     let mut v = vec![];
     for i in 0..256 { let b = e.mem.u8(addr + i); v.push(b); if b == 0xFF { break } }
     v

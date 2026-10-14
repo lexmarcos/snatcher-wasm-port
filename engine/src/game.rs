@@ -246,7 +246,11 @@ impl Engine {
         vm.script_id = script_id;
         vm.pc = pc;
         self.vm = vm;
-        self.start_queue(vec![Action { cmd: 0x11, args: vec![0x1, 0xA800, script_id] }, Action { cmd: 0x0F, args: vec![] }]);
+        // the VM-thread init (menu bar object + tiles) runs first, as at a real game start
+        let mut all = self.vm_thread_init();
+        self.disp.sub.f788a &= !2; // keep the debug text palette set above
+        all.extend([Action { cmd: 0x11, args: vec![0x1, 0xA800, script_id] }, Action { cmd: 0x0F, args: vec![] }]);
+        self.start_queue(all);
         self.phase = VmPhase::Draining;
     }
 
@@ -392,6 +396,7 @@ impl Engine {
         let lines = m.visible();
         let cursor = m.cursor as usize;
         let items = items.clone();
+        let wide = self.regs.get_b(0x7893) != 0;
         let font = match self.font.as_ref() { Some(f) => f, None => return };
         self.text.clear();
         let mut win = std::mem::take(&mut self.text);
@@ -403,9 +408,11 @@ impl Engine {
                     let t = self.script_text(items[*k]);
                     for &c in t.iter().take(0x20) { if c == 0xFF || c == 0xF2 { break } s.push(self.letter(c)); }
                 }
-                MenuLine::Arrow { down } => { s.extend_from_slice(if *down { &[0x82u8][..] } else { &[0x80u8][..] }); }
+                // paging arrows: whole render streams at S:0x10EFA (up) / 0x10F10 (down) / 0x10F26 (down, wide)
+                // (`menu_item_stream` S:0x10E5A → sub_010F62), replacing the item line
+                MenuLine::Arrow { down } => { s = crate::menus::stream_at(self, if !*down { 0x10EFA } else if wide { 0x10F26 } else { 0x10F10 }); }
             }
-            s.push(0xFF);
+            if s.last() != Some(&0xFF) { s.push(0xFF); }
             win.start(&s);
             while win.busy { win.tick(font); }
         }
