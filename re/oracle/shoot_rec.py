@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from shoot_common import *
 
-WORDS = list(range(0x78E0, 0x7950, 2)) + [0x7970, 0x7972, 0x7984, 0x7986, 0x7988, 0x798A, 0x7990, 0x7992]
+WORDS = list(range(0x78E0, 0x7950, 2)) + [0x1511E, 0x7970, 0x7972, 0x7984, 0x7986, 0x7988, 0x798A, 0x7990, 0x7992]
 SLOTS = list(range(21, 25)) + list(range(26, 32)) + list(range(32, 41)) + [48, 56, 57, 58, 59]
 
 
@@ -116,6 +116,14 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
     m._sub_bios = hk
     for a in hooks:
         m.lib.core_add_hook(1, a)
+    # frame 0 = the first run of setup step 1 ($78EA == 1 and $78E4 == 1): the wait before it (scene VRAM list / tile loading, up to ~20
+    # frames) is display-side work that is compared elsewhere; both sides align here
+    k = 0
+    while not (s.r16(0x78EA) == 1 and s.r16(0x78E4) == 1) and k < 400:
+        m.inputs = [[1, 0]]
+        m.step_frame()
+        k += 1
+    cnt[0] = 0
     recs = [dict(f=0, h=1, s=[], **snap(s))]
     for f in range(1, frames + 1):
         if gun is not None:

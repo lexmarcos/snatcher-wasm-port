@@ -61,6 +61,8 @@ impl Game {
         ix.gun_present = present; ix.gun_x = x; ix.gun_y = y;
         ix.gun_buttons = (trigger as u8) << 5 | (aux as u8) << 6;
     }
+    /// PCM effect length in frames for (bank, effect id) – the shooting code waits for the last effect (`$1511E` bit 3).
+    pub fn set_sfx_len(&mut self, bank: u16, id: u16, frames: u32) { self.e.ix.sfx_len.insert((bank, id), frames); }
     /// FM sound duration in frames; `loops` = true for sounds with a loop (never "done").
     pub fn set_fm_len(&mut self, id: u16, frames: u32, loops: bool) { self.e.fm_len.insert(id, if loops { None } else { Some(frames) }); }
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).

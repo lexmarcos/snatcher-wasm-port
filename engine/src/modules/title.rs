@@ -358,6 +358,7 @@ impl Title {
         Self::sound_mode(e, mono);
         let cal = u16::from_be_bytes([b.get(8).copied().unwrap_or(0), b.get(9).copied().unwrap_or(0)]);
         e.regs.set(0x7988, cal);
+        e.ix.gun_cal_done = cal != 0; // 0/0 = never calibrated
         self.after_pick(e);
     }
 
@@ -455,9 +456,10 @@ impl Title {
         }
     }
 
-    /// State 11 sub 3 (S:0x298B4): gun calibration; `$784E` is the step. UNVERIFIED against the
-    /// oracle (no light gun peripheral there): the mouse is pixel-exact, so the calibration
-    /// offsets `$7988/$7989` are stored as 0 instead of `$7986/7 - 0x80`.
+    /// State 11 sub 3 (S:0x298B4): gun calibration; `$784E` is the step. Verified against the ORIGINAL with the oracle's light-gun
+    /// model (re/oracle machine.py `m.gun`, docs/re/shooting.md): the trigger stores `$7988 = $7986 - 0x80`, `$7989 = $7987 - 0x80`
+    /// (S:0x29930), the test crosshair is drawn at (`$798A` - 0x0B, `$798B` - 0x23) (S:0x299B2). The bullseye is centred at (128, 101).
+    /// The Y calibration additionally carries `GUN_CAL_BIAS_Y` (see menus.rs) so that the aimed cell is the cell under the pointer.
     fn calibration(&mut self, e: &mut Engine, _raw: u8) -> Option<i8> {
         if _raw & 0x80 != 0 { self.cal_done(e); return None; }
         self.cal_blink(e);
@@ -472,7 +474,10 @@ impl Title {
                 self.timer += 1;
             },
             2 => {
-                e.regs.set(0x7988, 0);
+                let (rx, ry) = (e.regs.get_b(0x7986), e.regs.get_b(0x7987));
+                e.regs.set_b(0x7988, rx.wrapping_sub(0x80));
+                e.regs.set_b(0x7989, ry.wrapping_sub(0x80).wrapping_add(crate::menus::GUN_CAL_BIAS_Y));
+                e.ix.gun_cal_done = true;
                 Self::obj_flags(e, 16, 1);
                 crate::menus::set_x(e, 16, 0x75);
                 crate::menus::set_y(e, 16, 0x5D);
@@ -490,7 +495,7 @@ impl Title {
             },
             4 => {
                 let x = e.regs.get_b(0x798A) as i32 - 0x0B;
-                let y = e.regs.get_b(0x798B) as i32 - 0x23;
+                let y = e.regs.get_b(0x798B) as i32 + crate::menus::GUN_CAL_BIAS_Y as i32 - 0x23;
                 crate::menus::set_x(e, 16, x);
                 crate::menus::set_y(e, 16, y);
                 self.timer -= 1;

@@ -38,8 +38,13 @@ pub struct Ix {
     pub shoot: Option<crate::shoot::Shoot>,
     /// fidelity harness: sub RNG seeded from this counter before every frame-handler run (None = normal)
     pub rng_seq: Option<u32>,
+    /// PCM effect lengths in frames by (bank, effect id) from the audio manifest, and the frame the last effect ends (`$1511E` bit 3)
+    pub sfx_len: std::collections::HashMap<(u16, u16), u32>,
+    pub pcm_busy_until: u64,
     /// fidelity harness: logical (held, pressed, repeat) = $7990/$7991/$7992 the original's handler run saw (overrides the pad)
     pub force_in: Option<(u8, u8, u8)>,
+    /// the player calibrated the gun (title screen) or a save with a calibration was loaded; until then a default calibration is used
+    pub gun_cal_done: bool,
     /// pointer mode (`$79FE == 1`): B is held, the view is being moved
     pub ptr_moving: bool,
     /// text entry finished, waiting for the close effect (`$7892 == 0`, S:0x11C28): (result, frames waited)
@@ -102,6 +107,28 @@ pub fn list_cursor(e: &mut Engine, line: usize) {
 /// S:0x1106E: `$7A25 = 3` when the menu closes (bar hidden).
 pub fn list_close(e: &mut Engine) { e.disp.sub.objs[0].flags = 3; }
 
+// ------------------------------------------------------------------ light gun
+
+/// Raw gun reading for a screen position (px, py), HYPOTHESIS-level absolute values: measured on the ORIGINAL main-CPU code
+/// (M:0xFF148A handler, re/oracle machine.py gun model `m.gun`, docs/re/shooting.md): X = 2 * (mean of two H-counter reads) tracks
+/// the aimed pixel 1:1 with an offset of about -66 (the handler reads the counter ~400 cycles after the TH interrupt), Y = V counter =
+/// aimed line + 1. A calibration (`$7988/$7989 = raw - 0x80`) removes the offsets, so only the 1:1 scale matters for play.
+pub const GUN_RAW_X_OFF: i32 = -66;
+pub const GUN_RAW_Y_OFF: i32 = 1;
+pub fn gun_raw(px: i32, py: i32) -> (u8, u8) {
+    (((px.clamp(0, 255) + GUN_RAW_X_OFF) as u8) & 0xFE, (py.clamp(0, 223) + GUN_RAW_Y_OFF) as u8)
+}
+/// Y bias between the bullseye of the calibration screen (centre y = 101, measured on the oracle: value 0x80 there) and the aim point the cell
+/// thresholds (S:0x12516: value 0x60/0xA0, 0x30/0x58) assume (value 0x80 at y = 132, i.e. cell rows [16,52) [52,92) [92,..) of the 3x3 picture). The ORIGINAL code, calibrated on the
+/// bullseye, therefore splits the rows at y = 21/61 (oracle: `re/oracle/g5` scan, docs/re/shooting.md); the web port compensates so that the cell
+/// under the pointer is the cell that is shot (HYPOTHESIS: real hardware needed no such correction).
+pub const GUN_CAL_BIAS_Y: u8 = 31;
+/// Calibration equivalent to a perfect aim at the design centre: value = (px, py - 4).
+pub fn gun_default_calib() -> (u8, u8) {
+    let (rx, ry) = gun_raw(128, 128 + 4);
+    (rx.wrapping_sub(0x80), ry.wrapping_sub(0x80))
+}
+
 // ------------------------------------------------------------------ frame hook
 
 /// Called every frame before the VM thread: light-gun registers (S:0xD760, S:0xD7B2) and
@@ -117,14 +144,19 @@ pub fn frame_hook(e: &mut Engine) {
     let b = e.ix.gun_buttons;
     e.regs.set_b(0x7985, b & !e.ix.gun_prev);
     e.ix.gun_prev = b;
-    // $798A/$798B = gun X/Y minus calibration $7988/$7989. HYPOTHESIS: after the title-screen
-    // calibration the values equal screen pixels (cell thresholds 0x60/0xA0 and 0x30/0x58 of
-    // S:0x12516 split the 256×136 picture area into thirds).
-    let cx = e.regs.get_b(0x7988) as i32; let cy = e.regs.get_b(0x7989) as i32;
-    let gx = (e.ix.gun_x.clamp(0, 255) - (cx as i8 as i32)).clamp(0, 255);
-    let gy = (e.ix.gun_y.clamp(0, 255) - (cy as i8 as i32)).clamp(0, 255);
-    e.regs.set_b(0x798A, gx as u8);
-    e.regs.set_b(0x798B, gy as u8);
+    // Gun position registers as the main CPU reports them (M:0xFF14E0: COMCMD3/4 = X = 2 * H counter, Y = V counter at the TH
+    // interrupt) and as the sub CPU derives its values (S:0xD7B2: `$7986/$7987` raw, `$798A/$798B` = raw - `$7988/$7989`, byte wrap).
+    // The mouse is given in screen pixels; `gun_raw` converts to the raw hardware values (see there).
+    let (rx, ry) = gun_raw(e.ix.gun_x, e.ix.gun_y);
+    if !e.ix.gun_cal_done && gun {
+        // no calibration done yet (title screen row 3 / loaded save): assume a perfect one (the mouse has no tolerance)
+        let (cx, cy) = gun_default_calib();
+        e.regs.set_b(0x7988, cx); e.regs.set_b(0x7989, cy);
+    }
+    e.regs.set_b(0x7986, rx); e.regs.set_b(0x7987, ry);
+    let cx = e.regs.get_b(0x7988); let cy = e.regs.get_b(0x7989);
+    e.regs.set_b(0x798A, rx.wrapping_sub(cx));
+    e.regs.set_b(0x798B, ry.wrapping_sub(cy));
 
     if e.trace && e.regs.get(0x79FE) == 1 && !e.ix.ptr_logged { e.ix.ptr_logged = true; e.out.push(Out::Log("pointer mode on".into())); }
     if e.regs.get(0x79FE) == 1 {

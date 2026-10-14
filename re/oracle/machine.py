@@ -171,6 +171,13 @@ class Machine:
         self.main_hint_vec = 0
         self.pad_th = 0x40
         self.pad_ctrl = 0
+        # port 2 / light gun (Justifier, device ID 1; M:0xFF1358 ID read, M:0xFF13F6 button read, M:0xFF148A external-interrupt handler)
+        self.gun = None                 # None = no device, else {'x': px, 'y': line, 'trig': 0/1, 'aux': 0/1} (screen coordinates)
+        self.pad2_th = 0x40
+        self.pad2_ctrl = 0
+        self.mcl = 0.0                  # main-CPU cycles consumed in the current video line (H counter)
+        self.gun_fired = False
+        self.gun_hot = 0
         self.ym_addr = (0, 0)
         self.ym_frame = []
         self.sub_pending = set()
@@ -186,6 +193,7 @@ class Machine:
         self.track_len = track_frames()
         self.pcm = PCM(self.log)
         self.vdp = VDP(self.main_read16)
+        self.vdp.hfn = self._hcount
         self.last_seq_busy = 0
         self.last_script = 0
         # core
@@ -272,7 +280,9 @@ class Machine:
             return 0x80                               # overseas NTSC, expansion unit present
         if a == 0xA10003:
             return self._pad_read()
-        if a in (0xA10005, 0xA10007):
+        if a == 0xA10005:
+            return self._pad2_read()
+        if a == 0xA10007:
             return 0x7F
         if a == 0xA10009:
             return self.pad_ctrl
@@ -318,6 +328,13 @@ class Machine:
         if a == 0xA10009:
             self.pad_ctrl = v
             return
+        if a == 0xA10005:
+            if self.pad2_ctrl & 0x40:
+                self.pad2_th = v & 0x40
+            return
+        if a == 0xA1000B:
+            self.pad2_ctrl = v
+            return
         if 0xA10000 <= a < 0xA10020 or 0xA11000 <= a < 0xA11300:
             return
         if 0xA12000 <= a < 0xA12040:
@@ -338,6 +355,32 @@ class Machine:
         if a < 0x20000:
             return (self.mrom[a] << 8) | self.mrom[a + 1]
         return 0
+
+    def _install_gun_vector(self):
+        # level-2 (external interrupt / TH line) vector -> jump through the RAM vector the program installs at $FFFD14 (M:0xFF139E);
+        # also re-installed after a state load (saved ROM stubs predate it)
+        ctypes.memmove(ctypes.addressof(self.mrom) + 0x430, bytes.fromhex('2f38fd144e75'), 6)
+        struct.pack_into('>I', self.mrom, 0x68, 0x430)
+
+    def _pad2_read(self):
+        g = self.gun
+        if g is None:
+            return 0x7F
+        if not self.pad2_ctrl & 0x80:
+            # device-ID phase (TH is an output): ID 1 reads 0 on D3..D0 with TH = 1, and D3:D2 = 0, D1:D0 = 3 with TH = 0 (M:0xFF1386 table)
+            return 0x40 if self.pad2_th else 0x03
+        b = (1 if g.get('trig') else 0) | (2 if g.get('aux') else 0)
+        return 0x40 | (0x07 ^ b)                      # D0 trigger, D1 second button, active low
+
+    def _hcount(self):
+        if self.gun is None:
+            return 0x80
+        # H32 counter: 342 pixel clocks per line, value = clock >> 1, jumps from 0x93 to 0xE9 in the blanking
+        px = self.mcl * 342.0 / (MAIN_HZ / 60 / self.LINES)
+        h = int(px) >> 1
+        if h > 0x93:
+            h += 0xE9 - 0x94
+        return h & 0xFF
 
     def _pad_read(self):
         p = self.pad   # engine::pad bits: UP DOWN LEFT RIGHT B C A START
@@ -565,6 +608,7 @@ class Machine:
         for v in range(2, 64):
             struct.pack_into('>I', self.mrom, v * 4, 0x400)   # all exceptions -> fatal stub
         struct.pack_into('>H', self.mrom, 0x400, 0x4E73)
+        self._install_gun_vector()
         for a in (0x364, 0x368):
             struct.pack_into('>H', self.mrom, a, 0x4E75)        # rts after the hook ran
         ctypes.memmove(ctypes.addressof(self.mrom) + 0x28C, bytes.fromhex('4cdf7fff4e73'), 6)  # BIOS VINT tail
@@ -882,6 +926,7 @@ class Machine:
             setattr(self.vdp, k, v)
         self.pcm.__dict__.update(st['pcm'])
         struct.pack_into('>I', self.mrom, 0x70, 0xFF0000 | self.main_hint_vec)
+        self._install_gun_vector()
 
     def _set_main_irq(self, level):
         self.main_pending.add(level)
@@ -908,8 +953,10 @@ class Machine:
             self.vdp.begin_frame()
         hcount = self.vdp.reg[10]
         macc = sacc = 0.0
+        self.gun_fired = False
         for line in range(L):
             self.vdp.line = line
+            self.mcl = 0.0
             if capture and line < 224:
                 self.vdp.render_line(line)
             vint_delay = None
@@ -947,14 +994,35 @@ class Machine:
                 if self.ifl2 and self.intmask & 0x04 and 2 not in self.sub_pending:
                     self._set_sub_irq(2)
                 if vint_delay is not None and mleft > 0 and not self.main.halted:
-                    mleft -= max(self.main.run(vint_delay), 1)
+                    used = max(self.main.run(vint_delay), 1)
+                    mleft -= used
+                    self.mcl += used
                     self._set_main_irq(6)
                     vint_delay = None
                 if mleft > 0:
                     if self.main.halted:
                         mleft = 0
                     else:
-                        mleft -= max(self.main.run(min(CH, mleft)), 1)
+                        chunk = min(CH, mleft)
+                        g = self.gun
+                        if g is not None and self.pad2_ctrl & 0x80 and self.vdp.reg[11] & 0x08 and line < 224:
+                            # the gun's sensor sees the beam at (x, y): external interrupt (level 2) at that moment; the HV counter is read live by the
+                            # handler, so the main CPU is run in small slices from the trigger until the handler is done
+                            if not self.gun_fired and line == min(max(int(g['y']), 0), 223):
+                                tgt = min(max(int(g['x']), 0), 255) * (MAIN_HZ / 60 / L) / 342.0
+                                if self.mcl >= tgt:
+                                    self._set_main_irq(2)
+                                    self.gun_fired = True
+                                    self.gun_hot = 1100
+                                else:
+                                    chunk = max(1, min(chunk, int(tgt - self.mcl) + 1))
+                            if self.gun_fired and self.gun_hot > 0:
+                                chunk = min(chunk, 6)
+                        used = max(self.main.run(chunk), 1)
+                        mleft -= used
+                        self.mcl += used
+                        if self.gun_hot > 0:
+                            self.gun_hot -= used
                 if self.sub.waiting == 'vsync' and 2 in self.sub_pending:
                     self.sub.waiting = None          # _WAITVSYNC returns once the level-2 int is taken
                 if sleft > 0:
@@ -964,6 +1032,7 @@ class Machine:
                         sleft -= max(self.sub.run(min(CH * 163 // 100, sleft)), 1)
                     self._poll_trace()
         self.pcm.advance(1.0 / 60)
+        self.gun_hot = 0
         if self.music and self.music.get('end_frame') and self.frame >= self.music['end_frame'] \
                 and self.music_status == 0x0100:
             # MSCPLAY1 (play once) finished: HYPOTHESIS status returns to 0x0000 (stopped)

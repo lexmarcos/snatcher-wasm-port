@@ -18,7 +18,7 @@ for st in a.stages.split(','):
         base = os.path.join(HERE, 'out', 'shoot', 'b%s_g%s_i%s_s%s' % (a.tag, g, i, sd))
         subprocess.run([sys.executable, '-I', os.path.join(HERE, 'shoot_rec.py'), '--group', g, '--item', i, '--auto', sd, '--frames', str(a.frames),
                         '--acc', a.acc, '--idle', a.idle, '--out', base + '.o.jsonl'], check=True, stdout=subprocess.DEVNULL)
-        env = dict(os.environ, SCHED=base + '.o.jsonl.sched')
+        env = dict(os.environ, SCHED=base + '.o.jsonl.sched', SFXLEN=os.path.join(HERE, 'out', 'shoot', 'sfxlen.txt'))
         subprocess.run([ENG, g, i, '@' + base + '.o.jsonl.script.json', str(a.frames), base + '.e.jsonl'], check=True, env=env, stderr=subprocess.DEVNULL)
         r = subprocess.run([sys.executable, '-I', os.path.join(HERE, 'shoot_cmp.py'), base + '.o.jsonl', base + '.e.jsonl', '--min-run', a.min_run] + (['--objs'] if a.objs else []),
                            capture_output=True, text=True)

@@ -32,9 +32,11 @@ class VDP:
             s |= 0x0004               # hblank-ish (approximation)
         return s
 
+    hfn = None                       # optional callable: current H counter (set by the machine when a light gun is emulated)
+
     def hv(self):
         v = self.line & 0xFF
-        return (v << 8) | 0x80
+        return (v << 8) | (self.hfn() if self.hfn else 0x80)
 
     def ctrl_write(self, w):
         if self.pending:

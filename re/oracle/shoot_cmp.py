@@ -67,6 +67,12 @@ def main():
     def fin(tr):
         w = tr[-1]['w']
         return 'shots=%d hits=%d miss=%d kills=%d civ=%d life=%d af=%x' % (w['7908'], w['790C'], w['790E'], w['790A'], w['7914'], w['7910'], w['78AF'])
+    def snds(tr):
+        return [(r['f'], x[0], x[1]) for r in tr for x in r.get('s', [])]
+    so, se = snds(o), snds(e)
+    bad = next((i for i, (a, b) in enumerate(zip(so, se)) if a[1:] != b[1:]), None)
+    dmax = max([abs(a[0] - b[0]) for a, b in zip(so, se) if a[1:] == b[1:]] or [0])
+    print('sounds: oracle %d engine %d, first sequence mismatch %s, max frame delta %d' % (len(so), len(se), (so[bad], se[bad]) if bad is not None else None, dmax))
     print('phases oracle:', tl(o)); print('phases engine:', tl(e))
     print('final oracle:', fin(o)); print('final engine:', fin(e))
     print('compared %d frames, %d differing fields' % (n - a.frm, tot))

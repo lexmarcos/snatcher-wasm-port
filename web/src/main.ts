@@ -81,6 +81,13 @@ async function main() {
   const { pcm, fm } = await audio.loadManifests();
   if (pcm?.voices) for (const [id, v] of Object.entries<any>(pcm.voices)) game.set_voice_len(Number(id), Math.ceil(v.seconds * 60));
   if (fm?.sounds) for (const [id, v] of Object.entries<any>(fm.sounds)) game.set_fm_len(Number(id), Math.ceil(v.seconds * 60), v.loop_start != null);
+  if (pcm?.sfx) { // PCM effect lengths per bank (the shooting results wait for the last effect, S:0x13072)
+    const len = (seg: any) => Math.ceil((seg.samples / seg.rate) * 60);
+    for (const [id, s] of Object.entries<any>(pcm.sfx)) {
+      if (s.src === "drum") { const seg = pcm.drum?.[s.offset]; if (seg) for (const b of Object.keys(pcm.banks ?? {})) game.set_sfx_len(Number(b), Number(id), len(seg)); }
+      else for (const [b, segs] of Object.entries<any>(pcm.banks ?? {})) { const seg = segs[s.offset]; if (seg) game.set_sfx_len(Number(b), Number(id), len(seg)); }
+    }
+  }
   if (!pcm || !fm) console.warn("audio manifests missing – run the audio pipeline (README)");
   const input = new Input(canvas);
   const img = ctx.createImageData(W, H);

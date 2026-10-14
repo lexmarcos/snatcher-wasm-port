@@ -11,7 +11,7 @@ const WORDS: &[u32] = &[
     0x78E0, 0x78E2, 0x78E4, 0x78E6, 0x78E8, 0x78EA, 0x78EC, 0x78EE, 0x78F0, 0x78F2, 0x78F4, 0x78F6, 0x78F8, 0x78FA, 0x78FC, 0x78FE,
     0x7900, 0x7902, 0x7904, 0x7906, 0x7908, 0x790A, 0x790C, 0x790E, 0x7910, 0x7912, 0x7914, 0x7916, 0x7918, 0x791A, 0x791C, 0x791E,
     0x7920, 0x7922, 0x7924, 0x7926, 0x7928, 0x792A, 0x792C, 0x792E, 0x7930, 0x7932, 0x7934, 0x7936, 0x7938, 0x793A, 0x793C, 0x793E,
-    0x7940, 0x7942, 0x7944, 0x7946, 0x7948, 0x794A, 0x794C, 0x794E, 0x7970, 0x7972, 0x7984, 0x7986, 0x7988, 0x798A, 0x7990, 0x7992,
+    0x7940, 0x7942, 0x7944, 0x7946, 0x7948, 0x794A, 0x794C, 0x794E, 0x1511E, 0x7970, 0x7972, 0x7984, 0x7986, 0x7988, 0x798A, 0x7990, 0x7992,
 ];
 const SLOTS: &[usize] = &[21, 22, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 48, 56, 57, 58, 59];
 
@@ -59,6 +59,13 @@ fn main() {
         if *n == "PCMLD_01.BIN" { continue; }
         if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); }
     }
+    // SFXLEN=file: lines "bank id frames" (re/oracle/shoot_sfxlen.py writes it from assets/audio/web/pcm.json)
+    if let Ok(f) = std::env::var("SFXLEN") {
+        for l in std::fs::read_to_string(f).unwrap().lines() {
+            let v: Vec<u32> = l.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+            if v.len() == 3 { e.ix.sfx_len.insert((v[0] as u16, v[1] as u16), v[2]); }
+        }
+    }
     e.jump(57 + 1, 0);
 
     // navigation with feedback: root menu -> item 5 (SHOOTING), act menu -> `group`, stage list -> `item`; messages are confirmed
@@ -84,7 +91,7 @@ fn main() {
         k += 1;
         e.tick(pad);
         e.out.clear();
-        if e.regs.get(0x78EA) == 1 && e.regs.get(0x78E8) == 0 { break; }
+        if e.regs.get(0x78EA) == 1 && e.regs.get(0x78E4) == 1 && e.regs.get(0x78E8) == 0 { break; }
         if k > 8000 { eprintln!("stage did not start (menu {menu_no})"); std::process::exit(1); }
     }
     eprintln!("stage started after {k} frames: $78E0={:04x}", e.regs.get(0x78E0));
@@ -108,7 +115,8 @@ fn main() {
             snd.clear();
             for o in e.out.drain(..) {
                 match o {
-                    snengine::game::Out::Pcm { id, kind } => snd.push(format!("[\"{}\",{}]", if kind == 2 { "06" } else { "12" }, id)),
+                    snengine::game::Out::PcmSfx { id, .. } => snd.push(format!("[\"06\",{}]", id)),
+                    snengine::game::Out::Fm { id, music: false } => snd.push(format!("[\"12\",{}]", id)),
                     _ => {}
                 }
             }
