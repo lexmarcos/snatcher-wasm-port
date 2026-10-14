@@ -139,6 +139,8 @@ pub fn open_menu_hook(e: &mut Engine, items: &[u16]) -> bool {
         finish_entry(e, r, false);
         return true;
     }
+    // menu_show S:0x10D24: `sub_013d1c` (clear the text window) before the layout branch
+    e.text_window_init();
     // menu_pick_layout S:0x1130A: ≥ 9 items → keypad (first item text < 'A') or keyboard
     if items.len() >= 9 {
         let first = e.script.get(0x3800 + items[0] as usize).copied().unwrap_or(0);
@@ -257,6 +259,9 @@ pub struct Entry {
     key_state: u8,  // $9713
     key_t0: u8,     // $9714
     saved62: (u8, u8),
+    /// direct dial completed: result held back while the original's redraw streams finish
+    /// (oracle: digits appear 8 frames after the press, the keypad closes ~14 frames after it)
+    pending: Option<(u8, u8)>,
     pub typed: Vec<u8>,
     result: Option<u8>,
 }
@@ -271,7 +276,7 @@ impl Entry {
             cell: e.mem.u8(GRID_PARAMS + 2 * k), stride: e.mem.u8(GRID_PARAMS + 2 * k + 1),
             x0: e.mem.u8(GRID_PARAMS + 4 + 2 * k), y0: e.mem.u8(GRID_PARAMS + 5 + 2 * k),
             text_x: 0x40, max: 0, buf: [0; 0x12], pos: 0, blink: 0, blink_t: 0, key_state: 0, key_t0: 0,
-            saved62: (0, 0), typed: vec![], result: None,
+            saved62: (0, 0), pending: None, typed: vec![], result: None,
         };
         if style == 2 {
             let s = stream_at(e, KEYPAD_STREAM);
@@ -433,6 +438,11 @@ impl Entry {
             Stage::Active => {}
         }
         if e.frame as u8 == self.blink_t { self.blink_draw(e); } // sub_011B7A
+        if let Some((r, t)) = self.pending {
+            if t == 0 { self.pending = None; return Some(r); }
+            self.pending = Some((r, t - 1));
+            return None;
+        }
         let d0 = self.keys(e);
         let pressed = e.input.as_ref().map(|i| i.pressed).unwrap_or(0);
         if d0 & 1 != 0 { let s = self.stride as i16; self.mv(e, -s); return None; }
@@ -448,7 +458,7 @@ impl Entry {
                 if self.cell != 0x8B { e.disp.sub.objs[63].flags = 3; }
             }
             self.backspace(e);
-            if self.redraw(e) { return Some(self.finish(e)); }
+            if self.redraw(e) { return self.hold_finish(e); }
             if self.style == 3 { self.stage = Stage::WaitKey(After::Backspace, 0); }
             return None;
         }
@@ -479,17 +489,23 @@ impl Entry {
             }
             match c {
                 8 => { self.stage = Stage::WaitKey(After::Enter, 0); sfx_1c(e, 0x1D); return None; }
-                9 => { if self.backspace(e) && self.redraw(e) { return Some(self.finish(e)); } return None; }
+                9 => { if self.backspace(e) && self.redraw(e) { return self.hold_finish(e); } return None; }
                 _ => {
                     let p = self.pos as usize;
                     if p < self.max as usize && p < self.buf.len() {
                         self.buf[p] = c;
                         if p + 1 != self.max as usize { self.pos += 1; }
-                        if self.redraw(e) { return Some(self.finish(e)); }
+                        if self.redraw(e) { return self.hold_finish(e); }
                     }
                 }
             }
         }
+        None
+    }
+
+    fn hold_finish(&mut self, e: &mut Engine) -> Option<u8> {
+        let r = self.finish(e);
+        self.pending = Some((r, 13));
         None
     }
 
