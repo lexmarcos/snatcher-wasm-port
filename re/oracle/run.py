@@ -15,6 +15,7 @@ ap.add_argument('--shot-every', type=int, default=60)
 ap.add_argument('--shot-at', default='', help='comma list of frames')
 ap.add_argument('--out', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'out', 'run'))
 ap.add_argument('-v', '--verbose', action='store_true')
+ap.add_argument('--vm-trace', action='store_true', help='log every script VM node dispatch')
 ap.add_argument('--load', help='start from a save state (.pkl)')
 ap.add_argument('--save', help='write a save state (.pkl) at the end')
 a = ap.parse_args()
@@ -22,6 +23,8 @@ os.makedirs(a.out, exist_ok=True)
 m = Machine(trace_path=os.path.join(a.out, 'trace.jsonl'), verbose=a.verbose)
 if a.load:
     m.load_state(a.load)
+if a.vm_trace:
+    m.enable_vm_trace()
 m.inputs = [list(x) for x in json.loads(a.inputs)]
 shots = set(int(x) for x in a.shot_at.split(',') if x)
 t0 = time.time()

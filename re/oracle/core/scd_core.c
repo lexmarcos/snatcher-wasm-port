@@ -158,7 +158,13 @@ void core_save_ctx(int c, uint8_t *dst) {
     memcpy(dst + m68k_context_size(), &irq_level[c], sizeof(int));
 }
 void core_load_ctx(int c, const uint8_t *src) {
-    memcpy(ctx[c], src, m68k_context_size());
+    /* the context holds pointers into this process' cycle tables (ASLR): restore them
+       by re-applying the CPU type after loading the saved bytes */
+    int prev = cur;
+    activate(c);
+    m68k_set_context((void *)src);
+    m68k_set_cpu_type(M68K_CPU_TYPE_68000);
+    m68k_get_context(ctx[c]);
     memcpy(&irq_level[c], src + m68k_context_size(), sizeof(int));
-    if (c == cur) m68k_set_context(ctx[c]);
+    activate(prev);
 }

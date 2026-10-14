@@ -1,6 +1,8 @@
 # Test oracle (dev-only, BIOS-free) – runs the original 68000 code
 
-Status: WORKING up to the title screen (see "Verified" below). Never shipped in the web port.
+Status: WORKING from power-on through the title, options, intro and the first playable scene
+(Junker HQ, ACT 1) with dialogue, command menu and raster-split text window (see "Verified").
+Never shipped in the web port.
 
 ## What it is
 `re/oracle/` runs the ORIGINAL game code — main CPU IP (`header[0x200:0x800] + ip.bin` at
@@ -20,8 +22,21 @@ core/build.sh                                                           # builds
     --inputs '[[1500,0],[4,128]]'          # [[frames, padbits], ...]
 ```
 Pad bits (same as `engine::pad`): UP=1 DOWN=2 LEFT=4 RIGHT=8 B=16 C=32 A=64 START=128.
-Outputs: `out/run/fNNNNN.png` (VDP render of that frame), `out/run/trace.jsonl`.
-Speed: ~700 emulated frames/s without screenshots (Musashi + Python MMIO).
+Outputs: `out/run/fNNNNN.png` (VDP render of that frame, native width 256 (H32) or 320 (H40)),
+`out/run/trace.jsonl`. Options: `--load states/X.pkl` / `--save states/Y.pkl` (save states),
+`--vm-trace` (log every script-VM node dispatch), `--shot-at 100,200`.
+Speed: ~500 emulated frames/s without screenshots (per-line scheduling, Musashi + Python MMIO).
+
+Scenarios (inputs + named screenshots + named save states):
+```
+.venv/bin/python -I scenario.py scenarios/intro.json      # ~21 s
+```
+writes `out/refs/{copyright,konami_laser,konami_logo,title,options,disclaimer,omni_building,
+omni_caption,act1,junker_hq_mika,junker_menu,mika_reply}.png` and `states/{title,junker_hq}.pkl`.
+These PNGs are the reference images for the engine's headless screenshot tests.
+Game flow found while scripting it: with an empty backup RAM, START on the title opens
+OPTIONS (DATA_D2 code S:0x28A62 → 0x28AA4 adds 2 to the title state $7896 → state 11 = options);
+START on QUIT continues to the disclaimer and the intro; C advances dialogue / selects.
 Requires `work/snatcher.bin` (raw image from chdman) and `assets/raw/` from `snt extract`.
 
 Musashi source: `re/oracle/third_party/Musashi` (cloned from github.com/kstenerud/Musashi,
@@ -95,13 +110,27 @@ HYPOTHESIS), fill, copy; whole-frame renderer (planes A/B, window, sprites, prio
 no shadow/highlight, no mid-frame effects).
 
 Timing
-- 33 slices per frame; main 7.67 MHz and sub 12.5 MHz cycle budgets (Musashi cycle counts);
-  CPUs interleaved every ~400 main cycles.
+- 262 lines per frame; per line the main gets 7.67 MHz/60/262 cycles and the sub 12.5 MHz/60/262
+  (Musashi cycle counts), interleaved every ~250 main cycles.
+- H-interrupt line counter (reg 10, enabled by reg 0 bit 4) decremented on lines 0..224 and
+  reloaded outside the display; HINT handler M:0xFF0EFA rewrites VSRAM at line ~136 for the
+  text window (verified: dialogue box and command menu render only with this).
+- Each line is rendered (if a screenshot was requested) with the VDP state at that line, so
+  raster splits are reproduced.
 - The VBlank status flag rises ~180 main cycles before VINT is asserted. Needed: M:0xFF2D34
   polls the VBlank flag with interrupts enabled (inside the VINT handler) and would livelock
   if the interrupt arrived together with the flag.
 
-## Verified so far (by looking at the PNGs)
+## Verified so far (by looking at the PNGs in out/refs)
+- Full chain: copyright → Konami laser logo → Konami logo → title (CD track 2) → OPTIONS →
+  disclaimer (CD track 3 starts) → Konami Omni Building intro with typed caption → ACT 1 SNATCH
+  → Junker HQ with Mika: "Welcome to Junker Headquarters. May I help you?" → command menu
+  ENTER/LOOK/INVESTIGATE/TALK → ENTER → "I'm afraid only Junker personnel are allowed inside".
+- First script: SP06.BIN (file id 0x3F) loaded to S:0x1A800 at frame ~2638 (milestone b).
+- Word RAM → VRAM DMA with the one-word lag model produces correct images (no shifted tiles).
+- CD status words used by the game: 0x0000 stopped, 0x0100 playing, 0x0500 paused; before a
+  data load the game polls CDBSTAT until the high byte is 0x00 or 0x05 and otherwise calls
+  function 0x0003 (S:0xD572, 0x102C8, 0x14A68) – so 0x0003 = pause (status 0x05xx).
 - (a) SP file engine loads FMWR_1 → Word RAM 0, SUBCODE.BIN → S:0xD400, PCMLT_01 → S:0x50000,
   PCMDRMDT → S:0x55000 (trace `cd_dest`), then jumps into SUBCODE (`sp_state` 6).
 - Copyright screen (frames ~60–180), Konami logo drawn by a laser line, full Konami logo,
@@ -109,6 +138,14 @@ Timing
 - DATA_D2.BIN is loaded to S:0x28000 for the logo/title; voice data read from PCMLD_01.
 
 ## For other workstreams
+- GRAPHICS/ACTIONS: the dialogue window is a raster split: HINT every 8 lines (reg 10 = 7),
+  handler M:0xFF0EFA; at the 17th HINT it writes VSRAM (A and B vscroll from $E064) and
+  clears the H-scroll entry at VRAM 0xF800, so the bottom of the screen shows another part of
+  the planes. Scenes run in H32 (256 px) mode.
+- Title/options/intro logic is sub-CPU code inside DATA_D2.BIN (loaded at S:0x28000; pointer
+  table 0x2800C, 0x28278, 0x285CE; S:0xE168 calls `jsr ($28008)` each frame while $7842=1).
+- AUDIO: `pcm_on` trace events give RF5C164 key-ons (start page, FD, loop, env, pan);
+  music events give the CD track per MSCPLAY*. Track 2 = title, track 3 = disclaimer/intro.
 - Main CPU writes the YM2612 directly (M:0xFF5824 loop, waits on busy bit at A04000) –
   no Z80 sound driver involvement for FM (AUDIO). The trace records every YM write per frame.
 - Save system (ACTIONS): main helper code at M:0xFFE100 (copied from Word RAM 0x37800 =

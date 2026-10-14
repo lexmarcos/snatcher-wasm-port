@@ -211,6 +211,8 @@ impl Engine {
     /// Debug: jump to `SPnn:pc` (hex pc) with a fresh VM (e.g. "SP01:0" = developer scene select).
     pub fn jump(&mut self, script_id: u16, pc: u16) {
         self.top = Top::Game;
+        // debug entry: the default text palette (S:0xF600) as the game would have it by now
+        self.disp.sub.shadow[..8].copy_from_slice(&[0x000, 0xEEE, 0x0EE, 0x86E, 0xEE0, 0xE42, 0x4E0, 0x000]);
         let mut vm = Vm::blank();
         vm.state = 2;
         vm.script_id = script_id;

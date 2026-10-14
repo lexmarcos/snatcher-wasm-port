@@ -58,6 +58,20 @@ class Disc:
         return None, 0
 
 
+def track_frames():
+    """CD-DA track lengths in frames (1/60 s) from extract_report.txt (snt extract)."""
+    out = {}
+    try:
+        for line in open(os.path.join(RAW, 'extract_report.txt')):
+            if line.startswith('track '):
+                n = int(line.split()[1].rstrip(':'))
+                secs = float(line.split('(')[1].split()[0])
+                out[n] = int(secs * 60)
+    except OSError:
+        pass
+    return out
+
+
 class Cpu:
     """Thin wrapper around one Musashi context in libscdcore."""
     def __init__(self, lib, idx, name):
@@ -169,7 +183,8 @@ class Machine:
         self.cd_first_dest = None
         self.music = None
         self.music_status = 0x0000
-        self.pcm = PCM()
+        self.track_len = track_frames()
+        self.pcm = PCM(self.log)
         self.vdp = VDP(self.main_read16)
         self.last_seq_busy = 0
         self.last_script = 0
@@ -622,8 +637,17 @@ class Machine:
                       'd': [m.d(i) for i in range(8)], 'a': [m.a(i) for i in range(8)]})
             self.lib.core_end_timeslice()
 
+    def enable_vm_trace(self):
+        """Log every script-VM node dispatch (S:0x16974 vm_dispatch; a3 = node offset in
+        script_buf S:0x1A800). Verbose: thousands of events per second of game time."""
+        self.lib.core_add_hook(SUB, 0x16974)
+
     def _sub_bios(self, pc):
         s = self.sub
+        if pc == 0x16974:
+            a3 = s.a(3) & 0xFFFF
+            self.log({'t': 'vm', 'node': a3, 'op': self.prg[0x1A800 + a3], 'script': self.last_script})
+            return
         if pc == 0x5F10:            # _WAITVSYNC
             s.waiting = 'vsync'
             self.lib.core_end_timeslice()
@@ -759,7 +783,8 @@ class Machine:
             s.a(0, blk)
         elif fn in (0x11, 0x12, 0x13):      # MSCPLAY*: a0 -> track number word
             tr = s.r16(s.a(0))
-            self.music = {'track': tr, 'mode': name, 'start_frame': self.frame}
+            self.music = {'track': tr, 'mode': name, 'start_frame': self.frame,
+                          'end_frame': self.frame + self.track_len.get(tr, 10 ** 9) if fn == 0x12 else None}
             self.music_status = 0x0100
             self.log({'t': 'music', 'fn': name, 'track': tr})
         elif fn in (0x02, 0x03, 0x04):
@@ -836,7 +861,7 @@ class Machine:
         st['vdp'] = {k: getattr(self.vdp, k) for k in ('vram', 'cram', 'vsram', 'reg', 'addr', 'code',
                                                     'pending', 'fill_pending', 'vblank', 'line')}
         st['vdp']['fill_len'] = getattr(self.vdp, 'fill_len', 0)
-        st['pcm'] = self.pcm.__dict__
+        st['pcm'] = {k: v for k, v in self.pcm.__dict__.items() if k != 'log'}
         with open(path, 'wb') as f:
             pickle.dump(st, f)
 
@@ -935,6 +960,11 @@ class Machine:
                         sleft -= max(self.sub.run(min(CH * 163 // 100, sleft)), 1)
                     self._poll_trace()
         self.pcm.advance(1.0 / 60)
+        if self.music and self.music.get('end_frame') and self.frame >= self.music['end_frame'] \
+                and self.music_status == 0x0100:
+            # MSCPLAY1 (play once) finished: HYPOTHESIS status returns to 0x0000 (stopped)
+            self.music_status = 0x0000
+            self.log({'t': 'music', 'fn': 'end_of_track', 'track': self.music['track']})
         self.frame += 1
         w = lambda a: (self.prg[a] << 8) | self.prg[a + 1]
         rec = {'t': 'frame', 'f': self.frame, 'sp_state': w(0x7840), 'state': w(0x9808), 'vm_pc': w(0x9800),
@@ -957,7 +987,8 @@ class PCM:
     """RF5C164 model (HYPOTHESIS: register map per Sega CD hardware manual). Sub addresses
     0xFF0001.. odd bytes: 0 ENV, 1 PAN, 2 FDL, 3 FDH, 4 LSL, 5 LSH, 6 ST, 7 CTRL, 8 ON/OFF;
     current address read at regs 0x10..0x1F; wave RAM window regs 0x1000-0x1FFF."""
-    def __init__(self):
+    def __init__(self, log=None):
+        self.log = log or (lambda e: None)
         self.ram = bytearray(0x10000)
         self.ch = [dict(env=0, pan=0, fd=0, ls=0, st=0, addr=0.0) for _ in range(8)]
         self.ctrl = 0
@@ -1001,7 +1032,10 @@ class PCM:
         elif r == 8:
             for i in range(8):
                 if (self.onoff >> i & 1) and not (v >> i & 1):
-                    self.ch[i]['addr'] = float(self.ch[i]['st'] << 8)
+                    c = self.ch[i]
+                    c['addr'] = float(c['st'] << 8)
+                    self.log({'t': 'pcm_on', 'ch': i, 'st': c['st'], 'fd': c['fd'], 'ls': c['ls'],
+                              'env': c['env'], 'pan': c['pan']})
             self.onoff = v
 
     def dma(self, a, data):
