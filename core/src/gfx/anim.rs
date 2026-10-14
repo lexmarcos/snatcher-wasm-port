@@ -114,6 +114,9 @@ pub struct Runtime {
     pub f788a: u8,
     /// S:$788B (anim ops 9B/9C): keep palettes on scene clear
     pub f788b: u8,
+    /// S:$7887: scene-reset plane-clear handshake (1 = requested, 2 = main clearing); while it or a
+    /// VRAM list ($7886) is pending the sub frame skips mode logic and object updates (S:0xD6EE)
+    pub f7887: u8,
 }
 
 impl Default for Runtime {
@@ -124,7 +127,7 @@ impl Default for Runtime {
             tilech: [TileCh::default(); 7], tilebuf: vec![vec![0u8; 0x2000]; 4],
             fx_a: 0, fx_b: 0, fx_reset: 0, mail: (0, 0), split_req: 0,
             rng: [0; 4], frame: 0, budget: 1, cd_time: 0, pause_groups: 0, events: vec![],
-            f7866: 0, f788a: 0, f788b: 0,
+            f7866: 0, f788a: 0, f788b: 0, f7887: 0,
         }
     }
 }
@@ -645,10 +648,15 @@ impl Runtime {
 
     /// S:0xE34E vram_list_tick: one upload per frame after its delay.
     pub fn vram_list_tick(&mut self, mem: &SubMem, vdp: &mut Vdp) {
+        // S:0xE34E: `$7887` handshake first (1 → request main plane clear, 2 → done), nothing else this frame
+        if self.f7887 != 0 { self.f7887 = if self.f7887 == 1 { 2 } else { 0 }; return; }
         let Some(p) = self.vram_list else { return };
         if self.vram_delay != 0 { self.vram_delay -= 1; return; }
         if mem.u16(p) == 0xFFFF { self.vram_list = None; return; }
-        self.vram_delay = mem.u16(p + 4);
+        // `$7884` reload (S:0xE3A2); the next entry also waits for the main CPU to drain the DMA queue
+        // (`tst.w wr_dmaq`, S:0xE38A): at least one idle frame after each upload (title scene 0: 9 entries
+        // take 19 frames in the oracle)
+        self.vram_delay = mem.u16(p + 4).max(1);
         let src = mem.u32(p) & 0xFF_FFFF;
         let dst = mem.u16(p + 6);
         // subfn_07 S:0xF326 → lz_to_wordram S:0xF32C: decompress into Word RAM S:0xB8000
@@ -666,7 +674,7 @@ impl Runtime {
 
     /// One display frame in the game's order. `logic_ran` mirrors the main loop gating.
     pub fn tick(&mut self, mem: &SubMem, vdp: &mut Vdp) {
-        if self.vram_list.is_none() { self.obj_update_all(mem); }
+        if self.vram_list.is_none() && self.f7887 == 0 { self.obj_update_all(mem); }
         self.scroll_tick();
         self.sat_build(mem, vdp);
         self.palch_run(mem);

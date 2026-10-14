@@ -260,12 +260,14 @@ no divergence found, **no change to `kdriver.rs` was necessary**):
 | inject3000 | every music id 3000 frames (50 s) | 184617 | 87384 | 600652 | 4370 (5438) |
 | inject_vol | 1500 frames each, volume word swept (73060 ticks with M:$FF7F5E != FFFF) | 93117 | 29521 | 363590 | 746 (929) |
 | cmds | music + F3 mono, F4, F2, F1, restarts | 61617 | 26234 | 212932 | 1201 (1522) |
+| long_0..3 | every song for 6000 frames (100 s), 4 jobs (`audio_ref.py --long`, cut after the music part) | 140329 / 127402 / 129719 / 138210 | 52098 / 71482 / 60124 / 50806 | 429856 / 439212 / 394205 / 420752 | 1735 / 6739 / 2946 / 946 |
 | burst | several requests in one frame, 48 rejected by the priority gate | 11917 | 6949 | 54333 | 593 |
 | sfx_only | all 62 sfx alone | 11067 | 6560 | 24405 | 0 |
 
-(positional write equality is 100 % in all; sequence commands exercised: every E0-FF opcode that
-the 122 sounds contain in their first 50 s except EF, F8-FB, which never execute: `cmd_stats` in
-`fmverify` output.) Second mode "via queue": the same logs with `S`/`C` ignored and `KDriver::enqueue`
+(positional write equality is 100 % in all. Sequence-command coverage over all logs: every opcode
+E0-FF executes except EF, F8, F9, FA, FB (and the F3/F4 *sequence* opcodes, F3 is handled as the
+portamento prefix inside the note handler) - none of the 122 sounds ever runs them, even over 100 s,
+so `kdriver` paths for them are untested but also unreachable with this data.) Second mode "via queue": the same logs with `S`/`C` ignored and `KDriver::enqueue`
 + `update` (new, translations of M:0xFF5058 / M:0xFF5106: 32-byte ring $FF7F00, indices
 $FF7F20/21, priority gate $FF7F22/23 for sfx 0x32-0x3E, commands >= F1 dispatched from the ring)
 also gives all segments equal. The accept/reject decision of the gate in `audio_inject.py` is a Python
@@ -308,3 +310,18 @@ Facts checked, with tests in `audio::ym2612::tests`:
   slightly different) - irrelevant here: PMS is 0 in every B4 write of the 122 sounds (AMS in 11 writes).
   Measured on the logs: B4 values written are only 00/40/80/C0 (pan) and 50/90/D0/E0 (AMS 1-2);
   no write to registers 0x27, 0x2A, 0x90-0x9F, 0xA8-0xAE in any log.
+
+## Status
+- State: DONE for the FM driver verification. `kdriver.rs` matches the original driver write-for-write on
+  all logs above (no divergence); queue/priority model added; YM2612 LFO period fixed (+ 5 tests);
+  FM assets re-rendered (`snt audio-fm`, `audio_encode.py`; loop points identical, `fm_song_loops_if_present` ok).
+- Regenerate references: `cd re/oracle && .venv/bin/python -I audio_ref.py [--quick|--long]`
+  (needs `states/` not required; boots from power-on; logs go to `assets/audio/ref/`, gitignored). Check:
+  `cargo test --release -p sncore --lib audio::verify` or `cargo run --release -p sncore --example fmverify -- assets/raw assets/audio/ref/X.txt`.
+- Next steps (if anyone continues): (1) verify a real-time hook of sfx stealing channels 5/6 (render still
+  mixes sfx on top); (2) YM2612 sample-level reference would need a chip trace from real hardware or a
+  third-party core's output (HYPOTHESIS: Nuked-OPN2 outputs could be compared offline if ever
+  permitted); (3) RF5C164 PAN nibble order and mix levels FM/PCM/CD remain HYPOTHESES.
+- Hypotheses: PM waveform shape/depth (unused by the data); F1 stale drum replay explanation is
+  supported by the P/D log order (P pair right after the stop-all writes, same parameters as the previous
+  drum command) but the sub-side counter comparison was not read in the disassembly.
