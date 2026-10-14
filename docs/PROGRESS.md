@@ -35,6 +35,7 @@ State after resume (commit after cfc038a): build is green (`cargo build --releas
 `Top::Title` is skipped (engine/src/modules/title.rs was never written). `boot()` → intro
 DATA_D1 timeline: disclaimer, RSS logo and dedication screens render, then the screen stays black
 (timeline stalls ~frame 1600; see `cargo run --release -p snengine --example run -- 4800 400 OUT "" boot`).
+Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, AUDIO-VERIFY.
 1. **MODULES** (engine/src/modules/, docs/re/modules.md — doc missing, create it): fix the D1/D0
    timeline stall, write the DATA_D2 title module and H40 (320 px) rendering; compare with
    `re/oracle/out/refs/*.png`.
