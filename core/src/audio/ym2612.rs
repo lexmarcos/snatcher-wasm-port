@@ -43,6 +43,10 @@ pub struct Ym2612 {
     ch3_mode: u8,
     dac_en: bool, dac: i32,
     eg_cnt: u32, eg_sub: u8,
+    /// optional register write log (port, reg, value) for debugging
+    pub log: Option<Vec<(u8, u8, u8)>>,
+    /// debug: bit n set = channel n muted
+    pub mute: u8,
     logsin: [u16; 256],
     exp: [u16; 256],
 }
@@ -93,7 +97,7 @@ impl Ym2612 {
         }
         let mut y = Ym2612 {
             ch: Default::default(), addr: [0; 2], lfo_en: false, lfo_freq: 0, lfo_cnt: 0, lfo_step: 0,
-            ch3_mode: 0, dac_en: false, dac: 0, eg_cnt: 0, eg_sub: 0, logsin, exp,
+            ch3_mode: 0, dac_en: false, dac: 0, eg_cnt: 0, eg_sub: 0, log: None, mute: 0, logsin, exp,
         };
         for c in y.ch.iter_mut() { c.left = true; c.right = true; }
         y
@@ -101,6 +105,7 @@ impl Ym2612 {
 
     /// Write to port 0 (A1=0) or 1 (A1=1): `addr` then `data` like the real chip.
     pub fn write(&mut self, port: usize, reg: u8, data: u8) {
+        if let Some(l) = self.log.as_mut() { l.push((port as u8, reg, data)); }
         self.addr[port] = reg;
         self.data(port, data);
     }
@@ -289,6 +294,7 @@ impl Ym2612 {
             chd.fb2 = chd.fb1; chd.fb1 = o1;
             let mut s = out.clamp(-8192, 8191);
             if c == 5 && self.dac_en { s = self.dac; }
+            if self.mute & (1 << c) != 0 { s = 0; }
             if chd.left { l += s; }
             if chd.right { r += s; }
         }

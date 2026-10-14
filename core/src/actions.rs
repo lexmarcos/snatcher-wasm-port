@@ -385,6 +385,152 @@ impl SmallStack {
     pub fn count(&self) -> usize { self.items.len() }
 }
 
+// ---------------------------------------------------------------- text-list menu
+
+/// One visible line of the text-list menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuLine {
+    /// index into the collected items ($9852)
+    Item(usize),
+    /// scroll marker line: render stream S:0x10EFA (up, page 2) or S:0x10F10/0x10F26 (down, page 1)
+    Arrow { down: bool },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuResult {
+    /// 1-based item number (`$79F4`)
+    Selected(u8),
+    /// `$79F4 = FF` (only allowed when depth > 0)
+    Cancel,
+}
+
+/// Vertical text-list command menu (`menu_show` S:0x10CBE, `menu_input` S:0x11004,
+/// key reader S:0x110B0, navigation S:0x11150).
+pub struct TextMenu {
+    pub count: usize,     // $9853
+    pub depth: usize,     // $9893
+    pub page: u8,         // $9715: 0 no paging, 1 first page, 2 second page
+    pub cursor: u8,       // $9710 (line)
+    pub lines: u8,        // $9712
+    pub wide: bool,       // $7893 != 0
+    k: [u8; 5],           // S:0x10CB8..0x10CBC: page1 items, page2 offset, wrap-up line, page2 last+1, max lines
+    key_state: u8,        // $9713
+    key_t0: u16,          // $9714
+}
+
+impl TextMenu {
+    /// `remembered` = `$9716` (cursor remembered for the top level). Returns the menu and the
+    /// value to store back into `$9716` (page-2 adjustment).
+    pub fn new(count: usize, depth: usize, remembered: u8, wide: bool) -> (TextMenu, u8) {
+        let k = if wide { [5, 4, 3, 4, 6] } else { [6, 5, 2, 3, 7] };
+        let mut m = TextMenu { count, depth, page: 0, cursor: 0, lines: 0, wide, k, key_state: 0, key_t0: 0 };
+        let mut rem = remembered;
+        if count == 8 || (wide && count == 7) {
+            m.page = 1;
+            if depth == 0 && rem >= k[0] { m.page = 2; rem -= k[1]; }
+        }
+        let mut n = 0u8;
+        while n < k[4] && m.line(n).is_some() { n += 1; }
+        m.lines = if m.page == 2 { k[4] } else { n };
+        m.cursor = if depth != 0 { 0 } else if n.wrapping_sub(1) < rem { 0 } else { rem };
+        (m, rem)
+    }
+
+    /// `sub_010E5A`: what is drawn on line `l` (None = past the last item).
+    pub fn line(&self, l: u8) -> Option<MenuLine> {
+        let idx = match self.page {
+            1 => { if l == self.k[0] { return Some(MenuLine::Arrow { down: true }); } l as usize }
+            2 => { let d = l.wrapping_add(self.k[1]); if d == self.k[1] { return Some(MenuLine::Arrow { down: false }); } d as usize }
+            _ => l as usize,
+        };
+        if idx < self.count { Some(MenuLine::Item(idx)) } else { None }
+    }
+
+    /// Visible lines for rendering: line i at text-window Y = i*9, X = 0x10; the line under the
+    /// cursor uses colour 1, the others colour 4. Cursor sprite Y = 0x8F + 9*cursor (+0x10 wide).
+    pub fn visible(&self) -> Vec<MenuLine> {
+        (0..self.k[4]).map_while(|l| self.line(l)).collect()
+    }
+
+    /// Key reader S:0x110B0. `frame` = `$7848`, `style` = `$79FE`.
+    fn keys(&mut self, pressed: u8, held: u8, repeat: u8, frame: u16, style: u16) -> u8 {
+        if pressed != 0 { self.key_state = 0; return pressed; }
+        let f = frame as u8;
+        let t = self.key_t0 as u8;
+        match self.key_state {
+            0 => {
+                self.key_t0 = frame;
+                if held == 0 { return 0; }
+                self.key_state = 1;
+                self.key_t0 = frame.wrapping_sub(1);
+                if (f ^ self.key_t0 as u8) & 0x1F != 0 { return 0; }
+                self.key_state = 2;
+                held
+            }
+            1 => { if (f ^ t) & 0x1F != 0 { return 0; } self.key_state = 2; held }
+            _ => {
+                if style == 3 { return repeat; }
+                let mask = if style >= 2 { 7 } else { 0x0F };
+                if (f ^ t) & mask != 0 { 0 } else { held }
+            }
+        }
+    }
+
+    fn flip_page(&mut self) { self.page ^= 3; }
+
+    /// One frame of input. Returns Some(result) when the menu closes.
+    pub fn input(&mut self, pressed: u8, held: u8, repeat: u8, frame: u16) -> Option<MenuResult> {
+        let d = self.keys(pressed, held, repeat, frame, 0);
+        if self.count != 1 {
+            match d {
+                1 | 4 => { self.up(); return None; }
+                2 | 8 => { self.down(); return None; }
+                _ => {}
+            }
+        }
+        if pressed == btn::L_CANCEL { return if self.depth != 0 { Some(MenuResult::Cancel) } else { None }; }
+        if pressed == btn::L_CONFIRM {
+            if self.page == 1 && self.cursor == self.k[0] { return None; }
+            if self.page == 2 && self.cursor == 0 { return None; }
+            let mut r = self.cursor + 1;
+            if self.page == 2 { r += self.k[1]; }
+            return Some(MenuResult::Selected(r));
+        }
+        None
+    }
+
+    fn up(&mut self) {
+        loop {
+            let c = self.cursor as i16 - 1;
+            if c == 0 && self.page == 2 { self.cursor = 0; continue; }
+            if c >= 0 { self.cursor = c as u8; return; }
+            self.cursor = self.lines - 1;
+            if self.page == 0 { return; }
+            self.cursor -= 1;
+            if self.page == 1 { self.cursor = self.k[2]; }
+            self.flip_page();
+            return;
+        }
+    }
+
+    fn down(&mut self) {
+        loop {
+            self.cursor += 1;
+            let d0 = self.cursor + 1;
+            if d0 == self.lines && self.page == 1 { continue; }
+            let wrap = self.cursor == self.lines || (self.page == 2 && self.cursor == self.k[3]);
+            if wrap {
+                self.cursor = 0;
+                if self.page != 0 {
+                    if self.page == 1 { self.cursor = 1; }
+                    self.flip_page();
+                }
+            }
+            return;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- save layout
 
 /// Offsets inside the 0x1C0-byte save block (S:$9C00, built by S:0x14F12).
@@ -486,6 +632,43 @@ mod tests {
         assert_eq!(xs, ys);
         assert!(xs.windows(2).any(|w| w[0] != w[1]));
         assert!(a.range(2, 3) >= 2);
+    }
+
+    #[test]
+    fn menu_plain_wrap() {
+        let (mut m, _) = TextMenu::new(3, 1, 0, false);
+        assert_eq!(m.visible().len(), 3);
+        assert_eq!(m.input(btn::UP, btn::UP, 0, 10), None);
+        assert_eq!(m.cursor, 2);
+        m.input(btn::DOWN, btn::DOWN, 0, 11);
+        assert_eq!(m.cursor, 0);
+        assert_eq!(m.input(btn::L_CONFIRM, 0, 0, 12), Some(MenuResult::Selected(1)));
+        assert_eq!(m.input(btn::L_CANCEL, 0, 0, 13), Some(MenuResult::Cancel));
+        let (mut top, _) = TextMenu::new(3, 0, 0, false);
+        assert_eq!(top.input(btn::L_CANCEL, 0, 0, 13), None);
+    }
+
+    #[test]
+    fn menu_paging_eight_items() {
+        let (mut m, _) = TextMenu::new(8, 1, 0, false);
+        assert_eq!(m.page, 1);
+        let v = m.visible();
+        assert_eq!(v.len(), 7);
+        assert_eq!(v[6], MenuLine::Arrow { down: true });
+        for _ in 0..5 { m.input(btn::DOWN, btn::DOWN, 0, 0); }
+        assert_eq!((m.page, m.cursor), (1, 5));
+        m.input(btn::DOWN, btn::DOWN, 0, 0);        // skips the arrow line → page 2, item 6
+        assert_eq!((m.page, m.cursor), (2, 1));
+        assert_eq!(m.visible(), vec![MenuLine::Arrow { down: false }, MenuLine::Item(6), MenuLine::Item(7)]);
+        assert_eq!(m.input(btn::L_CONFIRM, 0, 0, 0), Some(MenuResult::Selected(7)));
+        m.input(btn::DOWN, btn::DOWN, 0, 0);
+        m.input(btn::DOWN, btn::DOWN, 0, 0);        // wraps to page 1, item 0
+        assert_eq!((m.page, m.cursor), (1, 0));
+        m.input(btn::UP, btn::UP, 0, 0);            // wraps to the last item (page 2, line 2)
+        assert_eq!((m.page, m.cursor), (2, 2));
+        m.input(btn::UP, btn::UP, 0, 0);
+        m.input(btn::UP, btn::UP, 0, 0);            // from item 6 up to item 5 on page 1
+        assert_eq!((m.page, m.cursor), (1, 5));
     }
 
     #[test]

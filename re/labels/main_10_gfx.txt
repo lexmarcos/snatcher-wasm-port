@@ -36,3 +36,15 @@
 0xFF0E68 hintc_sub3 f
 0xFF0E86 hintc_sub4 f
 0xFFE100 save_entry_e100 f     # code copied from SP+0x1300 via Word RAM 0x237800 (save/BRAM)
+0xFF0EA8 hint_0EA8 f
+0xFF0EFA hint_0EFA f
+0xFF0F4C hint_0F4C f
+0xFF0FA2 hint_0FA2 f
+0xFF1016 hint_1016 f
+0xFF1092 hint_1092 f
+0xFF10D4 hint_10D4 f
+0xFF1114 hint_1114 f
+0xFF1154 hint_1154 f
+0xFF1194 hint_1194 f
+0xFF11F4 hint_11F4 f
+0xFF123A hint_123A f

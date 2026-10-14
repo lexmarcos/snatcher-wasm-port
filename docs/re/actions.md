@@ -257,7 +257,7 @@ Execution model (one "pass" = one dispatch of the statement at `vm_pc` $9800):
 | COMCMD2 lo | M→S | gun buttons (bit5 trigger, bit6 2nd) |
 | COMCMD3 | M→S | gun X (×2) / gun Y |
 | COMCMD4 | M→S | frame counter |
-| COMCMD5–6 | M→S | sound driver status bytes from main RAM $FF7F48–4A (M:0xFF4DDE) |
+| COMCMD5–6 | M→S | bytes from main RAM $FF7F48–4A + counter (M:0xFF4DDE; **HYPOTHESIS**: FM/Z80 sound status) |
 | COMCMD7 | M→S | lo nibble change counter; bit7 = voice/PCM ($980E) done, bit6 = $980F done (S:0xDF52) |
 | COMSTAT0 | S→M | `$7970` (main: nonzero → VDP mode bit, M:0xFF13BA) |
 | COMSTAT3–6 | S→M | plane A X/Y, plane B X/Y scroll (integer part, from `subfn_22`) |
@@ -465,6 +465,19 @@ Start pressed during most screens jumps to the "start game" path (S:0x2860E sets
 - Targets are objects at S:$8400 (9 slots); a shot checks the target's `+24` state (2–4 = hit):
   hits `$790C`, misses `$790E`, PCM effects from per-stage tables. Stage 0x0E is special
   (practice range, `$78EE`). Results are read back by the scenario script with op_42 sub 5 (peek).
+
+## 11. Rust building blocks (`core/src/actions.rs`, `tools/src/cmds/actions.rs`)
+Needs `pub mod actions;` in core/src/lib.rs and `mod actions;` + dispatch in tools/src/cmds.rs
+(coordinator). Contents: `Font`/`speaker_names` (read from SUBCODE.BIN), `TextWindow` (exact
+`txt_tick` byte semantics and timing), `MessageBox` (command 08 state machine, emits
+`MsgEvent::ScreenCmd` for `subfn_13`), `Input` (COMCMD0 cleanup, 32/4-frame repeat, button
+configs, EC/EE/F0 letters), `Rng` (`rand16`), `SmallStack`, `TextMenu` (§4.2 layout, paging,
+wrap, key repeat, confirm/cancel) and `save` offsets. 8 unit tests (`rustc --edition 2021 --test
+core/src/actions.rs`, or `cargo test -p sncore actions` once wired). Verified end-to-end:
+`snt act-message assets/raw/files/SUBCODE.BIN assets/raw/files/SP06.BIN 2615 0004 out` renders
+Mika's two-page message exactly like the Python prototype (`re/py/actions_textrender.py`),
+1 glyph per frame (page 0 complete at frame 104). Menu paging tests encode the trace of §4.2
+(self-consistency, not yet compared with a running game).
 
 ## For other workstreams
 - SCRIPT: the menu contract (§4.1) depends on op_38/36/39 and the guard S:0x16C90; the message

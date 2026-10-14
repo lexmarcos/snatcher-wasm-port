@@ -38,6 +38,8 @@ pub struct Rendered { pub samples: Vec<i16>, pub loop_start: Option<usize>, pub 
 /// Render sound `id`. Music stops at the first exact repeat of the sequencer state (loop) or when
 /// all tracks end; `max_frames` bounds the run.
 pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain: f64) -> Rendered {
+    let no_drums = std::env::var("SNT_NO_DRUMS").is_ok();
+    if let Ok(m) = std::env::var("SNT_FM_MUTE") { drv.ym.mute = u8::from_str_radix(&m, 16).unwrap_or(0); }
     drv.request(id);
     let is_music = drv.sound_type(id) & 0x0F != 0;
     let spf = CHIP_RATE / FRAME_RATE;
@@ -59,6 +61,7 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
         drv.tick();
         for ev in drv.drums.drain(..) {
             for (note, vol, ch) in ev.decode() {
+                if no_drums { continue }
                 if let Some(Some((_, step, env, pan))) = kit.notes.get(note as usize) {
                     let env = if vol == 0 { *env as i32 } else { (*env as i32 * vol as i32) >> 8 };
                     // driver writes PAN nibble-swapped (S:0x154A2); RF5C164 low nibble = left (HYPOTHESIS)

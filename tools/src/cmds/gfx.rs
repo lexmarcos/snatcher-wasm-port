@@ -104,10 +104,16 @@ fn lzkn_verify(raw: &Path, refbin: &Path) -> Result<(), String> {
     let blobs = all_blobs(raw)?;
     let tmp = std::env::temp_dir().join(format!("snt-lzkn-{}", std::process::id()));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
-    let (mut ok, mut bad) = (0, 0);
+    let (mut ok, mut bad, mut rejected) = (0, 0, 0);
     let mut total = 0usize;
     for (i, (name, data, addr)) in blobs.iter().enumerate() {
-        let (mine, used) = lzkn::decompress(data).map_err(|e| format!("{name}@{addr:06x}: {e:?}"))?;
+        let (mine, used) = match lzkn::decompress(data) {
+            Ok(v) => v,
+            // Candidates found by scanning anim scripts for op 0x8A are heuristic: a
+            // descriptor that is not a real LZKN1 source is reported, not fatal.
+            Err(e) if name.ends_with("/tilech") => { eprintln!("rejected candidate {name}@{addr:06x}: {e:?}"); rejected += 1; continue; }
+            Err(e) => return Err(format!("{name}@{addr:06x}: {e:?}")),
+        };
         let header = u16::from_be_bytes([data[0], data[1]]) as usize;
         // The reference tool decompresses a whole file: give it exactly the consumed bytes.
         let inp = tmp.join(format!("b{i}.lz"));
@@ -124,7 +130,7 @@ fn lzkn_verify(raw: &Path, refbin: &Path) -> Result<(), String> {
         let _ = fs::remove_file(&outp);
     }
     let _ = fs::remove_dir_all(&tmp);
-    println!("lzkn verify: {ok} identical, {bad} mismatching, {} blobs, {total} bytes decoded", blobs.len());
+    println!("lzkn verify: {ok} identical, {bad} mismatching, {rejected} rejected heuristic candidates, {} blobs, {total} bytes decoded", blobs.len());
     if bad == 0 { Ok(()) } else { Err("mismatches".into()) }
 }
 
