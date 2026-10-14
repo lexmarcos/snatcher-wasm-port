@@ -7,6 +7,13 @@ use super::{PcmSfxEntry, parse_segments, DRUM_BASE};
 use std::collections::HashMap;
 
 pub const OUT_RATE: u32 = 48_000;
+/// longest accepted joint loop (ticks); per-track loops are combined with LCM
+/// seconds rendered past the loop end to verify the loop (correlation check)
+pub const VERIFY_SECONDS: f64 = 4.0;
+pub const MAX_LOOP_TICKS: usize = 60 * 60 * 12;
+
+fn gcd(a: usize, b: usize) -> usize { if b == 0 { a } else { gcd(b, a % b) } }
+fn lcm(a: usize, b: usize) -> usize { a / gcd(a, b) * b }
 /// NTSC VBlank rate (the driver ticks once per VBlank).
 pub const FRAME_RATE: f64 = 59.922_743;
 
@@ -33,7 +40,7 @@ impl DrumKit {
 
 struct Voice { note: usize, pos: f64, step: f64, gl: i32, gr: i32 }
 
-pub struct Rendered { pub samples: Vec<i16>, pub loop_start: Option<usize>, pub loop_end: usize, pub frames: usize }
+pub struct Rendered { pub samples: Vec<i16>, pub loop_start: Option<usize>, pub loop_end: usize, pub frames: usize, pub loop_corr: Option<f64> }
 
 /// Render sound `id`. Music stops at the first exact repeat of the sequencer state (loop) or when
 /// all tracks end; `max_frames` bounds the run.
@@ -46,16 +53,46 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
     let mut acc = 0.0;
     let mut chip: Vec<(i32, i32)> = Vec::new();
     let mut frame_start_chip = Vec::new();
-    let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
+    let mut last_ticks = [0u64; 10];
+    let mut per: Vec<(HashMap<Vec<u8>, usize>, Option<(usize, usize)>, Vec<usize>)> = (0..8).map(|_| (HashMap::new(), None, Vec::new())).collect();
+    let mut target: Option<usize> = None;
+    let mut lcm_ticks = 0usize;
+    let mut extra_until = usize::MAX;
     let mut voices: [Option<Voice>; 2] = [None, None];
     let mut loop_frames: Option<(usize, usize)> = None;
     let mut tail = 0usize;
     let mut f = 0usize;
     while f < max_frames {
         if is_music {
-            let key = drv.state_key();
-            if let Some(&g) = seen.get(&key) { loop_frames = Some((g, f)); break; }
-            seen.insert(key, f);
+            // per-track control-state periodicity, each track sampled at its own ticks
+            for tr in 0..8usize {
+                if per[tr].1.is_some() || drv.ticks[tr] == last_ticks[tr] { continue }
+                last_ticks[tr] = drv.ticks[tr];
+                let t = per[tr].2.len();
+                per[tr].2.push(f);
+                let key = drv.track_key(tr as u32);
+                if let Some(&g) = per[tr].0.get(&key) { per[tr].1 = Some((g, t - g)); } else { per[tr].0.insert(key, t); }
+            }
+            if target.is_none() && f > 8 && (0..8).all(|tr| per[tr].1.is_some() || !drv.track_active(tr as u32)) {
+                // joint loop: LCM of periods (in ticks of a common tempo), start after every track's start
+                let mut l = 1usize; let mut sf = 0usize;
+                for tr in 0..8 {
+                    if let Some((g, p)) = per[tr].1 { l = lcm(l, p); sf = sf.max(per[tr].2[g]); }
+                }
+                if l <= MAX_LOOP_TICKS && drv.track_active(0) {
+                    let k0 = per[0].2.iter().position(|&fr| fr >= sf).unwrap_or(per[0].2.len());
+                    target = Some(k0 + l); lcm_ticks = l;
+                } else { target = Some(usize::MAX); }
+            }
+            if let Some(tg) = target {
+                if tg != usize::MAX && per[0].2.len() > tg && loop_frames.is_none() {
+                    loop_frames = Some((per[0].2[tg - lcm_ticks], per[0].2[tg]));
+                    extra_until = f + (FRAME_RATE * VERIFY_SECONDS) as usize;
+                }
+                if loop_frames.is_some() && f >= extra_until { break }
+            }
+            // slot 0 history continues after its own period was found (needed for frame mapping)
+            if per[0].1.is_some() && drv.ticks[0] != last_ticks[0] { last_ticks[0] = drv.ticks[0]; per[0].2.push(f); }
         }
         frame_start_chip.push(chip.len());
         drv.tick();
@@ -107,8 +144,20 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
     }
     let to_out = |chip_idx: usize| (chip_idx as f64 / ratio) as usize;
     let (loop_start, loop_end) = match loop_frames {
-        Some((g, _)) => (Some(to_out(frame_start_chip[g])), nout),
+        Some((g, e)) => (Some(to_out(frame_start_chip[g])), to_out(*frame_start_chip.get(e).unwrap_or(&chip.len())).min(nout)),
         None => (None, nout),
     };
-    Rendered { samples: out, loop_start, loop_end, frames: f }
+    // loop verification: correlate [ls, ls+V) with [le, le+V)
+    let mut loop_corr = None;
+    if let Some(ls) = loop_start {
+        let v = (OUT_RATE as f64 * VERIFY_SECONDS * 0.9) as usize;
+        if (loop_end + v) * 2 <= out.len() {
+            let (mut ab, mut aa, mut bb) = (0f64, 0f64, 0f64);
+            for i in 0..v * 2 { let a = out[ls * 2 + i] as f64; let b = out[loop_end * 2 + i] as f64; ab += a * b; aa += a * a; bb += b * b; }
+            loop_corr = Some(if aa > 0.0 && bb > 0.0 { ab / (aa * bb).sqrt() } else { 1.0 });
+        }
+    }
+    let mut out = out;
+    out.truncate(loop_end * 2);
+    Rendered { samples: out, loop_start, loop_end, frames: f, loop_corr }
 }

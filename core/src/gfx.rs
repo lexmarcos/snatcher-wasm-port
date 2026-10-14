@@ -220,16 +220,20 @@ pub struct Vdp {
     pub sprites: Vec<Sprite>,
     pub display: bool,
     pub backdrop: u8,
+    /// Per-line raster program from the main-CPU display logic (None = static frame).
+    pub raster: Option<raster::Raster>,
 }
 
 impl Default for Vdp {
     fn default() -> Self {
-        // Register defaults from the boot table M:0xFF1584 (H32, A=0xE000, B=0xC000, 64×64).
+        // In-game register set: main boot state 1 ends with M:0xFF1538 → table M:0xFF15A2/A6
+        // (`9010 833C 8238 8406 857F 8D3E`): H32, planes 32×64 cells, A=0xE000, B=0xC000,
+        // window 0xF000, sprites 0xFE00, hscroll 0xF800; $E048=1 (M:0xFF0A42).
         Vdp {
             vram: vec![0; 0x10000], cram: [0; 64], cram_b: [0; 64], split_line: Some(137),
-            plane_a: 0xE000, plane_b: 0xC000, plane_w: 64, plane_h: 64,
+            plane_a: 0xE000, plane_b: 0xC000, plane_w: 32, plane_h: 64,
             hscroll_a: 0, hscroll_b: 0, vscroll_a: 0, vscroll_b: 0,
-            sprites: vec![], display: true, backdrop: 0,
+            sprites: vec![], display: true, backdrop: 0, raster: None,
         }
     }
 }
@@ -279,8 +283,17 @@ impl Vdp {
         assert!(fb.len() >= SCREEN_W * SCREEN_H * 4);
         let mut line_spr = [(0u8, false); SCREEN_W];
         let mut cram = self.cram;
+        let split = match &self.raster { Some(r) => r.pal_split, None => self.split_line };
         for y in 0..SCREEN_H {
-            if let Some(sl) = self.split_line {
+            let (vsa, vsb, disp, hsb) = match &self.raster {
+                Some(r) => {
+                    let l = r.lines[y];
+                    let hb = r.line_hscroll_b.as_ref().map(|v| v[y]).unwrap_or(self.hscroll_b);
+                    (l.vscroll_a, l.vscroll_b, l.display, hb)
+                }
+                None => (self.vscroll_a, self.vscroll_b, self.display, self.hscroll_b),
+            };
+            if let Some(sl) = split {
                 let y16 = y as u16;
                 if y16 >= sl && y16 < sl + 12 {
                     let k = (y16 - sl) as usize;
@@ -288,14 +301,14 @@ impl Vdp {
                 }
             }
             let row = &mut fb[y * SCREEN_W * 4..(y + 1) * SCREEN_W * 4];
-            if !self.display {
+            if !disp {
                 for p in row.chunks_mut(4) { p.copy_from_slice(&[0, 0, 0, 255]); }
                 continue;
             }
             self.sprite_line(y, &mut line_spr);
             for x in 0..SCREEN_W {
-                let (b, bp) = self.plane_px(self.plane_b, self.hscroll_b, self.vscroll_b, x, y);
-                let (a, ap) = self.plane_px(self.plane_a, self.hscroll_a, self.vscroll_a, x, y);
+                let (b, bp) = self.plane_px(self.plane_b, hsb, vsb, x, y);
+                let (a, ap) = self.plane_px(self.plane_a, self.hscroll_a, vsa, x, y);
                 let (s, sp) = line_spr[x];
                 // Priority order (high to low): S(hi) A(hi) B(hi) S(lo) A(lo) B(lo).
                 let layers = [(s, sp), (a, ap), (b, bp), (s, false), (a, false), (b, false)];
@@ -443,3 +456,45 @@ pub fn font_glyph(mem: &SubMem, ch: u8) -> ([u8; 8], u8) {
 }
 
 pub mod anim;
+pub mod raster;
+
+/// Complete display pipeline: sub-CPU scene runtime + main-CPU effects/raster + VDP.
+/// Call [`Display::frame`] once per 60 Hz frame, then [`Display::render`].
+pub struct Display {
+    pub vdp: Vdp,
+    pub sub: anim::Runtime,
+    pub main: raster::MainDisplay,
+}
+
+impl Default for Display {
+    fn default() -> Self { Display { vdp: Vdp::default(), sub: anim::Runtime::new(), main: raster::MainDisplay::new() } }
+}
+
+impl Display {
+    pub fn new() -> Self { Self::default() }
+
+    /// `subfn_16(n)` for the DATA file currently mapped at [`DATA_BASE`].
+    pub fn load_scene(&mut self, mem: &SubMem, n: usize) -> bool {
+        let table = mem.u32(DATA_BASE + 4) & 0xFF_FFFF;
+        if n >= scene_count(mem, table) { return false; }
+        self.sub.load_scene(mem, scene_addr(mem, table, n));
+        true
+    }
+
+    /// One frame: sub display tick, mailbox to the main CPU, main VBlank (raster program).
+    pub fn frame(&mut self, mem: &SubMem) {
+        self.sub.tick(mem, &mut self.vdp);
+        let (a, b) = std::mem::take(&mut self.sub.mail);
+        self.main.mailbox(a, b);
+        let req = std::mem::take(&mut self.sub.split_req);
+        if req != 0 { self.main.e036 = if req == 0xFF { 0 } else { req as u16 }; }
+        let p = &self.sub.scroll.pos;
+        let ss = [(p[0] >> 16) as i16, (p[1] >> 16) as i16, (p[2] >> 16) as i16, (p[3] >> 16) as i16];
+        let r = self.main.vblank(ss);
+        self.vdp.hscroll_a = self.main.e700.0 as i16;
+        self.vdp.hscroll_b = self.main.e700.1 as i16;
+        self.vdp.raster = Some(r);
+    }
+
+    pub fn render(&self, fb: &mut [u8]) { self.vdp.render(fb) }
+}

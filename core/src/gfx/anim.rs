@@ -15,8 +15,6 @@ pub enum Event {
     Sound { id: u8, kind: u8 },
     /// Anim op 0x9F (S:0xFC0C): `subfn_06(d0=id, d1=-1)` – periodic request (HYPOTHESIS: voice/sfx).
     Periodic { id: u8 },
-    /// Anim op 0xA8 / scroll mode ≥ 7: screen effect number for the main CPU (M:$236408).
-    ScreenEffect(u8),
     /// Chunk type 8: screen mode word for M:$236406.
     ScreenMode(u16),
     /// $B6403 request: bit0 clear plane A (0xE000, 4 KiB), bit1 clear plane B (0xC000, 4 KiB).
@@ -92,6 +90,14 @@ pub struct Runtime {
     pub vram_delay: u16,
     pub scroll: Scroll,
     pub tilech: [TileCh; 7],
+    /// Pending effect requests $8F0A (raster channel), $8F0B (scroll/wave channel), $8F0C (reset).
+    pub fx_a: u8,
+    pub fx_b: u8,
+    pub fx_reset: u8,
+    /// One-shot mailbox to the main CPU (S:$B6408, S:$B640C), consumed by the display.
+    pub mail: (u8, u8),
+    /// S:$7891 → S:$B6405: palette-split request (persistent on the main side; 0xFF = refresh only).
+    pub split_req: u8,
     /// Word RAM staging buffers S:0xB8000/0xBA000/0xBC000/0xBE000 (8 KiB each).
     pub tilebuf: Vec<Vec<u8>>,
     pub rng: [u8; 4],
@@ -108,6 +114,7 @@ impl Default for Runtime {
             objs: vec![Obj::default(); 64], palch: [PalCh::default(); 12], palch_rr: 11,
             shadow: [0; 128], pal_dirty: 0, vram_list: None, vram_delay: 0, scroll: Scroll::default(),
             tilech: [TileCh::default(); 7], tilebuf: vec![vec![0u8; 0x2000]; 4],
+            fx_a: 0, fx_b: 0, fx_reset: 0, mail: (0, 0), split_req: 0,
             rng: [0; 4], frame: 0, budget: 1, cd_time: 0, pause_groups: 0, events: vec![],
         }
     }
@@ -411,6 +418,7 @@ impl Runtime {
                 0x27 => { self.objs[i].pal_override = b[1]; }
                 0x28 => { self.scroll_mode(b[1]); }
                 0x29 => { self.objs[i].hold = 0; if (self.frame & 2) == 0 { self.objs[i].hold = 1; return; } }
+                0x2B => { self.split_req = b[1]; }
                 0x2C => { self.objs[i].fast = 1; }
                 0x2D => { self.events.push(Event::Sound { id: b[1], kind: 1 }); }
                 0x2F => { self.objs[i].group = b[1]; }
@@ -465,28 +473,40 @@ impl Runtime {
         }
     }
 
-    /// `subfn_13` S:0xF3F8.
+    /// `subfn_13` S:0xF3F8 (scroll mode / screen-effect request).
+    /// FF/FC: reset scroll state, then (next tick) send FF/FC to the main CPU's second effect
+    /// channel; FD or <7: `$8F0B` (second channel: 1/2 = sub-driven scroll, 3–6 waves);
+    /// <3 also sets the scroll mode (1 = absolute once); ≥7: `$8F0A` (raster effect channel).
     pub fn scroll_mode(&mut self, m: u8) {
         match m {
-            0xFF | 0xFC => { self.scroll = Scroll::default(); }
+            0xFF | 0xFC => { self.scroll = Scroll::default(); self.fx_a = 0; self.fx_b = 0; self.fx_reset = m; }
             0xFD | 0..=6 => {
-                if m < 3 { self.scroll.mode = m as u16; } else if m != 0xFD { self.scroll.mode = 0; }
-                if m >= 3 && m != 0xFD { self.events.push(Event::ScreenEffect(m)); }
+                self.fx_b = m;
+                if m < 3 { self.scroll.mode = if m == 1 { 0x0101 } else { m as u16 }; } else { self.scroll.mode = 0; }
             }
-            _ => self.events.push(Event::ScreenEffect(m)),
+            _ => self.fx_a = m,
         }
     }
 
-    /// `subfn_22` S:0xF446 / S:0xF47C.
+    /// `subfn_22` S:0xF446 / S:0xF47C. Fills the one-shot mailbox `mail` (S:$B6408/$B640C).
     pub fn scroll_tick(&mut self) {
+        if self.fx_reset != 0 {
+            self.mail = (0, self.fx_reset);
+            self.fx_reset = 0;
+            return;
+        }
+        if self.fx_a != 0 { self.mail.0 = self.fx_a; }
+        if self.fx_b != 0 { self.mail.1 = self.fx_b; }
+        self.fx_a = 0; self.fx_b = 0;
         if self.scroll.mode == 0 { return; }
         let d = std::mem::take(&mut self.scroll.delta);
+        let absolute = self.scroll.mode >> 8 == 1;
+        if absolute { self.scroll.mode &= 0xFF; }
         for k in 0..4 {
-            let base = if self.scroll.mode == 1 { 0 } else { self.scroll.pos[k] };
+            let base = if absolute { 0 } else { self.scroll.pos[k] };
             let v = (self.scroll.vel[k] as i32) << 8;
-            self.scroll.pos[k] = if self.scroll.mode == 1 { d[k].wrapping_add(base) } else { base.wrapping_add(d[k]).wrapping_add(v) };
+            self.scroll.pos[k] = base.wrapping_add(d[k]).wrapping_add(v);
         }
-        if self.scroll.mode == 1 { self.scroll.mode = 0; }
     }
 
     /// S:0xED28 sat_build: objects → sprite list (link order = slot order).

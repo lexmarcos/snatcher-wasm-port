@@ -65,6 +65,10 @@ pub struct KDriver {
     pub e030: u16, // M:$FFE030 bit0 = PAL tempo adjust (0 on NTSC)
     /// diagnostics: how often the vibrato-ramp bug path (see ff4468) was taken
     pub f9_ramp_hits: u32,
+    /// number of sequencer ticks of music slot 0 (used for tick-domain loop detection)
+    pub tick0: u64,
+    /// sequencer ticks per slot (0..9)
+    pub ticks: [u64; 10],
 }
 
 
@@ -72,7 +76,7 @@ impl KDriver {
     /// `ip` = main-CPU IP image starting at M:0xFF0000; `fmwr` = FMWR_1.BIN.
     pub fn new(ip: Vec<u8>, fmwr: Vec<u8>) -> Self {
         let mut d = KDriver { ram: vec![0; (RAM_END - RAM_BASE) as usize], ip, z80: vec![0; 0x2000],
-                              wram: fmwr, ym: Ym2612::new(), a3: 0, drums: Vec::new(), e030: 0, f9_ramp_hits: 0 };
+                              wram: fmwr, ym: Ym2612::new(), a3: 0, drums: Vec::new(), e030: 0, f9_ramp_hits: 0, tick0: 0, ticks: [0; 10] };
         d.boot_load();
         d.wb(VOLW, 0xFF); d.wb(VOLW + 1, 0xFF);
         d
@@ -342,6 +346,8 @@ impl KDriver {
             self.ff425a(a1, d3, &mut a0);
         } else {
             self.wb(a1 + 0x24, 1);
+            if a1 == 0xFF7A00 { self.tick0 += 1; }
+            self.ticks[((a1 - 0xFF7A00) / 0x80) as usize] += 1;
             self.ff4202(a1, d3, &mut a0);
         }
         self.wl(a1 + 0x6C, a0);
@@ -871,6 +877,7 @@ impl KDriver {
                 let (s, c) = self.rb(a1 + 5).overflowing_add(t);
                 self.wb(a1 + 5, s);
                 if c {
+                    self.ticks[d3 as usize] += 1;
                     let mut a0 = self.rl(a1 + 0x6C);
                     let v = self.rb(a1 + 0x1E).wrapping_sub(1); self.wb(a1 + 0x1E, v);
                     if v == 0 {
@@ -1052,15 +1059,17 @@ impl KDriver {
         self.ym3(ch.wrapping_add(0xA0), v as u8);
     }
 
-    /// Snapshot of sequencer state used for loop detection (track pointers + counters).
-    pub fn state_key(&self) -> Vec<u8> {
-        let mut k = Vec::with_capacity(0x500);
-        for s in 0..8u32 {
-            let a = 0xFF7A00 + s * 0x80;
-            for off in 0..0x80u32 { k.push(self.rb(a + off)); }
-        }
-        k
+    /// Per-track control-state snapshot used for loop detection (`slot` 0..9). All 0x80 bytes of
+    /// the track except free-running/derived per-frame fields (tempo accumulator, vibrato/auto-pan/
+    /// noise phases, portamento and volume-slide progress, current pitch/volume, dirty flags).
+    pub fn track_key(&self, slot: u32) -> Vec<u8> {
+        const SKIP: &[u32] = &[0x05, 0x06, 0x0B, 0x13, 0x15, 0x17, 0x19, 0x1F, 0x24, 0x30, 0x31, 0x32, 0x33,
+            0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x4A, 0x4B, 0x4E, 0x4F, 0x56, 0x57, 0x70, 0x71, 0x72, 0x73];
+        let a = 0xFF7A00 + slot * 0x80;
+        (0..0x80u32).filter(|o| !SKIP.contains(o)).map(|o| self.rb(a + o)).collect()
     }
+
+    pub fn track_active(&self, slot: u32) -> bool { self.rb(0xFF7A00 + slot * 0x80) != 0 }
 
     /// true while any music track (slots 0..7) is active
     pub fn music_active(&self) -> bool { (0..8u32).any(|s| self.rb(0xFF7A00 + s * 0x80) != 0) }

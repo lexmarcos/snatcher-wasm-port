@@ -96,8 +96,11 @@ int scd_int_ack(int level) {
     return M68K_INT_ACK_AUTOVECTOR;
 }
 
+static uint32_t ring[2][256];
+static uint8_t ringpos[2];
 void scd_instr_hook(unsigned int pc) {
     pc &= 0xFFFFFF;
+    ring[cur][ringpos[cur]++] = pc;
     if (!hookpage[cur][pc >> 16]) return;
     for (int i = 0; i < nhooks[cur]; i++)
         if (hooks[cur][i] == pc) { hook_cb(cur, pc); return; }
@@ -140,4 +143,9 @@ unsigned int core_disasm(int c, uint32_t pc, char *buf) {
     unsigned int n = m68k_disassemble(buf, pc, M68K_CPU_TYPE_68000);
     if (running < 0) activate(prev);
     return n;
+}
+
+/* copy the last 256 executed PCs (oldest first) */
+void core_pc_ring(int c, uint32_t *out) {
+    for (int i = 0; i < 256; i++) out[i] = ring[c][(uint8_t)(ringpos[c] + i)];
 }

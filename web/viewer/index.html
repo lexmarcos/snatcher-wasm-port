@@ -17,7 +17,7 @@ select,label{font:inherit}
 .row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
 </style></head>
 <body>
-<header><b>Snatcher scenes</b>
+<header><b>Snatcher scenes</b> <a href="/gfx/font.png" style="color:var(--acc)">font</a>
 <select id="file"></select>
 <label><input type="checkbox" id="vramOnly" checked> only scenes with VRAM uploads</label>
 <span id="count" style="color:var(--mut)"></span></header>
@@ -53,7 +53,7 @@ function show(e){
   d.innerHTML = `<div style="margin-bottom:8px"><b>${e.file} scene ${e.scene}</b> (click to close)</div>
    <div class="row"><div><div>screen 256×224 ×2</div><img id="scr" src="/gfx/scenes/${e.screen}" width="512" height="448"></div>
    <div><div>palette set A (CRAM top)</div>${pal(0)}<div>palette set B (below line 137)</div>${pal(64)}</div></div>
-   <div style="margin-top:12px">planes: A (top 64×32 cells) / B (bottom), transparent = checker</div>
+   <div style="margin-top:12px">planes (32×64 cells each): A (left) | B (right), transparent = checker</div>
    <img src="/gfx/scenes/${e.planes}" width="1024" height="1024" style="background:repeating-conic-gradient(#333 0 25%,#222 0 50%) 0 0/16px 16px">`;
   d.style.display='block'; d.onclick=()=>{d.style.display='none'};
 }

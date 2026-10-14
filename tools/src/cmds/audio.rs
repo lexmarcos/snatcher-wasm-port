@@ -96,10 +96,10 @@ fn audio_fm(raw: &Path, out: &Path, only: Option<&str>) -> Result<(), String> {
         let frames = r.samples.len() / 2;
         let peak = r.samples.iter().map(|s| (*s as i32).abs()).max().unwrap_or(0);
         w(&out.join(&name), &wav_bytes(&r.samples, render::OUT_RATE, 2))?;
-        let _ = write!(j, "{}\n    \"{}\": {{\"file\": \"{}\", \"music\": {}, \"frames\": {}, \"seconds\": {:.3}, \"loop_start\": {}, \"loop_end\": {}, \"peak\": {}, \"ticks\": {}, \"f9_bug_hits\": {}}}",
+        let _ = write!(j, "{}\n    \"{}\": {{\"file\": \"{}\", \"music\": {}, \"frames\": {}, \"seconds\": {:.3}, \"loop_start\": {}, \"loop_end\": {}, \"peak\": {}, \"ticks\": {}, \"f9_bug_hits\": {}, \"loop_corr\": {}}}",
             if k > 0 { "," } else { "" }, id, name, music, frames, frames as f64 / 48000.0,
-            r.loop_start.map(|x| x.to_string()).unwrap_or("null".into()), r.loop_end, peak, r.frames, drv.f9_ramp_hits);
-        eprintln!("{:02x} {} {:.1}s loop {:?} peak {} f9 {}", id, if music { "song" } else { "sfx " }, frames as f64 / 48000.0, r.loop_start, peak, drv.f9_ramp_hits);
+            r.loop_start.map(|x| x.to_string()).unwrap_or("null".into()), r.loop_end, peak, r.frames, drv.f9_ramp_hits, r.loop_corr.map(|c| format!("{c:.4}")).unwrap_or("null".into()));
+        eprintln!("{:02x} {} {:.1}s loop {:?} corr {:?} peak {} f9 {}", id, if music { "song" } else { "sfx " }, frames as f64 / 48000.0, r.loop_start, r.loop_corr, peak, drv.f9_ramp_hits);
     }
     j.push_str("\n  }\n}\n");
     w(&out.join(if only.is_some() { "fm_partial.json" } else { "fm.json" }), j.as_bytes())?;

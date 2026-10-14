@@ -1,4 +1,4 @@
-"""Experiment: rebuild VRAM/CRAM for a DATA scene and render planes A/B to PNG."""
+"""Experiment (superseded by core/src/gfx.rs + `snt gfx-export`): rebuild VRAM/CRAM for a DATA scene. NOTE: in-game planes are 32 cells wide (see docs/re/graphics.md §3); pass w=32."""
 import sys, struct
 sys.path.insert(0, '/home/suel/Documents/snatcher/re/py')
 from gfx_lzkn import lzkn1

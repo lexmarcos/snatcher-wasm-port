@@ -188,10 +188,14 @@ fn export(raw: &Path, out: &Path, only: &[String]) -> Result<(), String> {
             vdp.render(&mut fb);
             let png1 = format!("{stem}_{n:03}.png");
             write_png(&out.join(&png1), gfx::SCREEN_W, gfx::SCREEN_H, &fb)?;
-            let pa = vdp.render_plane(vdp.plane_a, 64, 32);
-            let pb = vdp.render_plane(vdp.plane_b, 64, 32);
-            let mut planes = pa.clone();
-            planes.extend_from_slice(&pb);
+            // planes side by side: A (left) | B (right), each 32×64 cells = 256×512
+            let pa = vdp.render_plane(vdp.plane_a, 32, 64);
+            let pb = vdp.render_plane(vdp.plane_b, 32, 64);
+            let mut planes = vec![0u8; 512 * 512 * 4];
+            for y in 0..512 {
+                planes[y * 2048..y * 2048 + 1024].copy_from_slice(&pa[y * 1024..(y + 1) * 1024]);
+                planes[y * 2048 + 1024..(y + 1) * 2048].copy_from_slice(&pb[y * 1024..(y + 1) * 1024]);
+            }
             let png2 = format!("{stem}_{n:03}_planes.png");
             write_png(&out.join(&png2), 512, 512, &planes)?;
             let pal: Vec<String> = rt.shadow.iter().map(|c| format!("{c}")).collect();
@@ -234,17 +238,21 @@ fn font(raw: &Path, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Frame strip through the full [`gfx::Display`] pipeline. `scenes` is a comma list of
+/// tokens: `N` = load scene N, `fxN` = request screen effect N (scroll_mode), `txt` = draw a
+/// test text into the text bitmap (tiles 0-254 + nametable 0xEC80, as S:0x13D4E), `wN` = wait N frames.
 fn anim_strip(raw: &Path, name: &str, scenes: &str, out: &Path, frames: &str, step: &str) -> Result<(), String> {
     let f = raw.join("files").join(format!("{}.BIN", name.trim_end_matches(".BIN")));
-    let bytes = fs::read(&f).map_err(|e| e.to_string())?;
     let mem = sub_mem(raw, Some(&f))?;
-    let hdr = gfx::data_header(&bytes).ok_or("bad header")?;
     let frames: usize = frames.parse().map_err(|_| "frames")?;
     let step: usize = step.parse().map_err(|_| "step")?;
-    let (mut vdp, mut rt) = (Vdp::default(), Runtime::new());
-    for sc in scenes.split(',') {
-        let n: usize = sc.parse().map_err(|_| "scene")?;
-        rt.load_scene(&mem, gfx::scene_addr(&mem, hdr.scene_table, n));
+    let mut d = gfx::Display::new();
+    for tok in scenes.split(',') {
+        if let Some(n) = tok.strip_prefix("fx") { d.sub.scroll_mode(n.parse().map_err(|_| "fx")?); }
+        else if tok == "txt" { test_text(&mem, &mut d.vdp); d.sub.shadow[15] = 0x0EEE; d.sub.shadow[64 + 15] = 0x0EEE; }
+        else if let Some(n) = tok.strip_prefix('w') { for _ in 0..n.parse::<usize>().map_err(|_| "w")? { d.frame(&mem); } }
+        else if let Some(n) = tok.strip_prefix("split") { d.sub.split_req = n.parse().map_err(|_| "split")?; }
+        else { d.load_scene(&mem, tok.parse().map_err(|_| "scene")?); }
     }
     let shots = frames / step;
     let cols = 4usize;
@@ -253,14 +261,43 @@ fn anim_strip(raw: &Path, name: &str, scenes: &str, out: &Path, frames: &str, st
     let mut img = vec![0u8; w * h * 4];
     let mut fb = vec![0u8; gfx::SCREEN_W * gfx::SCREEN_H * 4];
     for k in 0..shots {
-        for _ in 0..step { rt.tick(&mem, &mut vdp); }
-        vdp.render(&mut fb);
+        for _ in 0..step { d.frame(&mem); }
+        d.render(&mut fb);
         let (ox, oy) = ((k % cols) * gfx::SCREEN_W, (k / cols) * gfx::SCREEN_H);
         for y in 0..gfx::SCREEN_H {
-            let d = ((oy + y) * w + ox) * 4;
-            img[d..d + gfx::SCREEN_W * 4].copy_from_slice(&fb[y * gfx::SCREEN_W * 4..(y + 1) * gfx::SCREEN_W * 4]);
+            let o = ((oy + y) * w + ox) * 4;
+            img[o..o + gfx::SCREEN_W * 4].copy_from_slice(&fb[y * gfx::SCREEN_W * 4..(y + 1) * gfx::SCREEN_W * 4]);
         }
     }
-    for e in rt.events.iter().take(20) { eprintln!("event {e:?}"); }
+    for e in d.sub.events.iter().take(20) { eprintln!("event {e:?}"); }
     write_png(out, w, h, &img)
+}
+
+/// Draw a test string into the 4bpp text bitmap like S:0x13E9C (colour 0xF, tiles row-major,
+/// 32 tiles per row) and write the S:0x13D4E nametable (0x8000+i) at VRAM 0xEC80.
+fn test_text(mem: &SubMem, vdp: &mut Vdp) {
+    for i in 0..256u16 {
+        let e = 0x8000u16 + if i < 255 { i } else { 0 };
+        vdp.write_vram(0xEC80 + 2 * i, &e.to_be_bytes());
+    }
+    let lines = ["THE QUICK BROWN FOX JUMPS OVER", "the lazy dog. Snatcher text test", "Line three: 0123456789 !?"];
+    let (mut x, mut y) = (0x18usize, 2usize);
+    for l in lines {
+        for ch in l.bytes() {
+            let (g, adv) = gfx::font_glyph(mem, ch);
+            for (r, bits) in g.iter().enumerate() {
+                for c in 0..8 {
+                    if bits & (0x80 >> c) == 0 { continue; }
+                    let (px, py) = (x + c, y + r);
+                    let tile = (py / 8) * 32 + px / 8;
+                    let a = tile * 32 + (py % 8) * 4 + (px % 8) / 2;
+                    if a >= 0x1FE0 { continue; }
+                    let b = &mut vdp.vram[a];
+                    *b = if px % 2 == 0 { (*b & 0x0F) | 0xF0 } else { (*b & 0xF0) | 0x0F };
+                }
+            }
+            x += adv as usize;
+        }
+        x = 0x18; y += 9;
+    }
 }

@@ -65,12 +65,17 @@ See §5 for the object/animation runtime.
 
 ## 3. Main CPU side (display)
 
-- VDP register sets (table M:0xFF1584, applied by M:0xFF1506 at boot):
-  `8004 8104 9011 8B00 8C00 832C 8238 8406 855F 8D2E 8700 8A3F 8F02 9100 9200`
-  → **H32 mode (256×224)**, planes 64×64, plane A 0xE000, plane B 0xC000, window 0xB000,
-  sprites 0xBE00, hscroll 0xB800. Alternate set M:0xFF15A4/0xFF15A6 (`9001 833C 8238 8406 857F 8D3E`:
-  64×32 planes, window 0xF000, sprites 0xFE00, hscroll 0xF800), selected via M:$236406 (sub S:$B6406).
-  Plane B base toggles 0xC000/0xE000 (M:0xFF1570 `8406`, M:0xFF157A `8407`) via M:$23642C.
+- VDP register sets: boot table M:0xFF1584 (M:0xFF1506): `8004 8104 9011 8B00 8C00 832C 8238 8406
+  855F 8D2E 8700 8A3F 8F02 9100 9200` → **H32 (256×224)**, planes 64×64, A 0xE000, B 0xC000,
+  window 0xB000, sprites 0xBE00, hscroll 0xB800 (used by the boot logos only).
+- **In-game set** (verified by rendering): main boot state 1 ends with M:0xFF2C06 `jsr $FF1538`
+  → reg 0x90=0x10 (M:0xFF15A2) + `833C 8238 8406 857F 8D3E` (M:0xFF15A6): **planes 32×64 cells**,
+  A 0xE000, B 0xC000, window 0xF000, sprites 0xFE00, hscroll 0xF800; then $E048=1 (M:0xFF0A42)
+  selects SAT DMA from Word RAM M:$236200 → 0xFE00 (M:0xFF1772) and hscroll at 0xF800.
+  With 32-cell rows the DATA nametables decode to full 192×128 pictures (rows 1–16, y 8–135);
+  with a 64-wide stride they looked like two half-height copies (my first, wrong, assumption).
+  Scene chunk 8 (only DATA_Y15) switches via M:$236406: 0xFF → 32×64 (M:0xFF1538), else 64×32
+  (M:0xFF1540). Plane B base toggles 0xC000/0xE000 via M:$23642C (M:0xFF1570/0xFF157A).
 - DMA queue in Word RAM M:0x236000 (= S:0xB6000), 16 × 12-byte entries
   `[type:u16][src:u32][dst:u32][len:u16 bytes]`, filled by S:`subfn_10` 0xE322, executed in VBlank by
   M:0xFF17C4 → M:0xFF1806; only type 2 is handled (M:0xFF183C: VRAM DMA, length/2 words).
@@ -149,32 +154,63 @@ reveal over 65 steps using the mask table S:0xEA78; 4: dissolve-out. (Runtime: T
   F7 b fixed-width flag ($9728, advance 9); 00–1F → $9725 += 4·c (then skip one byte).
   (Details belong to the actions/text workstream.)
 
-## 7. Raster (H-INT) modes on the main CPU
-`hint_mode_setup` M:0xFF0AD4 runs in VBlank; $E06C selects a mode (table M:0xFF0AF8):
-- mode 0 (default): H-INT every line (reg 0x8A00), handler M:0xFF0C4A counts lines; at
-  line 0x88 (136) it streams 48 colours (set B colours 16–63 from $FFEC20) into CRAM 0x20,
-  4 colours per line → **palette split**: top uses set A, lines ≥137 use set B lines 1–3
-  (line 0 shared). Implemented in `Vdp::render` (`split_line`).
-- modes 1–21: letterbox/curtain style effects (H-INT M:0xFF0CCE / 0xFF0D6E toggling display
-  enable and VSRAM at given lines, $E064 = line). Driven by the main "screen effect" table
-  M:0xFF348E (30 effects) selected by sub mailbox S:$B6408/S:$B640C (scroll_mode ≥ 7).
-  Not yet modelled in the engine.
+## 7. Main-CPU screen effects and raster (implemented in core/src/gfx/raster.rs)
 
+Sub side: `scroll_mode(n)` (`subfn_13` S:0xF3F8) → n≥7: $8F0A, n<7 or FD: $8F0B (n<3 also
+sets the scroll mode: 1 = absolute once, 2 = relative), FF/FC: reset (→ $8F0C). `scroll_tick`
+(S:0xF446) posts them once into the Word RAM mailbox S:$B6408 / S:$B640C; the main CPU copies
+them to $E060 / $E070 and clears the mailbox (M:0xFF320A). Requests come from anim op A8 n,
+the sequencer and the message system (e.g. S:0x13698 `scroll_mode(0x15)`).
+
+Main side per VBlank: `hint_mode_setup` (M:0xFF08E4 → M:0xFF0AD4, only when $E06C≠0 or the
+palette split $E036≠0) programs reg 0x8A and the H-INT handler $E032 for this frame; then
+`scroll_update` (M:0xFF3CAA: VSRAM = −COMSTAT4/6 if $E076 else $EB00); then the effect
+dispatcher M:0xFF332C runs channel A ($E060/$E061, step $E062) and channel B ($E070/$E071).
+Effect table M:0xFF348E (30 entries):
+| fx | handler | what it does |
+|---|---|---|
+| 1,2 | 0xFF34CA | $E076=1: VSRAM/hscroll follow the sub's scroll (COMSTAT3–6) |
+| 3,4,6 | 0xFF34DA/0xFF3642/0xFF37C0 | line-scroll waves: reg 0xB line mode, plane-B hscroll per line 8.. from $E722 (groups drift at different rates = parallax) |
+| 5 | 0xFF36FE | fixed line-offset pattern, then back to full scroll |
+| 7 | 0xFF3800 | raster mode 1 (H-INT every 16 lines, handler 0xFF0CCE): display off lines 80–175, VSRAM −48/−16 – 4-frame squeeze |
+| 8–12 | 0xFF3836 | modes 2–6 (handler 0xFF0D6E): visible band of 64 lines at 8 / 80 / 104 / 128 / 152 with ±$E064 vscroll split, shrinking over 0x17 frames |
+| 13,14 | 0xFF388E/0xFF38E8 | modes 7/8 (0xFF0EA8): VSRAM=$E066 from line $E064 – curtain open/close |
+| 15 | 0xFF393C | mode 9 (0xFF0EFA): VSRAM=$E064 from line 144 |
+| 16,17 | 0xFF3958/0xFF39D4 | modes 10/11 (0xFF0F4C/0FA2/1016/1092): multi-split vertical slides |
+| 18,19,20 | 0xFF3A5A/0xFF3AA2/0xFF3AEA | modes 12–14 (0xFF10D4): plane-A VSRAM=$E064 from line 160 → **text window at the bottom** (rows 50–57 of plane A = text bitmap) – 18/19 slide it in/out |
+| 21 | 0xFF3B06 | mode 15 (0xFF1114): text window from line 72 |
+| 22 | 0xFF3B22 | mode 16 (0xFF1154): text window from line 168 |
+| 23 | 0xFF3B3E | mode 17 (0xFF1194): plane B shifted by −$E068 from line 80 |
+| 24–27 | 0xFF3B82… | modes 18–21 (0xFF11F4): plane B VSRAM −$E064 from line 80 (slides) |
+| 28,29 | 0xFF3C48/0xFF3C64 | modes 22/23 (0xFF123A): every-line H-INT: palette split at 136 + plane B shift from line 72 |
+Default (mode 0 with $E036≠0, handler 0xFF0C4A, H-INT every line): at line 136 the
+handler streams set-B colours 16–63 ($FFEC20) into CRAM, 4 per line → **palette split**
+(picture above uses set A, text window/portraits below use set B). $E036 comes from sub
+$7891 → S:$B6405 (anim op AB n; 0xFF only refreshes palette A and clears the split).
+H-INT timing used by the model: with reg 0x8A=N the k-th interrupt fires at the end of line
+(k+1)(N+1)−1 and its VSRAM/CRAM/display writes apply from the next line; handlers that write
+reg 0 = $FFEF00 (bit 4 clear) stop further H-INTs that frame.
+
+Verified visually (`snt gfx-anim assets/raw DATA_H00 0,w60,txt,fx20 out.png 8 2`): with a
+test string drawn by the game's font into tiles 0–254 and the S:0x13D4E nametable, fx 20/22
+show the text window at lines 160/168 under the picture, fx 21 overlays it at line 72.
 ## 8. Engine-facing API (core/src/gfx.rs)
 ```rust
 let mut mem = SubMem::new();
-mem.map(gfx::SUBCODE_BASE, subcode_bytes);      // built-in data (font, built-in scenes)
-mem.map(gfx::DATA_BASE, data_xx_bytes);         // current scene module
-let hdr = gfx::data_header(&data_xx_bytes).unwrap();
-let rec = gfx::scene_addr(&mem, hdr.scene_table, n);
-let (mut vdp, mut rt) = (Vdp::default(), anim::Runtime::new());
-rt.load_scene(&mem, rec);                       // = subfn_16(n)
-every frame: rt.tick(&mem, &mut vdp); vdp.render(&mut rgba_256x224);
-rt.events.drain(..)                             // sound / screen-effect requests
+mem.map(gfx::SUBCODE_BASE, subcode_bytes);   // built-in data (font, built-in scenes)
+mem.map(gfx::DATA_BASE, data_xx_bytes);      // current scene module (S:0x28000)
+let mut disp = gfx::Display::new();          // VDP + sub display runtime + main effects
+disp.load_scene(&mem, n);                    // = subfn_16(n)
+disp.sub.scroll_mode(fx);                    // = subfn_13: screen effects / scroll modes
+every 60 Hz frame: disp.frame(&mem); disp.render(&mut rgba_256x224);
+disp.sub.events.drain(..)                    // sound / periodic / screen-mode requests
 ```
 VRAM persists across scenes (scenes often only add sprites to a previous picture), so keep
-one `Vdp` for the whole game and call `load_scene` as the game does. Main-CPU plane clears
-(`$B6403`) → `Event::ClearPlanes`.
+one `Display` for the whole game. The text system draws into `disp.vdp.vram` tiles 0–254
+(4bpp bitmap, 32 tiles per row) and writes the nametable at 0xEC80 (see §6); its palette is
+CRAM line 0 (set A colours 0–15 and set B colours 64–79 in `disp.sub.shadow`).
+No conversion step is needed: the engine reads the original DATA_xx.BIN/SUBCODE.BIN files.
+`snt gfx-export` PNGs are for inspection only.
 
 ## For other workstreams
 - Save system lives in main code at M:0xFFE100 (copied from SP offset 0x1300 → S:0xB7800 →
@@ -183,3 +219,6 @@ one `Vdp` for the whole game and call `load_scene` as the game does. Main-CPU pl
 - SP state 1 (S:0x619C) loads file 0x35 = FMWR_1.BIN to S:0x80000 (Word RAM; main 0x200000). (audio)
 - Files at 0x50000 / 0x55000: PCMLT_01 (0x38) and PCMDRMDT (0x36) loaded by S:0xE2C6/S:0xE2DA. (audio)
 - Screen is H32: the engine framebuffer should be **256×224**, not 320×224.
+- Text window: plane A rows 50–57 (VRAM 0xEC80) hold the 32×8-tile text bitmap; it becomes
+  visible through screen effects 20 (line 160), 21 (line 72) or 22 (line 168) – see §7.
+  Speaker portraits are sprites below line 136 using palette set B.
