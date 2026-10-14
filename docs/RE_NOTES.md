@@ -68,3 +68,27 @@ Full list with LBAs: `assets/raw/filelist.tsv` (generated).
   6..4 = bit shift, 3..0 = width-1 (read S:0x16B14, write S:0x16B80).
 - Action queue at S:$9940 (a5), executed by the sequencer S:0xFFC4 (36 commands,
   table S:0xFFE2), progress index S:$9B40, busy flag S:$9B44.
+
+## 4. Detailed notes per subsystem (each with evidence)
+| file | content |
+|---|---|
+| docs/re/script.md | scenario VM: 75 opcodes (0x00–0x4A, 50 handlers), operand types, execution model, stacks, variables, text encoding, SYS calls |
+| docs/re/actions.md | action sequencer (36 commands), text renderer and font, message box, menus, input, main↔sub protocol, saves, mode machine, objects/animation opcodes, shooting overview |
+| docs/re/graphics.md | LZKN1 (verified 1440/1440 blobs), DATA_xx.BIN scene modules, VRAM upload lists, palettes, tile streams, main-CPU screen/raster effects |
+| docs/re/audio.md | PCM voice/sfx formats (PCMLT_01/PCMLD_01/PCMDRMDT), FM driver on the main CPU (FMWR_1), CD-DA usage, engine audio spec |
+| docs/re/oracle.md | BIOS-free HLE test oracle (Musashi) that runs the original code; BIOS entry points used |
+| docs/re/modules.md, interact.md | title/intro/ending modules; menus (pointer/keypad/keyboard) and shooting (in progress) |
+
+## 5. Corrections found during engine integration (evidence)
+- Tile-stream channel kinds are 1-based: dispatch S:0xE89C `movea.l 0(pc,d0.w),a2` uses the
+  PC of the extension word (S:0xE89E) as base, so kind n → table slot n−1 at S:0xE8A2
+  (1 = per-frame LZKN entry S:0xE8F2, 2 = raw copies S:0xE93C, 3 = all entries S:0xE986,
+  4 = dissolve-in S:0xE9DC, 5 = dissolve-out S:0xEA88). Verified: the Omni Building caption
+  (DATA_H15, channels with kind 0x81) now matches the oracle's VRAM rows 16–27 (all 0x0258).
+- VRAM upload lists decompress into Word RAM S:0xB8000 (`lz_to_wordram` S:0xF32C) = tile
+  buffer 0, which later channels with bit 7 ("already decompressed") re-send.
+- `subfn_17` (S:0xF5E8, scene reset) kills objects 1–63 only (loop from S:$7A50); object 0 is the
+  menu cursor bar created by `sub_00EC5A` (cmd 01 list S:0xED0E, script S:0xED1C).
+- Anim ops 0x90–0x93 all pause the object and its children (obj 17 of DATA_H00 = door sign uses 0x93).
+- Sequencer audio commands (audio.md): 07 = FM music ($980E), 1C = FM sfx ($980F), 0D = voice
+  (ids 1–35 select a PCM bank), 0C = PCM sfx, 0E = CD-DA, 0A = wait PCM idle.
