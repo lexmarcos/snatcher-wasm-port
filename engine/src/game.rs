@@ -66,7 +66,7 @@ pub enum Top { Title, Intro, Game, Ending, Stopped }
 
 /// Where the VM thread is (S:0x16814 loop).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VmPhase { Pass, Draining, Menu, Stopped }
+pub enum VmPhase { Pass, Draining, Menu, MenuClose, Stopped }
 
 /// Output events for the front end (audio, saves).
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +100,13 @@ pub struct Engine {
     pub msg: Option<MessageBox>,
     pub text: TextWindow,
     pub menu: Option<(TextMenu, Vec<u16>)>,
+    /// list-menu close sequence in progress (result, frames waited), see `menu_close_frame`
+    pub menu_close: Option<(MenuResult, u32)>,
+    /// input of the previous tick for the VM-thread menu loop
+    pub menu_in: (u8, u8, u8),
+    menu_in_cur: (u8, u8, u8),
+    /// main `$E061` after the last two ticks (`$7892` is the sub's 2-frame-late copy, see `reg_7892`)
+    pub e061_hist: [u8; 2],
     pub regs: Regs,
     pub data_file: Option<u16>,
     pub frame: u64,
@@ -142,7 +149,7 @@ impl Engine {
         Engine {
             files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None,
             vm, script: vec![], phase: VmPhase::Stopped, queue: vec![], qi: 0, seq_step: 0, seq_timer: 0, msg: None,
-            text: TextWindow::new(), menu: None, regs: Regs::default(), data_file: None, frame: 0, out: vec![],
+            text: TextWindow::new(), menu: None, menu_close: None, menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
             top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(),
@@ -182,7 +189,7 @@ impl Engine {
         self.module = None;
         match self.top {
             Top::Title => {
-                if self.regs.get_b(0x785C) != 0 {
+                if self.regs.get(0x785C) != 0 {
                     // CONTINUE: VM state 1 continue branch with the loaded save block
                     let slot = self.regs.get_b(0x78B7) as usize;
                     // $78B7 = slot 0..3 (DATA_D2 S:0x28B68 `andi.b #3`; file name SNATCHER_0(1+n), S:0x28768)
@@ -217,7 +224,7 @@ impl Engine {
     /// VM thread state 0 → `sub_00EC5A`: palette flags, text window init, the two built-in
     /// tile tasks (menu cursor graphics) and the built-in objects (object 0 = menu cursor bar).
     fn vm_thread_init(&mut self) -> Vec<Action> {
-        if self.regs.get_b(0x785C) == 0 { self.disp.sub.f788a |= 2; } else { self.disp.sub.f7866 = 1; }
+        if self.regs.get(0x785C) == 0 { self.disp.sub.f788a |= 2; } else { self.disp.sub.f7866 = 1; }
         let l = |cmd: u16, p: u32| Action { cmd, args: vec![(p >> 16) as u16, p as u16] };
         // The original runs this as its own batch and waits for it (S:0xECAC) before state 1
         // queues the script load + 0F; the wait lets the new objects run their first script
@@ -276,7 +283,8 @@ impl Engine {
 
     pub fn tick(&mut self, pad: u8) {
         self.frame += 1;
-        if let Some(inp) = self.input.as_mut() { inp.update(pad); }
+        self.menu_in = self.menu_in_cur;
+        if let Some(inp) = self.input.as_mut() { inp.update(pad); self.menu_in_cur = (inp.pressed, inp.held, inp.repeat); }
         if self.voice_left > 0 { self.voice_left -= 1; }
         if self.voice_music_left > 0 && self.voice_music_left != u32::MAX { self.voice_music_left -= 1; if self.voice_music_left == 0 { self.regs.set_b(0x980E, 0); } }
         if self.sfx_left > 0 && self.sfx_left != u32::MAX { self.sfx_left -= 1; if self.sfx_left == 0 { self.regs.set_b(0x980F, 0); } }
@@ -300,6 +308,7 @@ impl Engine {
         }
 
         self.disp.frame(&self.mem);
+        self.e061_hist = [self.disp.main.e061, self.e061_hist[0]];
         let evs: Vec<_> = self.disp.sub.events.drain(..).collect();
         for ev in evs {
             match ev {
@@ -369,6 +378,7 @@ impl Engine {
             }
             VmPhase::Pass => self.vm_pass(),
             VmPhase::Menu => self.menu_frame(),
+            VmPhase::MenuClose => self.menu_close_frame(),
         }
     }
 
@@ -377,7 +387,10 @@ impl Engine {
         let script = std::mem::take(&mut self.script);
         let q = self.vm.run_pass(&script, &mut self.regs);
         self.script = script;
-        if self.trace { self.out.push(Out::Log(format!("pass pc={:04x} q={:?}", self.vm.pc, q.iter().map(|a| (a.cmd, a.args.clone())).collect::<Vec<_>>()))); }
+        if self.trace {
+            self.out.push(Out::Log(format!("pass pc={:04x} q={:?}", self.vm.pc, q.iter().map(|a| (a.cmd, a.args.clone())).collect::<Vec<_>>())));
+            for a in q.iter().filter(|a| a.cmd == 8) { let t = self.dbg_text(rd16(&a.args, 1)); self.out.push(Out::Log(format!("  msg spk {} \"{}\"", rd16(&a.args, 0), t))); }
+        }
         self.start_queue(q);
         self.phase = VmPhase::Draining;
     }
@@ -387,13 +400,37 @@ impl Engine {
         let depth = self.vm.path.len() as usize;
         let remembered = self.regs.get_b(0x9716);
         let wide = self.regs.get_b(0x7893) != 0;
-        if self.trace { self.out.push(Out::Log(format!("menu opened: {} items", items.len()))); }
+        if self.trace {
+            let txt: Vec<String> = items.iter().map(|&i| self.dbg_text(i)).collect();
+            self.out.push(Out::Log(format!("menu opened: {} items {:?}", items.len(), txt)));
+        }
         let (m, rem) = TextMenu::new(items.len(), depth, remembered, wide);
         self.regs.set_b(0x9716, rem);
         self.menu = Some((m, items));
         self.phase = VmPhase::Menu;
         self.disp.sub.scroll_mode(if wide { 0x12 } else { 0x0D });
         self.draw_menu();
+    }
+
+    /// S:0x1383C `sub_01383c`: draw frame `k` of the wait-for-confirm arrow. The descriptor
+    /// (S:0x1387C, `$7893` = 1: S:0x13894, 2: S:0x138AC; kind 0x52 = raw copy via tile channel) gets its two source
+    /// pointers patched to S:0x138C4 + 8k and +4, then `tilech_start`.
+    fn msg_wait_frame(&mut self, k: u8) {
+        let desc = match self.regs.get_b(0x7893) { 0 => 0x1387C, 1 => 0x13894, _ => 0x138AC };
+        let a2 = 0x138C4u32 + 8 * k as u32;
+        let mut d = self.mem.bytes(desc, 0x18);
+        d[2..6].copy_from_slice(&a2.to_be_bytes());
+        d[0xC..0x10].copy_from_slice(&(a2 + 4).to_be_bytes());
+        self.mem.map(0xF0_0000, d);
+        self.disp.sub.tilech_start(&self.mem, 0xF0_0000);
+    }
+
+    /// `$7892`: the sub CPU's copy of main `$E061`, 2 frames late (oracle: main `$E061` = 0 in frame 20, `$7892` = 0 in frame 22).
+    pub fn reg_7892(&self) -> u8 { self.e061_hist[1] }
+
+    /// Debug: ASCII rendering of the script text at `off` (up to 60 chars, stops at FF).
+    fn dbg_text(&self, off: u16) -> String {
+        self.script_text(off).iter().take_while(|&&c| c != 0xFF).take(70).map(|&c| if (0x20..0x7F).contains(&c) { c as char } else if c == 0xF2 { '/' } else if c == 0xF6 { '|' } else { '~' }).collect()
     }
 
     fn script_text(&self, off: u16) -> &[u8] {
@@ -438,7 +475,9 @@ impl Engine {
 
     fn menu_frame(&mut self) {
         if crate::menus::menu_frame_hook(self) { return; }
-        let (pressed, held, repeat) = self.input.as_ref().map(|i| (i.pressed, i.held, i.repeat)).unwrap_or((0, 0, 0));
+        // the menu loop runs in the VM thread, one frame behind the input interrupt (oracle: pad in frame 10,
+        // `$7991` = pad in frame 10, `$79F4`/`$9710` change in frame 11; fid_watch.py)
+        let (pressed, held, repeat) = self.menu_in;
         let frame = self.frame as u16;
         let Some((m, _)) = self.menu.as_mut() else { self.phase = VmPhase::Pass; return };
         let before = (m.cursor, m.page);
@@ -449,21 +488,36 @@ impl Engine {
         match r {
             None => { if moved { self.draw_menu(); } }
             Some(res) => {
+                // confirm: S:0x11274 plays SFX 0x1D (cmd 1C), then S:0x1106E hides the bar and S:0x11E2A runs the
+                // closing window effect (`scroll_mode(0x0E)`, 0x13 with `$7893`) and waits one frame + `$7892` (= main $E061)
                 self.menu = None;
-                crate::menus::list_close(self);
-                self.text_window_init();
-                match res {
-                    MenuResult::Selected(n) => {
-                        if depth0 { self.regs.set_b(0x9716, cursor); }
-                        self.fm_cmd(0x1D, false); // cmd 1C [0x1D]: menu confirm FM sfx
-                        self.vm.choose(Some(n as usize - 1));
-                    }
-                    MenuResult::Cancel => self.vm.choose(None),
+                if let MenuResult::Selected(_) = res {
+                    if depth0 { self.regs.set_b(0x9716, cursor); }
+                    self.fm_cmd(0x1D, false); // cmd 1C [0x1D]: menu confirm FM sfx (the thread waits for the sequencer: +1 frame)
                 }
-                self.phase = VmPhase::Pass;
-                self.vm_pass();
+                self.menu_close = Some((res, 0));
+                self.phase = VmPhase::MenuClose;
             }
         }
+    }
+
+    /// S:0x11E3C..0x11E46: after the closing effect was requested wait one sub frame (`sub_00D4AC`), then until
+    /// `$7892` (main `$E061`) is 0; only then the VM thread continues with the chosen item.
+    fn menu_close_frame(&mut self) {
+        let Some((res, t)) = self.menu_close else { self.phase = VmPhase::Pass; return };
+        if t == 0 {
+            crate::menus::list_close(self);
+            let wide = self.regs.get_b(0x7893) != 0;
+            self.disp.sub.scroll_mode(if wide { 0x13 } else { 0x0E });
+        }
+        if t <= 1 || (self.reg_7892() != 0 && t < 240) { self.menu_close = Some((res, t + 1)); return; }
+        self.menu_close = None;
+        match res {
+            MenuResult::Selected(n) => self.vm.choose(Some(n as usize - 1)),
+            MenuResult::Cancel => self.vm.choose(None),
+        }
+        self.phase = VmPhase::Pass;
+        self.vm_pass();
     }
 
     // ------------------------------------------------------------------ sequencer
@@ -688,7 +742,11 @@ impl Engine {
             t.iter().map(|&c| self.letter(c)).collect()
         };
         let mut m = self.msg.take().unwrap();
+        let st0 = if self.text.busy { 99 } else { m.state };
         let ev = m.tick(&mut self.text, &text, &self.names, confirm);
+        // S:0x13674 sub_01395A (state 10): `$9717 = 0` (portrait objects talk); S:0x13698 (state 2, narration): `$9717 = FF`
+        if st0 == 10 { self.regs.set_b(0x9717, 0); }
+        if st0 == 2 && m.speaker == 0 { self.regs.set_b(0x9717, 0xFF); }
         if self.text.busy { self.text_dirty = true; }
         match ev {
             MsgEvent::Done => {
@@ -697,6 +755,13 @@ impl Engine {
             }
             MsgEvent::ScreenCmd(n) => { if n == 0x0F || n == 0x14 || n == 0x16 { self.text_window_init(); } self.disp.sub.scroll_mode(n); }
             MsgEvent::ClearWindow => self.text_window_init(),
+            MsgEvent::WaitFrame(k) => self.msg_wait_frame(k),
+            MsgEvent::Begin => {
+                // S:0x13604: sub_0139D4 (objects 5..14 inactive), palette channel S:0x13622, `obj_slots` word 0 = 0 (menu bar)
+                for o in self.disp.sub.objs[5..15].iter_mut() { o.active = 0; }
+                self.disp.sub.objs[0].active = 0;
+                self.disp.sub.palch_start(&self.mem, 0x13622);
+            }
             MsgEvent::None => {}
         }
         self.msg = Some(m);

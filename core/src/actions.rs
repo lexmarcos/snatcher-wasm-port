@@ -175,7 +175,15 @@ pub enum MsgEvent {
     ClearWindow,
     /// Finished; the sequencer advances past command 08.
     Done,
+    /// State 5 wait-for-confirm animation (S:0x137E8 `msg_wait_confirm`): draw frame `k` of the 2x2 arrow
+    /// (nametable words at S:0x138C4 + 8k, tile channel via S:0x1383C).
+    WaitFrame(u8),
+    /// State 0 (S:0x13604): `sub_0139D4` clears the objects of slots 5..14 and slot 0 (menu bar), palette channel S:0x13622.
+    Begin,
 }
+
+/// `msg_wait_anim_tbl` S:0x1391C: (frame source byte, duration) pairs, `FF 00` terminated.
+pub const WAIT_ANIM: [(u8, u8); 9] = [(0x20, 0x0C), (0x24, 4), (0x28, 4), (0x2C, 4), (0x30, 4), (0x34, 4), (0x28, 4), (0x38, 4), (0x20, 4)];
 
 /// Sequencer command 08 (S:0x135B2). `text` = script text area (file offset 0x3800..).
 pub struct MessageBox {
@@ -189,13 +197,15 @@ pub struct MessageBox {
     pub keep_anim: bool, // $97CC hi = 2 (F4)
     pub name_y: u8,      // $971D (never written in SUBCODE → 0)
     pub wide_mode: u8,   // $7893 (portrait mode 0/1/2)
+    pub wait_idx: u8,    // $9742 (byte offset into WAIT_ANIM, steps of 2)
+    pub wait_cnt: u8,    // $9743
 }
 
 impl MessageBox {
     /// `spk_word` = first command argument (lo byte = speaker+1), `text_off` = second.
     pub fn new(spk_word: u16, text_off: u16, wide_mode: u8) -> Self {
-        MessageBox { state: 9, speaker: (spk_word & 0xFF) as i16 - 1, pos: text_off as usize, colour: 1, line_y: 0,
-            end: false, stop: 0, keep_anim: spk_word >> 8 == 2, name_y: 0, wide_mode }
+        MessageBox { state: 0, speaker: (spk_word & 0xFF) as i16 - 1, pos: text_off as usize, colour: 1, line_y: 0,
+            end: false, stop: 0, keep_anim: spk_word >> 8 == 2, name_y: 0, wide_mode, wait_idx: 0, wait_cnt: 0 }
     }
     fn open_cmd(&self) -> u8 { match self.wide_mode { 1 => 0x14, 2 => 0x16, _ => 0x0F } }
 
@@ -227,6 +237,8 @@ impl MessageBox {
     pub fn tick(&mut self, win: &mut TextWindow, text: &[u8], names: &[(u8, Vec<u8>)], confirm_pressed: bool) -> MsgEvent {
         if win.busy { return MsgEvent::None; }
         match self.state {
+            0 => { self.state = 1; MsgEvent::Begin }
+            1 => { self.state = 9; MsgEvent::None } // `$7891 = FF`
             9 => { self.state = 10; MsgEvent::None } // effect task S:0xECB6 (window open anim)
             10 => { win.clear(); self.colour = 1; self.end = false; self.state = 2; MsgEvent::ScreenCmd(self.open_cmd()) }
             2 => {
@@ -252,9 +264,25 @@ impl MessageBox {
                 }
                 MsgEvent::None
             }
-            4 => { self.state = 5; MsgEvent::None }
+            4 => { self.wait_idx = 0; self.wait_cnt = 1; self.state = 5; MsgEvent::None } // sub_01376c
             5 => {
-                if !confirm_pressed { return MsgEvent::None; }
+                let mut confirm = confirm_pressed;
+                let mut ev = MsgEvent::None;
+                if !confirm {
+                    // msg_wait_confirm S:0x137E8
+                    self.wait_cnt = self.wait_cnt.wrapping_sub(1);
+                    if self.wait_cnt == 0 && self.speaker != 0 {
+                        let k = (self.wait_idx / 2) as usize;
+                        ev = MsgEvent::WaitFrame(k as u8);
+                        self.wait_cnt = WAIT_ANIM[k].1;
+                        self.wait_idx += 2;
+                        let next = WAIT_ANIM.get(k + 1).map(|p| p.1).unwrap_or(0);
+                        if next == 0 {
+                            if self.keep_anim { confirm = true; } else { self.wait_idx = 0; }
+                        }
+                    }
+                }
+                if !confirm { return ev; }
                 self.state = if self.end { 6 } else { 7 };
                 MsgEvent::ScreenCmd(0xFE)
             }

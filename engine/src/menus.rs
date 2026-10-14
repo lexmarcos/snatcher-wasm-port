@@ -88,7 +88,7 @@ pub fn list_cursor(e: &mut Engine, line: usize) {
     set_x(e, 0, 0x10);
     set_y(e, 0, y);
     let o = &mut e.disp.sub.objs[0];
-    if o.active != 0 { o.flags = 0; } // `clr.b $7A25` (S:0x10FFE); the bar exists only after the init list
+    if o.script != 0 { o.active = 1; o.flags = 0; } // `move.w #1,obj_slots` + `clr.b $7A25` (S:0x1104E/0x10FFE); the bar exists only after the init list; message boxes clear `active` (S:0x13604)
 }
 
 /// S:0x1106E: `$7A25 = 3` when the menu closes (bar hidden).

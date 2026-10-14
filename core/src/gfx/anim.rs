@@ -98,6 +98,8 @@ pub struct Runtime {
     pub fx_reset: u8,
     /// One-shot mailbox to the main CPU (S:$B6408, S:$B640C), consumed by the display.
     pub mail: (u8, u8),
+    /// mailbox value waiting for the next frame (see `scroll_tick`)
+    pub mail_next: (u8, u8),
     /// S:$7891 → S:$B6405: palette-split request (persistent on the main side; 0xFF = refresh only).
     pub split_req: u8,
     /// Word RAM staging buffers S:0xB8000/0xBA000/0xBC000/0xBE000 (8 KiB each).
@@ -117,6 +119,9 @@ pub struct Runtime {
     /// S:$7887: scene-reset plane-clear handshake (1 = requested, 2 = main clearing); while it or a
     /// VRAM list ($7886) is pending the sub frame skips mode logic and object updates (S:0xD6EE)
     pub f7887: u8,
+    /// `self.frame` of the last DMA-queue push (`wr_dmaq` = S:$B6000, drained by the main CPU in its
+    /// next VBlank): tile channels on buffer 0 and the VRAM list wait while it is non-empty
+    pub last_dma: u16,
 }
 
 impl Default for Runtime {
@@ -125,9 +130,9 @@ impl Default for Runtime {
             objs: vec![Obj::default(); 64], palch: [PalCh::default(); 12], palch_rr: 11,
             shadow: [0; 128], pal_dirty: 0, vram_list: None, vram_delay: 0, scroll: Scroll::default(),
             tilech: [TileCh::default(); 7], tilebuf: vec![vec![0u8; 0x2000]; 4],
-            fx_a: 0, fx_b: 0, fx_reset: 0, mail: (0, 0), split_req: 0,
+            fx_a: 0, fx_b: 0, fx_reset: 0, mail: (0, 0), mail_next: (0, 0), split_req: 0,
             rng: [0; 4], frame: 0, budget: 1, cd_time: 0, pause_groups: 0, events: vec![],
-            f7866: 0, f788a: 0, f788b: 0, f7887: 0,
+            f7866: 0, f788a: 0, f788b: 0, f7887: 0, last_dma: 0xFF00,
         }
     }
 }
@@ -506,13 +511,16 @@ impl Runtime {
 
     /// `subfn_22` S:0xF446 / S:0xF47C. Fills the one-shot mailbox `mail` (S:$B6408/$B640C).
     pub fn scroll_tick(&mut self) {
+        // Delivery to the main CPU is one frame late: oracle (fid_watch.py): `scroll_mode(0x0E)` is requested by the
+        // sub thread in the frame where `$7A25` becomes 3 and the main `$E060` changes in the NEXT frame.
+        self.mail = std::mem::take(&mut self.mail_next);
         if self.fx_reset != 0 {
-            self.mail = (0, self.fx_reset);
+            self.mail_next = (0, self.fx_reset);
             self.fx_reset = 0;
             return;
         }
-        if self.fx_a != 0 { self.mail.0 = self.fx_a; }
-        if self.fx_b != 0 { self.mail.1 = self.fx_b; }
+        if self.fx_a != 0 { self.mail_next.0 = self.fx_a; }
+        if self.fx_b != 0 { self.mail_next.1 = self.fx_b; }
         self.fx_a = 0; self.fx_b = 0;
         if self.scroll.mode == 0 { return; }
         let d = std::mem::take(&mut self.scroll.delta);
@@ -576,7 +584,12 @@ impl Runtime {
             let c = self.tilech[k];
             if c.kind == 0 { continue; }
             let buf = ((c.kind >> 4) & 3) as usize;
+            // NOTE S:0xE8F2 & co wait for `wr_dmaq` to be empty when the buffer index is 0 (`move.b d1,d0; bne go;
+            // tst.w wr_dmaq; bne skip`). Modelling that as "skip for 2 frames after any push" starves the channels
+            // (options screen lists get dropped); the oracle shows the panel built ~2 frames slower than the
+            // unthrottled model, which is accepted as an approximation (docs/re/modules.md §4).
             let send = |rt: &mut Runtime, vdp: &mut Vdp, e: u32| {
+                rt.last_dma = rt.frame;
                 // S:0xE8C6: DMA buffer + off(+6) → VRAM (+4), len (+8) bytes.
                 let (vram, off, len) = (mem.u16(e + 4), mem.u16(e + 6) as usize, mem.u16(e + 8) as usize);
                 let end = (off + len).min(0x2000);
@@ -657,6 +670,7 @@ impl Runtime {
         // (`tst.w wr_dmaq`, S:0xE38A): at least one idle frame after each upload (title scene 0: 9 entries
         // take 19 frames in the oracle)
         self.vram_delay = mem.u16(p + 4).max(1);
+        self.last_dma = self.frame;
         let src = mem.u32(p) & 0xFF_FFFF;
         let dst = mem.u16(p + 6);
         // subfn_07 S:0xF326 → lz_to_wordram S:0xF32C: decompress into Word RAM S:0xB8000
@@ -677,7 +691,7 @@ impl Runtime {
         if self.vram_list.is_none() && self.f7887 == 0 { self.obj_update_all(mem); }
         self.scroll_tick();
         self.sat_build(mem, vdp);
-        self.palch_run(mem);
+        if self.vram_list.is_none() { self.palch_run(mem); } // S:0xE4B4: `tst.b $7886; bne rts`
         if self.vram_list.is_none() { self.tilech_run(mem, vdp); }
         self.vram_list_tick(mem, vdp);
         // Palette shadow → CRAM (M:0xFF32AC copies on dirty bits; we copy every frame).
