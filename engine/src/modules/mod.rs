@@ -8,7 +8,7 @@
 //! `sncore::gfx` and the helpers below.
 pub mod boot;
 pub mod timeline;
-// pub mod title;  // TODO: DATA_D2 title module not written yet (stopped mid-task)
+pub mod title;
 
 use crate::game::{cd_time_bcd, Engine, Module, Out, Top};
 use sncore::gfx;
@@ -16,7 +16,7 @@ use sncore::gfx;
 /// `module_factory` for [`Engine`]: which module runs for a top-level mode.
 pub fn factory(top: Top, part: u8) -> Option<Box<dyn Module>> {
     match top {
-        Top::Title => None, // TODO: title module (DATA_D2); None = skip straight to the intro
+        Top::Title => Some(Box::new(title::Title::new())),
         // table S:0x14AA0 (`00 03 00 02`): DATA_D1 then DATA_D0
         Top::Intro => Some(Box::new(timeline::Timeline::new(if part == 0 { timeline::Kind::D1 } else { timeline::Kind::D0 }))),
         Top::Ending => Some(Box::new(timeline::Timeline::new(timeline::Kind::Y16))),
@@ -79,6 +79,7 @@ impl SubServices for Engine {
         if self.disp.sub.f788b & 2 == 0 {
             for a in 0xC000..0xD000 { self.disp.vdp.vram[a] = 0; }
             for a in 0xE000..0xF000 { self.disp.vdp.vram[a] = 0; }
+            self.disp.sub.f7887 = 1; // S:0xF682: `$7887 = 1` (handshake, blocks the mode logic for 2 frames)
         }
         self.disp.sub.f788b = 0;
     }
@@ -96,8 +97,12 @@ impl SubServices for Engine {
     // `clr.l $787A`: momentary – the next sub frame reloads the track-relative time (S:0xD640)
     fn cd_time_reset(&mut self) { self.disp.sub.cd_time = 0; }
 
-    fn sound12(&mut self, n: u16, d1: u8) { self.out.push(Out::Pcm { id: n, kind: d1 }); }
-    fn sound06(&mut self, n: u16) { self.out.push(Out::Pcm { id: n, kind: 2 }); }
+    // subfn_12(n, 0) = FM sfx with done flag `$980F`, subfn_12(n, 1) = FM music with `$980E` (S:0x1011E/0x1013E)
+    fn sound12(&mut self, n: u16, d1: u8) { self.fm_cmd(n, d1 == 1); }
+    // subfn_06(n, -1): PCM effect (muted by `$7890`, ignored while a voice plays; S:0x1530E)
+    fn sound06(&mut self, n: u16) {
+        if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 { self.out.push(Out::PcmSfx { id: n, bank: self.pcm_bank }); }
+    }
 
     fn raw_pressed(&self) -> u8 {
         // invert the S:0xDFF6 remap: logical = raw&0x8F | A→c[0] | B→c[1] | C→c[2]
@@ -110,6 +115,12 @@ impl SubServices for Engine {
         if l & (1 << c[2]) != 0 { r |= 0x20; }
         r
     }
+}
+
+impl Engine {
+    /// The sub frame skips the mode machine and object updates while a VRAM list (`$7886`) or the
+    /// scene-reset handshake (`$7887`) is pending (S:0xD6EE–0xD71E).
+    pub fn mode_blocked(&self) -> bool { self.disp.sub.vram_list.is_some() || self.disp.sub.f7887 != 0 }
 }
 
 /// S:0xF560 palette black-out (same as `Engine::black_out`, which is private to game.rs).

@@ -32,7 +32,17 @@ for f in sorted(glob.glob(od + '/f*.png')):
     if a.shape != b.shape: rows.append((o, e, -1, -1)); continue
     d = np.abs(a - b)
     rows.append((o, e, d.mean(), (d.sum(2) > 24).mean()))
-for o, e, m, fr in rows: print('oracle %6d engine %6d  mean %6.2f  differing %5.1f%%' % (o, e, m, fr * 100))
+bad = float(sys.argv[sys.argv.index('--bad') + 1]) if '--bad' in sys.argv else None
+if bad is None:
+    for o, e, m, fr in rows: print('oracle %6d engine %6d  mean %6.2f  differing %5.1f%%' % (o, e, m, fr * 100))
+else:
+    # compact: ranges of oracle frames with mean diff > bad
+    rng = []
+    for o, e, m, fr in rows:
+        if m > bad:
+            if rng and o - rng[-1][1] <= (rows[1][0] - rows[0][0] if len(rows) > 1 else 1): rng[-1][1] = o; rng[-1][2] = max(rng[-1][2], m)
+            else: rng.append([o, o, m])
+    print('frames over %.2f:' % bad, ', '.join('%d-%d(max %.1f)' % tuple(r) for r in rng) or 'none')
 if rows: print('overall mean %.2f' % np.mean([r[2] for r in rows if r[2] >= 0]))
 if sheet and rows:
     worst = sorted(rows, key=lambda r: -r[2])[:12]

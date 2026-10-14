@@ -9,7 +9,7 @@ tables: DATA_D1 last entry 02:12:40 ~ end of track 3).
 
 usage: modules_scn.py scenario.json [--out DIR] [--log-regs]
 scenario.json = same format as scenario.py (frames, inputs, shots, states, load).
-Extra scenario keys: "force_display": true (apply the display-on hypothesis), "reglog": true -> print VDP reg 12 / reg 0x10 changes per frame.
+Extra scenario keys: "force_display": true (apply the display-on hypothesis), "watch": [[cpu,addr,n,name]...] (print on change), "bram": {name: hex} (internal backup RAM files), "reglog": true -> print VDP reg 12 / reg 0x10 changes per frame.
 """
 import argparse, json, os, struct, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +40,10 @@ m = Machine(trace_path=os.path.join(a.out, 'trace.jsonl'))
 if sc.get('load'):
     m.load_state(os.path.join(ORA, 'states', sc['load'] + '.pkl'))
 m.inputs = [list(x) for x in sc['inputs']]
+# "bram": {"SNATCHER_01": "<hex>"} pre-populates the internal backup RAM (CONTINUE slots)
+if sc.get('bram') and not hasattr(m, 'bram_files'): m.bram_files = {}
+for name, hx in sc.get('bram', {}).items():
+    m.bram_files[name] = bytes.fromhex(hx).ljust(896, b'\0')
 shots = {}
 for k, v in sc.get('shots', {}).items(): shots.setdefault(v, []).append(k)
 every = sc.get('shot_every', 0)
@@ -47,6 +51,9 @@ states = {v: k for k, v in sc.get('states', {}).items()}
 from_frame = sc.get('shot_from', 0)
 last = None
 force = sc.get('force_display', False)
+# "watch": [["sub"|"main", "ADDR", bytes, "name"], ...] -> print on change (frame, name, hex value)
+watch = [(w[0], int(w[1], 16), int(w[2]), w[3]) for w in sc.get('watch', [])]
+wlast = {}
 while m.frame < sc['frames']:
     f = m.frame + 1
     if force and m.main.r8(0xFFE06D) == 0 and m.main.r8(0xFFE06C) == 0 and not (m.main.r8(0xFFEF03) & 0x40) and m.main.r8(0xFFE023) == 3:
@@ -58,6 +65,11 @@ while m.frame < sc['frames']:
         im = Image.fromarray(m.vdp.frame_image())
         for n in shots.get(f, ['f%05d' % f]): im.save(os.path.join(a.out, n + '.png'))
     if f in states: m.save_state(os.path.join(ORA, 'states', states[f] + '.pkl'))
+    for cpu, wa, n, name in watch:
+        c = m.sub if cpu == 'sub' else m.main
+        v = int.from_bytes(bytes(c.r8(wa + i) for i in range(n)), 'big')
+        if wlast.get(name) != v:
+            print('frame', f, name, '%0*x' % (2 * n, v)); wlast[name] = v
     if sc.get('reglog'):
         cur = (m.vdp.reg[12], m.vdp.reg[16], m.vdp.reg[11])
         if cur != last:

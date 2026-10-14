@@ -44,10 +44,12 @@ pub struct Timeline {
     /// intro driver `mode2_intro` S:0x14A52 sub-state (0/1 = file load and wait, both gated on
     /// `($7848 & 0x1F) == 0`; 2 = module running; 3 = skip fade)
     drv: u8,
+    /// frame when the intro driver's file load completes
+    ready: u64,
 }
 
 impl Timeline {
-    pub fn new(kind: Kind) -> Self { Timeline { kind, step: -1, sub: 0, timer: 0, entries: vec![], drv: if kind == Kind::Y16 { 2 } else { 0 } } }
+    pub fn new(kind: Kind) -> Self { Timeline { kind, step: -1, sub: 0, timer: 0, entries: vec![], drv: if kind == Kind::Y16 { 2 } else { 0 }, ready: 0 } }
 
     fn load_table(&mut self, e: &Engine) {
         let (t, n, _, _) = self.kind.spec();
@@ -156,10 +158,24 @@ impl Module for Timeline {
     }
 
     fn tick(&mut self, e: &mut Engine) -> Option<i8> {
+        // the sub frame skips the mode machine while a VRAM list / scene-reset handshake is pending
+        if e.mode_blocked() { return None; }
         // Intro driver (S:0x14A52): the DATA file is loaded when `$7848 & 0x1F == 0` and its
         // arrival is polled with the same gating (the engine maps the file at once).
         match self.drv {
-            0 | 1 => { if e.frame & 0x1F == 0 { self.drv += 1; } return None; }
+            0 | 1 => {
+                // Intro driver S:0x14A52 states 0/1: both act only when `$7848 & 0x1F == 0` (`$7848` = sub vint
+                // counter; the oracle's gate frames are ≡ 5 mod 32 on the title run). State 0: if the CD is playing
+                // pause it and wait for the next gate, else `subfn_04` (load DATA file); state 1: poll the load
+                // (the HLE disc needs ~35 frames for DATA_D1: ROMREADN at 1669, CD play at 1704).
+                // Verified against the oracle on two START times (loads at 1669 and 1734/1733 model).
+                let gate = e.frame % 32 == 5;
+                if self.drv == 0 && gate {
+                    if self.kind == Kind::D1 && e.cd_start.is_some() { e.cd_start = None; e.out.push(Out::MusicStop); }
+                    else { self.drv = 1; self.ready = e.frame + 35; }
+                } else if self.drv == 1 && e.frame >= self.ready { self.drv = 2; }
+                return None;
+            }
             3 => {
                 // S:0x14B20: 10 frames of fade, then $7846 = -1 and subfn_17
                 self.timer = self.timer.wrapping_sub(1);

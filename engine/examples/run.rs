@@ -29,6 +29,15 @@ fn main() {
     for (n, f) in [("HEADER.BIN", "header.bin"), ("IP.BIN", "ip.bin")] {
         if let Ok(d) = std::fs::read(raw.join("..").join(f)) { e.load_file(n, d); }
     }
+    // SAVES=0:file.hex,2:file.hex → CONTINUE slots (hex text of the 0x1C0-byte save block, slot index 0..3)
+    if let Ok(v) = std::env::var("SAVES") {
+        for p in v.split(',').filter(|x| !x.is_empty()) {
+            let (i, f) = p.split_once(':').unwrap();
+            let hex = std::fs::read_to_string(f).unwrap();
+            let bytes: Vec<u8> = (0..hex.trim().len() / 2).map(|k| u8::from_str_radix(&hex.trim()[2 * k..2 * k + 2], 16).unwrap()).collect();
+            e.saves[i.parse::<usize>().unwrap()] = Some(bytes[..0x1C0.min(bytes.len())].to_vec());
+        }
+    }
     match a.get(5) {
         Some(j) if j == "boot" => e.boot(),
         Some(j) => {
@@ -75,6 +84,11 @@ fn main() {
         if std::env::var("FXTRACE").is_ok() && ms != last_fx { println!("{f:6} {ms}"); last_fx = ms; }
         let d = e.debug_info();
         if d.split("\"seq\"").nth(1) != last.split("\"seq\"").nth(1) { println!("{f:6} {d}"); last = d; }
+        if std::env::var("SCROLLDBG").is_ok() && f % every == 0 {
+            let v = &e.disp.vdp; let sc = &e.disp.sub.scroll; let m = &e.disp.main;
+            println!("{f:6} scroll: vdp vs {} {} hs {} {} | sub pos {:x?} delta {:x?} mode {} | main eb00 {:x?} e700 {:x?} e076 {} e078 {:x} | plane {:x} {:x} {}x{} display {}",
+                v.vscroll_a, v.vscroll_b, v.hscroll_a, v.hscroll_b, sc.pos, sc.delta, sc.mode, m.eb00, m.e700, m.e076, m.e078, v.plane_a, v.plane_b, v.plane_w, v.plane_h, v.display);
+        }
         if let Ok(v) = std::env::var("VRAMDUMP") { if f == frames { std::fs::write(v, &e.disp.vdp.vram).unwrap(); } }
         if std::env::var("OBJDUMP").is_ok() && f == frames {
             for (i, o) in e.disp.sub.objs.iter().enumerate() { if o.active == 1 { println!("obj {i} x {} y {} flags {:02x} idx {} script {:x} frame {:x}", o.x >> 16, o.y >> 16, o.flags, o.idx, o.script, o.frame); } }

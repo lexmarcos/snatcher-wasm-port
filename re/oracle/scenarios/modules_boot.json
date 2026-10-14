@@ -1,0 +1,7 @@
+{
+ "description": "Power-on: copyright, Konami laser/logo, title. Frame-by-frame references for engine/src/modules/boot.rs and title.rs; watches the sub mode machine ($7842/$7844/$7896/$7898/$784E) and the main states ($E022/$E04A). Run with re/py/modules_scn.py.",
+ "frames": 1400,
+ "shot_every": 10,
+ "watch": [["sub", "7842", 2, "mode7842"], ["sub", "7844", 2, "sub7844"], ["sub", "7896", 2, "st7896"], ["sub", "7898", 2, "sub7898"], ["main", "FFE022", 2, "e022"], ["main", "FFE04A", 2, "e04a"], ["sub", "7846", 2, "done7846"], ["sub", "78AD", 2, "a78ad"]],
+ "inputs": [[1400, 0]]
+}

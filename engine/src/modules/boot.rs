@@ -82,11 +82,16 @@ impl Boot {
         self.frame = self.frame.wrapping_add(1);
         e.disp.main_only = true;
         if self.stall > 0 { self.stall -= 1; self.present(e); return false; }
+        let before = (self.e022, self.e04a);
         match self.e022 {
             0 => self.state0(e),
             _ => self.state1(e),
         }
-        self.present(e);
+        if e.trace && before != (self.e022, self.e04a) {
+            e.out.push(Out::Log(format!("boot e022={} e04a={:#x}", self.e022, self.e04a)));
+        }
+        // after `finish` the in-game register set is active (M:0xFF1538): do not push the boot state again
+        if !self.done { self.present(e); }
         self.done
     }
 
@@ -159,7 +164,7 @@ impl Boot {
                     }
                 }
                 self.e04a = 1;
-                self.stall = 3; // oracle: e04a 0 → 1 between frames 9 and 13
+                self.stall = 5; // oracle: e04a 0 → 1 between frames 9 and 13 (watch: 13)
             }
             1 => {
                 // 0xB4 frames (and sub ready, $E044/$E02A – already true here)
@@ -171,7 +176,7 @@ impl Boot {
                 self.lzkn_to_vram(e, 0xFF25C8, 0xC000);
                 self.e04c = 2;
                 self.e04a = 3;
-                self.stall = 1;
+                self.stall = 2; // oracle watch: e04a 2 → 3 at frame 198
             }
             3 => {
                 self.e04c -= 1;
@@ -185,7 +190,7 @@ impl Boot {
                 Self::vdp_word(e, 0xE100, 0x6003);
                 self.spr = Some([0x0088, 0x0500, 0xE004, 0x0080]);
                 self.e04a = 4;
-                self.stall = 1;
+                self.stall = 2; // oracle watch: e04a 3 → 4 at frame 202
             }
             4 => {
                 // laser head: tile = 4/8/12/16 by frame, x += 6, plane A hscroll += 6 up to 0x100
@@ -277,7 +282,8 @@ impl Boot {
     /// Palette for the logo (M:0xFF2D76): table entries 4,4,4,5 and a green ramp at $EBE4.
     fn logo_palette(&mut self) {
         self.pal_set(0x0404_0405);
-        for (k, v) in [0u16, 0x20, 0x40, 0x60, 0x80, 0xA0].iter().enumerate() { self.pal[(0xEBE4 - 0xEB80) / 2 + k] = *v; }
+        // M:0xFF2D80: `clr.l (a0)+` (colours 50,51), `$200040`, `$600080`, `$00A0` (colours 52..56)
+        for (k, v) in [0u16, 0, 0x20, 0x40, 0x60, 0x80, 0xA0].iter().enumerate() { self.pal[(0xEBE4 - 0xEB80) / 2 + k] = *v; }
     }
 
     /// `sub_ff1538` (M:0xFF1538): clear VRAM/CRAM/VSRAM, in-game register set, `$E026` = 1.
