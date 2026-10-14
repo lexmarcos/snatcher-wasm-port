@@ -15,7 +15,7 @@ Writes (format: audio_ym.py docstring; replayed by core/src/audio/verify.rs):
   cmds.txt         music 3F-7A with the command ids F3 (mono), F4, F2, F1 and an sfx in between
   burst.txt        several requests in one frame (queue order and the priority gate of 0x32-0x3E)
   sfx_only.txt     every FM sfx 01-3E alone (no music), 150 frames apart
---quick only records intro_ym.txt and inject600.txt (~2 min). Everything runs in parallel.
+--long additionally records long_N.txt: every song for 6000 frames (100 s, covers the tail of the long songs), 4 parallel jobs (~10 min). --quick only records intro_ym.txt and inject600.txt (~2 min). Everything runs in parallel.
 The logs are gitignored (they describe the original code's behaviour, not shipped).
 """
 import os, subprocess, sys
@@ -36,6 +36,9 @@ if '--quick' not in sys.argv:
         [py, '-I', 'audio_inject.py', os.path.join(out, 'cmds.txt'), '1000', '1500', '--cmds'],
         [py, '-I', 'audio_inject.py', os.path.join(out, 'burst.txt'), '60', '1500', '--burst'],
     ]
+if '--long' in sys.argv:
+    for n, (lo, hi) in enumerate([(0x3F, 0x4D), (0x4E, 0x5C), (0x5D, 0x6B), (0x6C, 0x7A)]):
+        jobs.append([py, '-I', 'audio_inject.py', os.path.join(out, 'long_%d.txt' % n), '6000', '1500', '--ids', '%x-%x' % (lo, hi)])
 procs = [subprocess.Popen(j, cwd=here) for j in jobs]
 rc = [p.wait() for p in procs]
 print('exit codes', rc)

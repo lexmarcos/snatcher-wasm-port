@@ -246,3 +246,65 @@ separately against the public documentation (below).
 - Caveat found while building this: the original tick can run past the end of its 262-line frame, so
   per-frame injection must never write main RAM at the frame boundary (a first volume sweep did and
   produced 1-step TL differences that were an artifact of the harness, not of `kdriver`).
+
+### Result: the driver translation is write-exact
+Every YM2612 data write of the original (register, value and order, 122 sounds = all music 3F-7A
+and all sfx 01-3E) equals the write of `KDriver`, and every PCM drum command of M:0xFF4DDE equals ours.
+Numbers (segment = the YM writes between two driver entry events; all segments equal in every log,
+no divergence found, **no change to `kdriver.rs` was necessary**):
+
+| log | what | ticks | segments | YM writes | drum cmds (key-ons) |
+|---|---|---|---|---|---|
+| intro_ym | real game flow: title (3F) -> Konami jingle (38) -> Junker HQ music 4F for 2457 frames + menu sfx 1D | 6597 | 1365 | 7841 | 239 (282) |
+| inject600 | every music id 600 frames + one sfx between | 38217 | 18927 | 146384 | 837 |
+| inject3000 | every music id 3000 frames (50 s) | 184617 | 87384 | 600652 | 4370 (5438) |
+| inject_vol | 1500 frames each, volume word swept (73060 ticks with M:$FF7F5E != FFFF) | 93117 | 29521 | 363590 | 746 (929) |
+| cmds | music + F3 mono, F4, F2, F1, restarts | 61617 | 26234 | 212932 | 1201 (1522) |
+| burst | several requests in one frame, 48 rejected by the priority gate | 11917 | 6949 | 54333 | 593 |
+| sfx_only | all 62 sfx alone | 11067 | 6560 | 24405 | 0 |
+
+(positional write equality is 100 % in all; sequence commands exercised: every E0-FF opcode that
+the 122 sounds contain in their first 50 s except EF, F8-FB, which never execute: `cmd_stats` in
+`fmverify` output.) Second mode "via queue": the same logs with `S`/`C` ignored and `KDriver::enqueue`
++ `update` (new, translations of M:0xFF5058 / M:0xFF5106: 32-byte ring $FF7F00, indices
+$FF7F20/21, priority gate $FF7F22/23 for sfx 0x32-0x3E, commands >= F1 dispatched from the ring)
+also gives all segments equal. The accept/reject decision of the gate in `audio_inject.py` is a Python
+copy of the asm (the original code is not re-entered by the oracle), so the gate itself is only
+checked for consistency with the translation, not against executed original code.
+
+Sub-CPU side of the PCM drums (S:0x160BA decode, S:0x161F4 play, S:0x16128 preload), compared with
+the RF5C164 key-ons the original sub driver performed: 282/282 (intro), 5438/5438 (inject3000), 929
+(vol), 1522 (cmds) predictions equal in order: channel pair 4/5 (logical 2) or 6/7 (logical 3),
+wave-RAM start page, FD, ENV = table ENV * (vel<<3) >> 8 (vel 0: table ENV), PAN. This verifies
+`DrumEvent::decode`, the notes skipped (6, 8, 9, 10) and the sample layout: notes 1..12 minus the
+skipped ones are copied from wave RAM 0x8000 on, each up to the first 0xFF plus 4 marker bytes, rounded up
+to a 256-byte page (e.g. note 12 -> page 0xE7, note 3 -> 0x99, 4 -> 0x9E).
+Newly found original behaviour: command F1 (stop all) clears the drum counter A1201D (M:0xFF52C2), so
+the sub CPU plays the last drum command once more (stale COMCMD5..6); the test models it.
+It never happens in normal play (F1 only at boot / options); the pre-renderer is not affected.
+
+What this does NOT verify: (1) the YM2612 chip model - the oracle has no chip, so output samples are
+unverified against hardware; (2) the sub-CPU's analog mix and the RF5C164 resampling (render.rs);
+(3) loop detection (derived, tested separately).
+
+### YM2612 model vs. public documentation (`ym2612.rs` tests)
+Facts checked, with tests in `audio::ym2612::tests`:
+- Detune table DT1-DT3 x keycode: equals the OPN manual table and its closed form (`detune_table_formula`).
+- Algorithm connections 0-7: carrier sets 8/8/8/8/A/E/E/F (`algorithm_carriers`).
+- Envelope: rate = 2*R + (keycode >> (3-KS)), release rate 2*RR+1, shift 11 - rate/4, increment rows
+  (`release_rate_scaling`: RR+1 halves the time, KS=3 at keycode 31 is >4x faster, RR=15 < 600 samples;
+  `attack_rate_31_is_instant`), SL=15 -> 93 dB.
+- Reviewed against the documentation without a dedicated test: FB=7 = 4*pi (sum of last two outputs
+  >> (10-FB)), phase modulation = output >> 1, operator output 13 bit, per-channel clip to 14 bit; AM
+  depth AMS 1/2/3 = 1.4/5.9/11.8 dB (shift 3/1/0 of the 0..126 triangle); key code/phase increment
+  formulas; ch3 slot mapping A8=S3, A9=S1, AA=S2.
+- **Fixed**: LFO step period. The code stepped every `limit` samples (108, 77, ...); the documented LFO
+  frequencies 3.98/5.56/6.02/6.37/6.88/9.63/48.1/72.2 Hz (8 MHz OPN) require `limit + 1` (109, 78,
+  72, 68, 63, 45, 9, 6): the fast LFOs were 12-20 % too fast, the slow ones 1 % (`lfo_frequencies`).
+  Re-rendering gave identical loop points; only the 11 AMS uses are affected.
+- Not modelled (and not needed): SSG-EG (the driver never writes registers 0x90-0x9F in any of the 122
+  sounds), timers, CH3 special mode (no A8-AC writes), DAC (only `2B=00`), the "ladder effect".
+- PM (vibrato by LFO) is an approximation (smooth multiply instead of the chip's fnum-bit table, peak
+  slightly different) - irrelevant here: PMS is 0 in every B4 write of the 122 sounds (AMS in 11 writes).
+  Measured on the logs: B4 values written are only 00/40/80/C0 (pan) and 50/90/D0/E0 (AMS 1-2);
+  no write to registers 0x27, 0x2A, 0x90-0x9F, 0xA8-0xAE in any log.
