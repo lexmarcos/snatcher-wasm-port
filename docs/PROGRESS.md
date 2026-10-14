@@ -39,8 +39,9 @@ Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, A
 1. **MODULES** (engine/src/modules/, docs/re/modules.md — doc missing, create it): fix the D1/D0
    timeline stall, write the DATA_D2 title module and H40 (320 px) rendering; compare with
    `re/oracle/out/refs/*.png`.
-2. **INTERACT** (docs/re/interact.md "Status"): menu highlight bar re-hidden (object 0 +$25),
-   then verify keypad/keyboard/pointer/shooting via SP01:0 debug menu and the oracle.
+2. **INTERACT – DONE (except shooting details)**: menu bar pixel-identical to the oracle,
+   keyboard/keypad/pointer verified vs oracle (docs/re/interact.md). Remaining: steady held-pad
+   input in the oracle, then compare ACT2/ACT3 shooting stages and results phases; gun calibration.
 3. **AUDIO-VERIFY** (docs/re/audio.md; core/src/audio/verify.rs WIP): compare kdriver YM writes
    with the oracle trace `ym` field.
 4. Fidelity loop: engine frames vs oracle (`re/oracle/probe.py`, `probe_mem.py`).
