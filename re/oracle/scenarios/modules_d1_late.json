@@ -1,0 +1,9 @@
+{
+ "description": "Intro DATA_D1 from the title state, snapshot at 3500 (scene 3 starts ~3800).",
+ "load": "title",
+ "frames": 4500,
+ "shot_every": 50,
+ "shot_from": 3500,
+ "states": {"modules_d1_3500": 3500},
+ "inputs": [[10, 0], [1, 128], [310, 0], [1, 128], [27000, 0]]
+}

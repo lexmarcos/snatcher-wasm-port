@@ -418,7 +418,7 @@ impl Runtime {
                 0x16 => { let s = slot(b[1]); self.objs[s].flags = 3; }
                 0x17 => { self.objs[i].flags |= 2; self.set_delay(i, &b); return; }
                 0x18 => { self.objs[i].f4e |= 2; }
-                0x19 => { self.objs[i].wait_time = u32::from_be_bytes([b[1], b[2], b[3], 0]); self.objs[i].flags |= 4; }
+                0x19 | 0x1A => { self.objs[i].wait_time = u32::from_be_bytes([b[1], b[2], b[3], 0]); self.objs[i].flags |= 4; }
                 0x1B => { self.objs[i].f4e |= 1; self.f788b = b[1]; }
                 0x1C => { self.objs[i].f4e |= 0x80; self.f788b = self.objs[i].f4e; }
                 0x23 => { self.f7866 = 1; }

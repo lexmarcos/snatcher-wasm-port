@@ -28,8 +28,11 @@ fn main() {
     match a.get(5) {
         Some(j) if j == "boot" => e.boot(),
         Some(j) => {
-            let (f, pc) = j.split_once(':').unwrap();
-            e.jump(57 + f[2..].parse::<u16>().unwrap(), u16::from_str_radix(pc, 16).unwrap());
+            // SPnn:pc[:item,item,..] (hex text offsets of an already chosen menu path)
+            let mut it = j.split(':');
+            let (f, pc) = (it.next().unwrap(), it.next().unwrap());
+            let path: Vec<u16> = it.next().map(|p| p.split(',').filter_map(|x| u16::from_str_radix(x, 16).ok()).collect()).unwrap_or_default();
+            e.jump_path(57 + f[2..].parse::<u16>().unwrap(), u16::from_str_radix(pc, 16).unwrap(), &path);
         }
         None => e.new_game(),
     }
@@ -40,12 +43,21 @@ fn main() {
             presses.insert(f.parse::<u64>().unwrap(), b.parse::<u8>().unwrap());
         }
     }
+    let shot_at: Vec<u64> = std::env::var("SHOTAT").map(|v| v.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_default();
     let mut last = String::new();
     let mut last_fx = String::new();
     let mut sheet: Vec<Vec<u8>> = vec![];
     for f in 1..=frames {
         let pad = if inputs == "auto" { if f % 40 == 0 { 0x20 } else { 0 } } else { *presses.get(&f).unwrap_or(&0) };
+        if let Ok(v) = std::env::var("POKE") { // "frame:hexaddr:value,..." word pokes of sub-CPU registers before the tick
+            for it in v.split(',') { let p: Vec<&str> = it.split(':').collect(); if p.len() == 3 && p[0].parse::<u64>().ok() == Some(f) { e.regs.set(u32::from_str_radix(p[1], 16).unwrap(), p[2].parse().unwrap()); } }
+        }
         e.tick(pad);
+        if let Ok(v) = std::env::var("WATCH") { // "hexaddr,..." word registers printed every frame
+            let mut l = format!("{f:6} watch");
+            for w in v.split(',') { l += &format!(" {w}={:04x}", e.regs.get(u32::from_str_radix(w, 16).unwrap())); }
+            println!("{l}");
+        }
         for o in e.out.drain(..) { println!("{f:6} {o:?}"); }
         let m = &e.disp.main;
         let ms = format!("fx e060={:x} e061={:x} e06c={:x} e064={:x} e036={:x} e070={:x}", m.e060, m.e061, m.e06c, m.e064, m.e036, m.e070);
@@ -58,7 +70,7 @@ fn main() {
             for (i, sp) in e.disp.vdp.sprites.iter().enumerate() { println!("spr {i} {:?}", sp); }
         }
         if std::env::var("CRAM").is_ok() && f % every == 0 { println!("cram A {:03x?}\ncram B {:03x?}", &e.disp.vdp.cram[..32], &e.disp.vdp.cram_b[..32]); }
-        if f % every == 0 {
+        if (shot_at.is_empty() && f % every == 0) || shot_at.contains(&f) {
             sheet.push(e.fb.clone());
             let p = format!("{out}/f{f:06}.png");
             let w = BufWriter::new(std::fs::File::create(&p).unwrap());

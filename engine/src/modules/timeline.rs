@@ -205,6 +205,7 @@ impl Timeline {
             return None;
         }
         self.step += 1;
+        if e.trace { e.out.push(Out::Log(format!("{:?} step {} handler {h:#x} t={t:08x} cd={:08x}", self.kind, self.step - 1, e.cd_time()))); }
         self.run(e, h)
     }
 }

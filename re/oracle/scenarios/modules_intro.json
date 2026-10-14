@@ -1,0 +1,30 @@
+{
+ "description": "From the title save state: START (title -> OPTIONS), START on QUIT -> disclaimer -> intro DATA_D1 then DATA_D0 playing untouched (no START afterwards). Run with re/py/modules_scn.py (CD relative-time model). force_display = display-on hypothesis (docs/re/modules.md 3.2).",
+ "load": "title",
+ "frames": 27000,
+ "shot_every": 100,
+ "reglog": false,
+ "inputs": [
+  [
+   10,
+   0
+  ],
+  [
+   1,
+   128
+  ],
+  [
+   310,
+   0
+  ],
+  [
+   1,
+   128
+  ],
+  [
+   27000,
+   0
+  ]
+ ],
+ "force_display": true
+}

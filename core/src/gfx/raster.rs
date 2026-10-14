@@ -8,6 +8,9 @@ pub struct LineState {
     pub vscroll_a: i16,
     pub vscroll_b: i16,
     pub display: bool,
+    /// H-INT handlers hint_0EA8/hint_0EFA (M:0xFF0EE0, M:0xFF0F32) write 0 to the H-scroll table (VRAM 0xF800)
+    /// at the window split: lines below it are not scrolled horizontally (text window, keyboard).
+    pub hscroll_zero: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -281,7 +284,7 @@ impl MainDisplay {
         // active the screen is on again. The original IP code never sets it (only fx 7's handler end
         // M:0xFF0D32, B6406 requests and the boot code do) and the oracle stays black for the whole intro
         // after fx 12, although the intro obviously displays pictures (forced-on oracle run).
-        let mut st = LineState { vscroll_a: vs.0 as i16, vscroll_b: vs.1 as i16, display: !self.disp_off_carry || hint_n.is_none() };
+        let mut st = LineState { vscroll_a: vs.0 as i16, vscroll_b: vs.1 as i16, display: !self.disp_off_carry || hint_n.is_none(), hscroll_zero: false };
         let mut lines = vec![st; 224];
         let mut pal_split = None;
         if let Some(n) = hint_n {
@@ -320,8 +323,8 @@ impl MainDisplay {
                         if k == plus { set(&mut st, Some(v), None, None); }
                         if k == off { set(&mut st, None, None, Some(false)); active = false; }
                     }
-                    0x0EA8 => if k == self.e064 { set(&mut st, Some(self.e066), Some(self.e066), None); active = false; },
-                    0x0EFA => if k == 0x11 { set(&mut st, Some(self.e064), Some(self.e064), None); active = false; },
+                    0x0EA8 => if k == self.e064 { set(&mut st, Some(self.e066), Some(self.e066), None); st.hscroll_zero = true; active = false; },
+                    0x0EFA => if k == 0x11 { set(&mut st, Some(self.e064), Some(self.e064), None); st.hscroll_zero = true; active = false; },
                     0x0F4C => {
                         if k == 0x63 { set(&mut st, Some(0x140), Some(0x140), None); }
                         else if k == self.e064 { set(&mut st, Some(self.eb00.0), Some(self.eb00.1), None); active = false; }
