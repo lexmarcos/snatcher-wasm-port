@@ -1,0 +1,12 @@
+{
+  "name": "snatcher-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/main.ts --outdir dist --target browser --sourcemap=linked --external /pkg/snengine.js",
+    "serve": "bun server.ts"
+  },
+  "devDependencies": {
+    "puppeteer-core": "24"
+  }
+}

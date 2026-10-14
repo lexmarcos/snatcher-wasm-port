@@ -13,3 +13,4 @@ web/pkg/
 third_party/
 re/out/
 re/images/
+web/node_modules/

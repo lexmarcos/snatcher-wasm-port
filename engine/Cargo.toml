@@ -1,0 +1,12 @@
+[package]
+name = "snengine"
+version = "0.1.0"
+edition = "2021"
+description = "Snatcher engine reimplementation (script VM, scene composer) for WebAssembly"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sncore = { path = "../core" }
+wasm-bindgen = "=0.2.129"

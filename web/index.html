@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snatcher Web Port</title>
+<style>
+  :root { --bg: #08090c; --fg: #c8d0d8; --dim: #6a7380; --accent: #3fb8c8; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 ui-monospace, Menlo, monospace; }
+  #wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; gap: 10px; }
+  canvas { image-rendering: pixelated; background: #000; }
+  canvas.smooth { image-rendering: auto; }
+  #bar { display: flex; gap: 12px; align-items: center; color: var(--dim); flex-wrap: wrap; justify-content: center; }
+  #bar button, #bar label { color: var(--fg); background: #151922; border: 1px solid #252b36; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+  #debug { position: fixed; left: 8px; top: 8px; white-space: pre; background: rgba(0,0,0,.7); padding: 6px 8px; border-radius: 4px; display: none; pointer-events: none; }
+  #msg { color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="screen" width="320" height="224"></canvas>
+  <div id="bar">
+    <span id="msg">loading…</span>
+    <label><input type="checkbox" id="smooth"> smooth</label>
+    <label><input type="checkbox" id="dbg"> debug (F1)</label>
+    <label>files… <input type="file" id="pick" webkitdirectory multiple hidden></label>
+  </div>
+</div>
+<div id="debug"></div>
+<script type="module" src="/dist/main.js"></script>
+</body>
+</html>

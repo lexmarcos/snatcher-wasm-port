@@ -1,0 +1,41 @@
+# ACTIONS workstream labels (sub CPU)
+0xFFC4 seq_run f
+0x9940 seq_queue
+0x9B40 seq_index
+0x9B44 seq_busy
+0x1002a seqc_00_reset f
+0x1004e seqc_01 f
+0x10096 seqc_02 f
+0x100dc seqc_03 f
+0x100e8 seqc_04 f
+0x100f0 seqc_05 f
+0x1011a seqc_06 f
+0x1011e seqc_07 f
+0x1015e seqc_08 f
+0x10164 seqc_09 f
+0x1016c seqc_0a f
+0x101a6 seqc_0b f
+0x101bc seqc_0c f
+0x101dc seqc_0d f
+0x10238 seqc_0e f
+0x1027e seqc_0f f
+0x102ac seqc_10 f
+0x102c8 seqc_11 f
+0x10330 seqc_12 f
+0x1033c seqc_13 f
+0x10368 seqc_14 f
+0x1036c seqc_15 f
+0x1037c seqc_16 f
+0x10386 seqc_17 f
+0x10392 seqc_18 f
+0x103a2 seqc_19 f
+0x103ce seqc_1a f
+0x103d2 seqc_1b f
+0x1013e seqc_1c f
+0x103f2 seqc_1d f
+0x103fc seqc_1e f
+0x105dc seqc_1f f
+0x105e8 seqc_20 f
+0x105fe seqc_21 f
+0x1060c seqc_22 f
+0x10618 seqc_23 f
