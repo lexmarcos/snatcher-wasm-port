@@ -71,6 +71,9 @@ pub struct KDriver {
     pub ticks: [u64; 10],
     /// diagnostics: executed sequence commands E0..FF
     pub cmd_stats: [u32; 32],
+    /// frames during which fm_tick is skipped while the song is still being copied
+    /// (M:0xFF408A tests $FF7F72 bit 7; M:0xFF55FE copies 0x54 longs per frame)
+    copy_delay: u32,
 }
 
 
@@ -78,7 +81,7 @@ impl KDriver {
     /// `ip` = main-CPU IP image starting at M:0xFF0000; `fmwr` = FMWR_1.BIN.
     pub fn new(ip: Vec<u8>, fmwr: Vec<u8>) -> Self {
         let mut d = KDriver { ram: vec![0; (RAM_END - RAM_BASE) as usize], ip, z80: vec![0; 0x2000],
-                              wram: fmwr, ym: Ym2612::new(), a3: 0, drums: Vec::new(), e030: 0, f9_ramp_hits: 0, tick0: 0, ticks: [0; 10], cmd_stats: [0; 32] };
+                              wram: fmwr, ym: Ym2612::new(), a3: 0, drums: Vec::new(), e030: 0, f9_ramp_hits: 0, tick0: 0, ticks: [0; 10], cmd_stats: [0; 32], copy_delay: 0 };
         d.boot_load();
         d.wb(VOLW, 0xFF); d.wb(VOLW + 1, 0xFF);
         d
@@ -137,6 +140,7 @@ impl KDriver {
         let size = self.rw(0xFF5586 + ((id as u32 - 0x3F) * 2)) as u32;
         let size = (size + 3) & !3;
         for i in 0..size.min(0x1000) { let v = self.rb(src + i); self.wb(0xFF8000 + i, v); }
+        self.copy_delay = (size + 0x14F) / 0x150 - 1;
     }
 
     /// Queue a request like `fm_request` M:0xFF5058 and process it like `fm_update` M:0xFF5106.
@@ -297,6 +301,7 @@ impl KDriver {
     // ---------------------------------------------------------------- per-frame
     /// `fm_tick` M:0xFF408A (called once per VBlank).
     pub fn tick(&mut self) {
+        if self.copy_delay > 0 { self.copy_delay -= 1; return }
         let vw = self.rw(VOLW);
         let hi = vw & 0xFF00;
         let lo = vw & 0x00FF;
@@ -546,8 +551,10 @@ impl KDriver {
         self.wb(a1 + 0x31, 1);
     }
 
-    /// M:0xFF451A: compute output volume and write TLs
-    fn ff451a(&mut self, a1: u32, d3: u8) {
+    /// M:0xFF451A: compute output volume and write TLs. Returns the final d0 (low byte):
+    /// the routine clobbers d0 and fm_write_volume (M:0xFF5E5E) leaves it unchanged, which
+    /// matters for the caller M:0xFF4F44 (see `ff4eb6`).
+    fn ff451a(&mut self, a1: u32, d3: u8) -> u8 {
         let mut d0: i32 = self.rb(a1 + 0x12) as i32;
         let d2 = self.rb(a1 + 0x56) as i32;
         let d5 = self.rb(a1 + 0x3E) as i32;
@@ -568,6 +575,7 @@ impl KDriver {
         }
         self.ff5e5e(a1, d3, v as u8);
         self.wb(a1 + 0x31, 0);
+        v as u8
     }
 
     /// M:0xFF4662: note event (d6 = event byte < 0xE0 with low 7 bits < 0x60)
@@ -851,10 +859,13 @@ impl KDriver {
         self.bclr(SFXF, bit);
         self.wb(a1 + 1, 0);
         self.wb(idaddr, 0);
-        let d0 = self.rb(a1 + 0x23);
+        // M:0xFF4F22 loads d0 = sfx instrument (+$23), but `jsr sub_ff451a` (M:0xFF4F44)
+        // overwrites d0 with the computed volume before `cmp.b $23(a1),d0` (M:0xFF4F52).
+        // Verified against the oracle (re/oracle/audio_ym.py, intro title sfx 0x38): the
+        // original compares the music instrument with the volume, not with the sfx instrument.
         let m = if d3 == 4 { 0xFF7C00 } else { 0xFF7C80 };
         self.ww(m + 0x56, 0xFFFF);
-        self.ff451a(m, d3);
+        let d0 = self.ff451a(m, d3);
         self.bset(SFXF, 5);
         if d0 != self.rb(m + 0x23) {
             let ins = self.rb(m + 0x23);
@@ -1073,6 +1084,8 @@ impl KDriver {
     }
 
     pub fn peek(&self, a: u32) -> u8 { self.rb(a) }
+    /// Set the music volume word M:$FF7F5E (written by main-CPU code outside the driver).
+    pub fn set_volume_word(&mut self, w: u16) { self.ww(VOLW, w); }
 
     pub fn track_active(&self, slot: u32) -> bool { self.rb(0xFF7A00 + slot * 0x80) != 0 }
 

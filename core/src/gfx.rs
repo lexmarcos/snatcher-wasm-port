@@ -464,10 +464,18 @@ pub struct Display {
     pub vdp: Vdp,
     pub sub: anim::Runtime,
     pub main: raster::MainDisplay,
+    /// Main-CPU-only display (boot copyright/Konami logo, M:0xFF2BE4): the sub display
+    /// runtime is not run and the VDP state is whatever the main-side code set
+    /// (no raster program, sprites from `main_sat`).
+    pub main_only: bool,
+    /// Sprite list built by main-CPU code (M:$FFED00, DMA'd by M:0xFF179C when $E048 = 0).
+    pub main_sat: Vec<Sprite>,
 }
 
 impl Default for Display {
-    fn default() -> Self { Display { vdp: Vdp::default(), sub: anim::Runtime::new(), main: raster::MainDisplay::new() } }
+    fn default() -> Self {
+        Display { vdp: Vdp::default(), sub: anim::Runtime::new(), main: raster::MainDisplay::new(), main_only: false, main_sat: vec![] }
+    }
 }
 
 impl Display {
@@ -483,6 +491,11 @@ impl Display {
 
     /// One frame: sub display tick, mailbox to the main CPU, main VBlank (raster program).
     pub fn frame(&mut self, mem: &SubMem) {
+        if self.main_only {
+            self.vdp.raster = None;
+            self.vdp.sprites = self.main_sat.clone();
+            return;
+        }
         self.sub.tick(mem, &mut self.vdp);
         let (a, b) = std::mem::take(&mut self.sub.mail);
         self.main.mailbox(a, b);

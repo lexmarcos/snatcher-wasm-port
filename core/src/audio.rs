@@ -12,6 +12,7 @@ use crate::{be16, be32};
 pub mod ym2612;
 pub mod kdriver;
 pub mod render;
+pub mod verify;
 
 /// RF5C164 output rate: 12.5 MHz / 384 (HYPOTHESIS from hardware docs; FD=0x800 = 1 sample/tick).
 pub const PCM_CLOCK_HZ: f64 = 12_500_000.0 / 384.0;
@@ -166,6 +167,22 @@ mod tests {
     fn fd_rates() {
         assert!((fd_to_hz(0x800) - 32552.08).abs() < 0.1);
         assert!((fd_to_hz(VOICE_FD) - 16276.04).abs() < 0.1);
+    }
+
+    /// FM driver + renderer smoke test on real data (skipped without assets).
+    #[test]
+    fn fm_song_loops_if_present() {
+        let raw = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/raw/");
+        let (Ok(h), Ok(ipb), Ok(fm), Ok(lt), Ok(dr)) = (std::fs::read(format!("{raw}header.bin")), std::fs::read(format!("{raw}ip.bin")),
+            std::fs::read(format!("{raw}files/FMWR_1.BIN")), std::fs::read(format!("{raw}files/PCMLT_01.BIN")), std::fs::read(format!("{raw}files/PCMDRMDT.BIN"))) else { return };
+        let mut ip = h[0x200..0x800].to_vec(); ip.extend_from_slice(&ipb);
+        let kit = render::DrumKit::new(&parse_sfx_table(&lt), &dr);
+        let mut d = kdriver::KDriver::new(ip, fm);
+        let r = render::render(&mut d, &kit, 0x4F, 60 * 60 * 3, 1.0);
+        assert_eq!(r.loop_kind, Some(render::LoopKind::Exact));
+        let len = r.loop_end - r.loop_start.unwrap();
+        assert!((len as f64 / 48000.0 - 13.0).abs() < 1.0, "loop length {}", len as f64 / 48000.0);
+        assert!(r.loop_corr.unwrap() > 0.9);
     }
 
     /// Runs only when the extracted disc files exist (never committed).

@@ -42,3 +42,22 @@
 0xff4be0 fmcmd_fd f
 0xff4be6 fmcmd_fe f
 0xff4c12 fmcmd_ff f
+0xFF4D22 fm_drum_tracks f    # slots 6,7 -> COMCMD5/6 (PCM drums on sub CPU)
+0xFF4E08 fm_sfx_tracks f     # slots 8,9 on FM ch 4,5
+0xFF4EB6 fm_sfx_restore f
+0xFF4202 fm_track_tick f
+0xFF425A fm_track_mod f
+0xFF4662 fm_note f
+0xFF45EA fm_drum_note f
+0xFF48BC fm_seqcmd f
+0xFF5AD6 fm_load_instrument f
+0xFF5E5E fm_write_volume f
+0xFF5F0A fm_write_freq f
+0xFF5890 fm_key_off f
+0xFF5918 fm_key_on f
+0xFF3DC0 fm_vibrato_sine     # 64 bytes
+0xFF3E00 fm_noise_table      # 0x201 bytes
+0xFF4000 fm_slot_channel     # 10 bytes
+0xFF5FCA fm_fnum_table       # 96 words block<<11|fnum, note 0 = C0
+0xFF60CA fm_fnum_step        # 96 bytes
+0xFF5E52 fm_carrier_masks    # 8 bytes per algorithm + 4 TL regs

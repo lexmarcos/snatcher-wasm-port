@@ -23,3 +23,11 @@
 0x1013E seqcmd_1c_fmsfx f
 0x1016C seqcmd_0a_waitpcm f
 0x103D2 seqcmd_1b_waitcdtime f
+0x13FEC voice_anim_table     # 1198 bytes, per voice id: animation index for scene_load (0xFF none)
+0x13FAA voice_anim_check f
+0x13FC6 voice_anim_start f
+0x15FBA fm_volume_curve      # 256-byte log curve for COMSTAT1 volume bytes
+0x162FC pcm_special_table    # ids F8..FF: FC mono, FD stereo, FF stop all
+0x160BA pcm_drum_from_main f # COMCMD5..6 drum notes from the FM driver (slots 6/7)
+0x16128 pcm_drum_preload f
+0x161F4 pcm_drum_play f
