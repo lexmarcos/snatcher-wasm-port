@@ -5,6 +5,7 @@
 use wasm_bindgen::prelude::*;
 
 pub mod fb;
+pub mod vdp;
 
 pub const W: usize = 320;
 pub const H: usize = 224;
