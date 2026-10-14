@@ -26,8 +26,10 @@ pub struct Report {
     pub starts: Vec<u8>,
     /// PCM drum commands (COMCMD5..6 triples, M:0xFF4DDE) of the oracle / ours / equal
     pub drum_mismatches: Vec<(u32, Vec<[u8; 3]>, Vec<[u8; 3]>)>,
-    /// requests the oracle accepted but our `enqueue` rejected (must stay empty)
+    /// requests where the oracle's accept/reject decision differs from our `enqueue` (must stay empty)
     pub queue_rejects: Vec<(u32, u8)>,
+    /// requests rejected by the priority gate in the oracle
+    pub queue_gate_rejected: usize,
     pub drums_oracle: usize,
     pub drums_ours: usize,
     pub drums_equal: usize,
@@ -65,11 +67,10 @@ pub fn replay(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize) -> Rep
 
 /// `via_queue`: once the first injected request (`I id 1`, see audio_inject.py) is seen, the
 /// oracle's own `S`/`C` entry events are ignored and our driver is driven only by the same
-/// requests: `I` -> `KDriver::enqueue` (M:0xFF5058), every frame `KDriver::update` (M:0xFF5106)
-/// then `tick`. This also checks the request queue, the priority gate and the dequeue order.
+/// requests: `I` -> `KDriver::enqueue` (M:0xFF5058), `KDriver::update` (M:0xFF5106) wherever the oracle dequeued
+/// `update` runs wherever the oracle's fm_update dequeued something. This also checks the request queue, the priority gate and the dequeue order.
 pub fn replay_mode(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize, via_queue: bool) -> Report {
     let mut queue_mode = false;
-    let mut pending_updates = 0u32;
     let mut d = KDriver::new(ip, fmwr);
     d.ym.log = Some(Vec::new());
     let mut rep = Report::default();
@@ -105,17 +106,25 @@ pub fn replay_mode(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize, v
         match k {
             "F" => {
                 frame = it.next().and_then(|s| s.parse().ok()).unwrap_or(frame);
-                // (the oracle's tick can run past the end of its frame, so the update is
-                // deferred to the next `T` instead of splitting segments here)
-                if queue_mode { pending_updates += 1; }
+
             }
             "I" if via_queue => {
                 let id = hex(it.next()) as u8; let acc = it.next() == Some("1");
-                if acc { queue_mode = true; flush(&mut d, &mut rep, &mut oracle, &mut odrums, frame, &cur_ev); }
-                if queue_mode && acc && !d.enqueue(id) { rep.queue_rejects.push((frame, id)); }
+                if acc && !queue_mode { queue_mode = true; flush(&mut d, &mut rep, &mut oracle, &mut odrums, frame, &cur_ev); }
+                if queue_mode {
+                    // the injector replicates the gate of M:0xFF5058: accepted <=> our enqueue accepts
+                    if d.enqueue(id) != acc { rep.queue_rejects.push((frame, id)); }
+                    if !acc { rep.queue_gate_rejected += 1; }
+                }
             }
+            // the oracle's own dequeue (fm_update M:0xFF5106 found a request) marks where our
+            // `update` runs; which id it starts comes from OUR queue. (Within a frame the
+            // original runs fm_update before or after fm_tick, so the position cannot be fixed.)
             "S" | "C" if queue_mode => {
                 if k == "S" { rep.starts.push(hex(it.next()) as u8); }
+                flush(&mut d, &mut rep, &mut oracle, &mut odrums, frame, &cur_ev);
+                d.update();
+                cur_ev = format!("update ({k})");
             }
             "W" => {
                 let port = it.next().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
@@ -129,7 +138,6 @@ pub fn replay_mode(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize, v
             }
             "V" => { let w = hex(it.next()) as u16; if w != 0xFFFF && rep.odd_volume.len() < 16 { rep.odd_volume.push((frame, w)); } }
             "S" | "C" | "T" => {
-                if k == "T" { for _ in 0..pending_updates { d.update(); } pending_updates = 0; }
                 flush(&mut d, &mut rep, &mut oracle, &mut odrums, frame, &cur_ev);
                 match k {
                     "S" => { let id = hex(it.next()) as u8; rep.starts.push(id); d.start(id); cur_ev = format!("S {id:02x}"); }
@@ -194,6 +202,15 @@ pub fn verify_drum_pcm(log: &str, sfx: &[super::PcmSfxEntry], drmdt: &[u8]) -> D
     let mut exp: Vec<(u8, u8, u16, u8, u8)> = Vec::new();
     let mut obs: Vec<(u8, u8, u16, u8, u8)> = Vec::new();
     let mut odr = [0u8; 3];
+    let mut since_f1 = false;
+    let push = |odr: &[u8; 3], exp: &mut Vec<(u8, u8, u16, u8, u8)>| {
+        for (note, vel, chan) in (DrumEvent { b0: odr[0], b1: odr[1], b2: odr[2] }).decode() {
+            if [6, 8, 9, 10].contains(&note) { continue }
+            let Some(e) = sfx.iter().find(|e| e.id == note) else { continue };
+            let env = if vel == 0 { e.env } else { ((e.env as u32 * vel as u32) >> 8) as u8 };
+            exp.push((chan * 2, page[note as usize], e.fd, env, e.pan));
+        }
+    };
     let mut pend: Option<(u8, u8, u16, u8, u8)> = None;
     for line in log.lines() {
         let mut it = line.split_whitespace();
@@ -202,14 +219,12 @@ pub fn verify_drum_pcm(log: &str, sfx: &[super::PcmSfxEntry], drmdt: &[u8]) -> D
             Some("D") => {
                 let n = it.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(0).min(2);
                 odr[n] = h(it.next()) as u8;
-                if n == 2 {
-                    for (note, vel, chan) in (DrumEvent { b0: odr[0], b1: odr[1], b2: odr[2] }).decode() {
-                        if [6, 8, 9, 10].contains(&note) { continue }
-                        let Some(e) = sfx.iter().find(|e| e.id == note) else { continue };
-                        let env = if vel == 0 { e.env } else { ((e.env as u32 * vel as u32) >> 8) as u8 };
-                        exp.push((chan * 2, page[note as usize], e.fd, env, e.pan));
-                    }
-                }
+                if n == 2 { push(&odr, &mut exp); since_f1 = true; }
+            }
+            // F1 (stop all, M:0xFF52AC) clears the drum command counter A1201D (M:0xFF52C2); the
+            // sub CPU sees a changed counter and plays the stale COMCMD5..6 command once more
+            Some("C") if it.next() == Some("f1") => {
+                if since_f1 { push(&odr, &mut exp); since_f1 = false; }
             }
             Some("P") => {
                 let ch = it.next().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);

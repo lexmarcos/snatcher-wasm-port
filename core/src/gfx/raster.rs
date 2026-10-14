@@ -276,7 +276,12 @@ impl MainDisplay {
             }
             vs = self.eb00;
         }
-        let mut st = LineState { vscroll_a: vs.0 as i16, vscroll_b: vs.1 as i16, display: !self.disp_off_carry };
+        // HYPOTHESIS (docs/re/modules.md §3.2): the display bit left cleared by the last band frame of
+        // fx 8–12 (M:0xFF0E14) is only meaningful while an H-INT mode runs; once no H-INT mode is
+        // active the screen is on again. The original IP code never sets it (only fx 7's handler end
+        // M:0xFF0D32, B6406 requests and the boot code do) and the oracle stays black for the whole intro
+        // after fx 12, although the intro obviously displays pictures (forced-on oracle run).
+        let mut st = LineState { vscroll_a: vs.0 as i16, vscroll_b: vs.1 as i16, display: !self.disp_off_carry || hint_n.is_none() };
         let mut lines = vec![st; 224];
         let mut pal_split = None;
         if let Some(n) = hint_n {

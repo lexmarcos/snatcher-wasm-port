@@ -207,7 +207,42 @@ CD-DA: `assets/web/music/trackNN.ogg` (NN = disc track, 02–21).
 - Main CPU sends FM id 0xF1 at boot (M:0xFF05BE) and 0x3D/0xF2 at M:0xFF0996.
 
 ## Open questions / blockers
-- No reference oracle: comparing the YM2612 model and driver translation against real hardware
-  output needs an emulator + Sega CD BIOS (not downloaded, by rule) → blocker for bit-accuracy.
+- The driver translation is now verified write-for-write against the original code (section
+  "Verification against the oracle"). Still unverified: the analog behaviour of the YM2612 model
+  (no chip reference exists in the oracle: it logs register writes only), see that section.
 - RF5C164 PAN nibble order (left/right) and the analog mix levels FM vs PCM vs CD-DA.
 - `_CDBIOS` function numbers 0x03/0x12 semantics from the BIOS manual (HYPOTHESIS).
+
+## Verification against the oracle
+
+The BIOS-free oracle (`re/oracle`, docs/re/oracle.md) runs the ORIGINAL main-CPU driver
+(M:0xFF4000-0xFF6141) on Musashi, so the Rust translation `core/src/audio/kdriver.rs` can be checked
+write-for-write. The oracle does not model the YM2612 itself (it only logs register writes, see
+oracle.md), so this verifies everything up to the chip registers; the chip model is checked
+separately against the public documentation (below).
+
+### Method
+- `re/oracle/audio_ym.py` hooks the entry of `fm_start` M:0xFF5306 (`S id`), the command dispatch
+  M:0xFF518C (`C id`), `fm_tick` M:0xFF408A (`T`, plus `V` = volume word M:$FF7F5E), and logs every
+  YM2612 data write with the PC of the writing instruction (`W port reg val ppc`), every write to
+  COMCMD5..6 (A1201A..C = PCM drum command of M:0xFF4DDE, `D n val`) and every RF5C164 key-on made by
+  the sub-CPU driver (`P ch start fd loop env pan`).
+- `re/oracle/audio_inject.py` injects requests into the original request ring exactly like
+  `fm_request` M:0xFF5058 (`I id accepted`). Modes: all music ids, one sfx between them, remaining sfx;
+  `--vol` (volume word M:$FF7F5E swept through ramps and pseudo-random values, forced at each
+  `fm_tick` entry like the COMSTAT1 copy of M:0xFF4FB0), `--cmds` (F1-F4 commands), `--burst`
+  (several requests in one frame, priority gate), `--sfxonly`.
+- `re/oracle/audio_ref.py` records all reference logs into `assets/audio/ref/*.txt` (gitignored; needs
+  the oracle venv, ~12 min on one core per log, run in parallel):
+  `cd re/oracle && .venv/bin/python -I audio_ref.py` (`--quick`: intro + inject600 only).
+- `core/src/audio/verify.rs` replays a log into a fresh `KDriver` (start/command/tick at the same
+  event positions, same volume word) and compares per segment (= writes between two driver entry
+  events) the YM2612 writes, the drum commands, and (`verify_drum_pcm`) the sub-CPU key-ons.
+  Mode "via queue" ignores the oracle's `S`/`C` events and drives `KDriver::enqueue` (M:0xFF5058) +
+  `KDriver::update` (M:0xFF5106) with the injected requests instead.
+  Run: `cargo run --release -p sncore --example fmverify -- assets/raw assets/audio/ref/X.txt`;
+  regression test `audio::verify::tests::fm_driver_matches_oracle_refs` (replays every log in
+  `assets/audio/ref/`, skipped when absent).
+- Caveat found while building this: the original tick can run past the end of its 262-line frame, so
+  per-frame injection must never write main RAM at the frame boundary (a first volume sweep did and
+  produced 1-step TL differences that were an artifact of the harness, not of `kdriver`).

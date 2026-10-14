@@ -18,7 +18,7 @@ fn main() {
     if log.contains("\nI ") {
         let q = replay_mode(std::fs::read(raw.join("header.bin")).unwrap()[0x200..0x800].iter().copied().chain(std::fs::read(raw.join("ip.bin")).unwrap()).collect(),
                             std::fs::read(raw.join("files/FMWR_1.BIN")).unwrap(), &log, n, true);
-        println!("via request queue (I -> enqueue, update per frame): {q}  rejects {:?}", q.queue_rejects);
+        println!("via request queue (I -> enqueue, update per frame): {q}  accept/reject disagreements {:?}, requests rejected by the priority gate {}", q.queue_rejects, q.queue_gate_rejected);
     }
     let mut ids = rep.starts.clone(); ids.sort(); ids.dedup();
     println!("ticks {} (with volume word != FFFF: {}), distinct S ids {}", rep.ticks, rep.volume_ticks, ids.len());
