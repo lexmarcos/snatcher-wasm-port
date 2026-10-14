@@ -36,9 +36,11 @@ State after resume (commit after cfc038a): build is green (`cargo build --releas
 DATA_D1/D0 intro and the DATA_Y16 staff roll play completely (the old "stall" was the display bit left off after the
 dedication shutters, docs/re/modules.md §3.2; the oracle's missing CD time `$787A` §1). MODULES: done, see its Status.
 Running now (sonnet subagents, they commit WIP themselves): MODULES, INTERACT, AUDIO-VERIFY.
-1. **MODULES** (engine/src/modules/, docs/re/modules.md — doc missing, create it): fix the D1/D0
-   timeline stall, write the DATA_D2 title module and H40 (320 px) rendering; compare with
-   `re/oracle/out/refs/*.png`.
+1. **MODULES – DONE** (docs/re/modules.md): boot screens + DATA_D2 title/options/continue,
+   intro D1/D0 and ending Y16 (staff roll) verified frame-by-frame vs the oracle (D1 70/80
+   samples exact). No H40 needed (VDP reg 12 = 0 in all oracle frames). HYPOTHESIS: display
+   re-enabled when no H-INT mode is active (the oracle stays black after the dedication).
+   Remaining: Y16 tail (START at the end), gun calibration with a gun model, mono/stereo option in web audio.
 2. **INTERACT – DONE (except shooting details)**: menu bar pixel-identical to the oracle,
    keyboard/keypad/pointer verified vs oracle (docs/re/interact.md). Remaining: steady held-pad
    input in the oracle, then compare ACT2/ACT3 shooting stages and results phases; gun calibration.
