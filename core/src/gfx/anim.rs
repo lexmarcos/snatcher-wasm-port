@@ -585,7 +585,10 @@ impl Runtime {
                     }
                 }
             };
-            match c.kind & 0xF {
+            // Dispatch S:0xE89C: `movea.l 0(pc,d0.w)` with d0 = (kind&0xF)*4 and the PC base at the
+            // extension word (S:0xE89E), so kind n uses table slot n-1 (S:0xE8A2): 1 → S:0xE8F2,
+            // 2 → S:0xE93C, 3 → S:0xE986, 4 → S:0xE9DC, 5 → S:0xEA88. Kind 0 never occurs.
+            match (c.kind & 0xF).wrapping_sub(1) {
                 0 => { // one entry per frame, S:0xE8F2
                     let e = c.ptr;
                     if c.kind & 0x80 == 0 { decomp(self, e); }
@@ -616,7 +619,7 @@ impl Runtime {
                 }
                 3 | 4 => { // dissolve (S:0xE9DC / S:0xEA88), 65 steps
                     let e = c.ptr;
-                    if c.kind & 0xF == 3 {
+                    if c.kind & 0xF == 4 { // kind 4 = dissolve-in (S:0xE9DC)
                         if c.kind & 0x80 == 0 { decomp(self, e); self.tilech[k].kind |= 0x80; }
                         let st = c.step as usize;
                         let d1 = st & 7;
@@ -645,7 +648,16 @@ impl Runtime {
         self.vram_delay = mem.u16(p + 4);
         let src = mem.u32(p) & 0xFF_FFFF;
         let dst = mem.u16(p + 6);
-        let _ = vdp.upload_lzkn(mem, src, dst);
+        // subfn_07 S:0xF326 → lz_to_wordram S:0xF32C: decompress into Word RAM S:0xB8000
+        // (= tile-stream buffer 0, later re-sent by channels with bit 7 set), then DMA to VRAM.
+        if let Some(s) = mem.slice_at(src) {
+            if let Ok((out, _)) = crate::lzkn::decompress(s) {
+                for (k, chunk) in out.chunks(0x2000).enumerate().take(3) {
+                    self.tilebuf[k][..chunk.len()].copy_from_slice(chunk);
+                }
+                vdp.write_vram(dst, &out);
+            }
+        }
         self.vram_list = Some(p + 8);
     }
 

@@ -46,6 +46,7 @@ fn main() {
         if std::env::var("FXTRACE").is_ok() && ms != last_fx { println!("{f:6} {ms}"); last_fx = ms; }
         let d = e.debug_info();
         if d.split("\"seq\"").nth(1) != last.split("\"seq\"").nth(1) { println!("{f:6} {d}"); last = d; }
+        if let Ok(v) = std::env::var("VRAMDUMP") { if f == frames { std::fs::write(v, &e.disp.vdp.vram).unwrap(); } }
         if std::env::var("CRAM").is_ok() && f % every == 0 { println!("cram A {:03x?}\ncram B {:03x?}", &e.disp.vdp.cram[..32], &e.disp.vdp.cram_b[..32]); }
         if f % every == 0 {
             sheet.push(e.fb.clone());
