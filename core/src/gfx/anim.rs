@@ -185,7 +185,9 @@ impl Runtime {
                 Chunk::Objects(v) => {
                     for s in v {
                         let slot = s.slot as usize & 63;
-                        if self.objs[slot].active != 0 { continue; } // S:0xF71A: slot busy -> stop
+                        // S:0xF718 `tst.b (a1)` tests the HIGH byte of the active word (live objects hold 1 -> 0x0001 -> byte 0),
+                        // so an occupied slot is simply re-created (subfn_11 clears it first); `rts` would end the chunk
+                        if (self.objs[slot].active >> 8) != 0 { break; }
                         let mut o = Obj { active: 1, flags: s.flags, x: (s.x as i32) << 16, y: (s.y as i32) << 16,
                             anim_table: s.anim_table, script: s.script, idx: 0xFFFF, ..Obj::default() };
                         // S:0xF74A: initial frame (skipping A1/A7 palette-select entries)

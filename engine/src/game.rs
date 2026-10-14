@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use sncore::actions::{self, btn, Font, Input, MenuLine, MenuResult, MessageBox, MsgEvent, TextMenu, TextWindow};
 use sncore::gfx::{self, Display, SubMem};
 use sncore::script::vm::{Action, Host, PassEnd, Vm};
+use crate::modules::SubServices;
 
 pub const W: usize = gfx::SCREEN_W;
 pub const H: usize = gfx::SCREEN_H;
@@ -505,6 +506,15 @@ impl Engine {
         if b == 0xFF || n >= 1198 { None } else { Some(b) }
     }
 
+    /// For the test harness (fid_cmp `--sync`): what the game is waiting for. 1 = a message box waits for the confirm
+    /// button (state 5, glyph renderer idle), 2 = the command menu's key loop is running, 0 = neither.
+    pub fn wait_state(&self) -> u8 {
+        if self.top != Top::Game { return 0; }
+        if let Some(m) = self.msg.as_ref() { if m.state == 5 && !self.text.busy && self.busy() { return 1; } }
+        if self.phase == VmPhase::Menu && self.menu.is_some() && self.menu_close.is_none() { return 2; }
+        0
+    }
+
     /// `$7892`: the sub CPU's copy of main `$E061`, 2 frames late (oracle: main `$E061` = 0 in frame 20, `$7892` = 0 in frame 22).
     pub fn reg_7892(&self) -> u8 { self.e061_hist[1] }
 
@@ -686,7 +696,7 @@ impl Engine {
                 self.seq_timer += 1;
                 self.voice_left == 0 || self.seq_timer >= 0xE10
             }
-            0x0B => true, // CD drive ready
+            0x0B => { let hi = self.cd_status() >> 8; hi == 0 || hi == 5 } // S:0x101A6: wait until CD status hi byte is 0 (stopped / track ended) or 5 (paused)
             0x0C => {
                 if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 { self.out.push(Out::PcmSfx { id: w(0), bank: self.pcm_bank }); }
                 true
@@ -715,7 +725,7 @@ impl Engine {
                     }
                 }
             }
-            0x0E => { let t = w(0); self.cd_start = Some(self.frame); self.out.push(Out::Music { track: t }); true }
+            0x0E => { let t = w(0); self.cd_play(t); true }
             0x0F => {
                 // S:0x1027E: step 0 black-out (S:0xF560, once) and wait a frame, then subfn_17 (S:0xF5E8) which raises `$7887`;
                 // the sequencer is blocked until the handshake finished, then the command completes (oracle: 463 / 464 / 466)

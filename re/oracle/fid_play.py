@@ -54,7 +54,7 @@ for rel in range(1, a.frames + 1):
         ready_since[k] = (ready_since.get(k) if ready_since.get(k) is not None else rel) if v else None
     if rel - last_press > 8 and rel > 2:
         if msg_ready and rel - ready_since['msg'] >= a.settle:
-            pad = 0x20
+            pad = 0x20; pkind = 'm'; psince = rel - ready_since['msg']
         elif menu_ready and rel - ready_since['menu'] >= a.settle and s.r8(0x9853) > 0 and s.r8(0x7A25) == 0 and s.r16(0x788C) != 0 and s.r8(0x79F4) == 0 and s.r8(0x9B44) == 0 and s.r8(0x7A00 + 1) == 1:
             n = s.r8(0x9853); cur = s.r8(0x9710)
             if 'menu' not in stage or stage['menu'] != (rel // 1):
@@ -71,6 +71,7 @@ for rel in range(1, a.frames + 1):
             else:
                 want = choices[ci] if ci < len(choices) else 0
             if want < 0: break
+            pkind = 'u'; psince = rel - ready_since['menu']
             if cur != want: pad = 0x02
             else: pad = 0x20; ci += 1; stage['items'] = None; stage['want'] = None
     m.inputs = [[1, pad]]
@@ -81,7 +82,7 @@ for rel in range(1, a.frames + 1):
         # the sub's pressed flags `$7991` must show the press in this frame (a press that lands in a frame where the sub
         # handler does not run, or is not delivered by the HLE pad model, is dropped from the recorded script)
         seen = s.r8(0x7991) & (pad & 0x8F | (0x20 if pad & 0x20 else 0))
-        if seen: script.append([rel, pad])
+        if seen: script.append([rel, pad, pkind, psince])
         else: print(rel, 'DROPPED press', hex(pad))
     sc = s.r16(0x980C)
     if sc != last_script:

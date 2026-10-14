@@ -13,7 +13,7 @@ rel frames of --inputs / --shots count from there.
 --oracle-jump SPnn:pc / --engine-jump SPnn:pc[:item,..] start both from a jump instead (interact_jump).
 Outputs in out/fid/<name>/: oracle/*.png, engine/*.png, diff/*.png (oracle | engine | |diff|), report.txt
 Evidence of every difference must be traced in the disassembly (rule 1); this tool only finds them."""
-import argparse, json, os, re, subprocess, sys, difflib
+import argparse, json, os, re, subprocess, sys, difflib, shutil
 import numpy as np
 from PIL import Image
 
@@ -22,6 +22,8 @@ ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 ap = argparse.ArgumentParser()
 ap.add_argument('--name', default='fid')
 ap.add_argument('--inputs', default='[]', help='[[rel_frame,bits],..] single presses')
+ap.add_argument('--inputs-file', default='', help='read the input list from a JSON file (fid_play.py output)')
+ap.add_argument('--sync', action='store_true', help='engine: press relative to its own message/menu readiness (SYNC, entries [rel,pad,kind,since]); screens are compared at drift-corrected frames')
 ap.add_argument('--frames', type=int, default=0, help='rel frames to run (default: last input + 300)')
 ap.add_argument('--shots', default='', help='comma list of rel frames')
 ap.add_argument('--every', type=int, default=0)
@@ -32,13 +34,17 @@ ap.add_argument('--engine-jump', default='')
 ap.add_argument('--eprelude', default='1540:32', help='engine: absolute-frame presses before rel 0 (dismiss the first Mika message)')
 ap.add_argument('--load', default='junker_hq')
 ap.add_argument('--skip-oracle', action='store_true')
+ap.add_argument('--refine', type=int, default=0, help='for screens with more than N differing pixels also try engine frames +-12 around the mapped one and report the best offset (needs a second engine run)')
+ap.add_argument('--refine-range', type=int, default=12)
 ap.add_argument('--rng', action='store_true', help='fix the RANDOM script nodes on both sides (poke $786A..D = 0 each oracle frame, engine FIDRNG)')
 ap.add_argument('--skip-engine', action='store_true')
 a = ap.parse_args()
 out = os.path.join(HERE, 'out', 'fid', a.name)
 for d in ('oracle', 'engine', 'diff'):
     os.makedirs(os.path.join(out, d), exist_ok=True)
-inputs = json.loads(a.inputs)
+inputs = json.load(open(a.inputs_file)) if a.inputs_file else json.loads(a.inputs)
+full_inputs = inputs
+inputs = [[e[0], e[1]] for e in inputs]
 last = max([i[0] for i in inputs] + [0])
 frames = a.frames or last + 300
 shots = sorted(set([int(x) for x in a.shots.split(',') if x] + (list(range(0, frames + 1, a.every)) if a.every else [])))
@@ -84,36 +90,66 @@ def oracle_passes():
         if d['t'] == 'seq_start':
             hx = d['queue']
             words = [int(hx[i:i + 4], 16) for i in range(0, len(hx), 4)]
+            while words and words[-1] == 0: words.pop()   # the trace stores the queue up to its zero terminator
             res.append((d['f'] - base, words))
     return res
 
 # ---------------- engine
-if not a.skip_engine:
-    subprocess.run(['cargo', 'build', '--release', '-p', 'snengine', '--example', 'run', '-q'], cwd=ROOT, check=True)
-    pads = ','.join(([a.eprelude] if a.eprelude and not a.engine_jump else []) + ['%d:%d' % (f + a.ebase, b) for f, b in inputs])
-    env = dict(os.environ, SHOTAT=','.join(str(s + a.ebase) for s in shots) or '0')
-    if a.rng: env['FIDRNG'] = '1'
-    cmd = [os.path.join(ROOT, 'target', 'release', 'examples', 'run'), str(a.ebase + frames), '1000', os.path.join(out, 'engine'), pads]
-    if a.engine_jump: cmd.append(a.engine_jump)
-    r = subprocess.run(cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, text=True)
-    open(os.path.join(out, 'engine', 'log.txt'), 'w').write(r.stdout)
-    for fn in os.listdir(os.path.join(out, 'engine')):
-        m = re.match(r'f(\d+)\.png', fn)
-        if m:
-            os.replace(os.path.join(out, 'engine', fn), os.path.join(out, 'engine', 'r%05d.png' % (int(m.group(1)) - a.ebase)))
-
-def engine_passes():
-    base = a.ebase if not a.engine_jump else 0
+def parse_engine_passes(logfile, base):
     res = []
-    for l in open(os.path.join(out, 'engine', 'log.txt')):
+    for l in open(logfile):
         m = re.match(r'\s*(\d+) Log\("pass pc=(\w+) q=\[(.*)\]"\)', l)
         if m:
             f = int(m.group(1)) - base
             words = []
             for c, ar in re.findall(r'\((\d+), \[([^\]]*)\]\)', m.group(3)):
                 words.append(int(c)); words += [int(x) & 0xFFFF for x in ar.split(',') if x.strip()]
+            while words and words[-1] == 0: words.pop()
             res.append((f, words))
     return res
+
+def run_engine(shot_abs):
+    """run the engine; shot_abs = {engine absolute frame: name} -> engine/<name>.png"""
+    sy = {}
+    if a.sync:
+        sp = os.path.join(out, 'engine', 'sync.json')
+        json.dump(full_inputs, open(sp, 'w')); sy['SYNC'] = sp
+    pads = ','.join(([a.eprelude] if a.eprelude and not a.engine_jump else []) + ([] if a.sync else ['%d:%d' % (f + a.ebase, b) for f, b in inputs]))
+    env = dict(os.environ, SHOTAT=','.join(str(f) for f in sorted(shot_abs)) or '0', **sy)
+    if a.rng: env['FIDRNG'] = '1'
+    cmd = [os.path.join(ROOT, 'target', 'release', 'examples', 'run'), str(a.ebase + frames + (0 if not a.sync else 0)), '1000', os.path.join(out, 'engine'), pads]
+    if a.engine_jump: cmd.append(a.engine_jump)
+    r = subprocess.run(cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, text=True)
+    open(os.path.join(out, 'engine', 'log.txt'), 'w').write(r.stdout)
+    for fn in os.listdir(os.path.join(out, 'engine')):
+        m = re.match(r'f(\d+)\.png', fn)
+        if m:
+            os.replace(os.path.join(out, 'engine', fn), os.path.join(out, 'engine', 'r%05d.png' % shot_abs[int(m.group(1))]) if False else os.path.join(out, 'engine', shot_abs.get(int(m.group(1)), 'x%d' % int(m.group(1))) + '.png'))
+
+shot_map = {}       # oracle rel frame -> engine rel frame (drift corrected with --sync)
+if not a.skip_engine:
+    subprocess.run(['cargo', 'build', '--release', '-p', 'snengine', '--example', 'run', '-q'], cwd=ROOT, check=True)
+    if a.sync:
+        run_engine({})      # pass 1: passes only
+        ops = [(f, w) for f, w in oracle_passes() if not (len(w) == 0 or w[0] in (0x22, 0x16, 0x05) or w == [0x1C, 0x1D])]
+        eps = [(f, w) for f, w in parse_engine_passes(os.path.join(out, 'engine', 'log.txt'), a.ebase) if len(w) > 0]
+        key0 = lambda w: ' '.join('%04X' % x for x in w)
+        sm0 = difflib.SequenceMatcher(None, [key0(w) for _, w in ops], [key0(w) for _, w in eps], autojunk=False)
+        pairs = []
+        for blk in sm0.get_matching_blocks():
+            for k in range(blk.size): pairs.append((ops[blk.a + k][0] + 1, eps[blk.b + k][0]))   # oracle trace f = frame - 1
+        pairs.sort()
+        import bisect
+        for r_ in shots:
+            i = bisect.bisect_right([p_[0] for p_ in pairs], r_) - 1
+            drift = (pairs[i][1] - pairs[i][0]) if i >= 0 else 0
+            shot_map[r_] = r_ + drift
+    else:
+        for r_ in shots: shot_map[r_] = r_
+    run_engine({v + a.ebase: 'r%05d' % k for k, v in shot_map.items()})
+
+def engine_passes():
+    return parse_engine_passes(os.path.join(out, 'engine', 'log.txt'), a.ebase if not a.engine_jump else 0)
 
 def fmt(w): return ' '.join('%X' % x if i == 0 else '%X' % x for i, x in enumerate(w))
 rep = []
@@ -135,8 +171,42 @@ for tag, i1, i2, j1, j2 in sm.get_opcodes():
     else:
         for k in range(i1, i2): rep.append('  - o%6d              ORACLE ONLY  %s' % (op_f[k][0], key(op_f[k][1])[:140]))
         for k in range(j1, j2): rep.append('  + e%6d              ENGINE ONLY  %s' % (ep[k][0], key(ep[k][1])[:140]))
+        if i2 - i1 == j2 - j1:   # paired replacement: where do the two queues differ?
+            for k in range(i2 - i1):
+                wo, we = op_f[i1 + k][1], ep[j1 + k][1]
+                n = next((x for x in range(min(len(wo), len(we))) if wo[x] != we[x]), min(len(wo), len(we)))
+                rep.append('      ~ o%d vs e%d: common %d words, then oracle %s | engine %s' % (op_f[i1 + k][0], ep[j1 + k][0], n,
+                           ' '.join('%04X' % x for x in wo[n:n + 6]) or '(end)', ' '.join('%04X' % x for x in we[n:n + 6]) or '(end)'))
 
 # ---------------- screens
+best = {}
+if a.refine and not a.skip_engine:
+    # first pass: which screens are bad?
+    bad = []
+    for sh in shots:
+        o_, e_ = os.path.join(out, 'oracle', 'r%05d.png' % sh), os.path.join(out, 'engine', 'r%05d.png' % sh)
+        if os.path.exists(o_) and os.path.exists(e_):
+            oo, ee = np.asarray(Image.open(o_).convert('RGB')).astype(int), np.asarray(Image.open(e_).convert('RGB')).astype(int)
+            if int((np.abs(oo - ee).sum(2) > 24).sum()) > a.refine: bad.append(sh)
+    if bad:
+        offs = list(range(-a.refine_range, a.refine_range + 1, 2))
+        extra = {shot_map[sh] + a.ebase + o: 'x%05d_%+d' % (sh, o) for sh in bad for o in offs}
+        keep = {v + a.ebase: 'r%05d' % k for k, v in shot_map.items()}
+        shutil.rmtree(os.path.join(out, 'engine', 'keep'), ignore_errors=True)
+        os.makedirs(os.path.join(out, 'engine', 'keep'))
+        for fn in os.listdir(os.path.join(out, 'engine')):
+            if fn.endswith('.png'): shutil.move(os.path.join(out, 'engine', fn), os.path.join(out, 'engine', 'keep', fn))
+        run_engine(extra)
+        for sh in bad:
+            o_ = np.asarray(Image.open(os.path.join(out, 'oracle', 'r%05d.png' % sh)).convert('RGB')).astype(int)
+            res = []
+            for off in offs:
+                fp = os.path.join(out, 'engine', 'x%05d_%+d.png' % (sh, off))
+                if os.path.exists(fp):
+                    ee = np.asarray(Image.open(fp).convert('RGB')).astype(int)
+                    res.append((int((np.abs(o_ - ee).sum(2) > 24).sum()), off))
+            if res: best[sh] = min(res)
+        for fn in os.listdir(os.path.join(out, 'engine', 'keep')): shutil.move(os.path.join(out, 'engine', 'keep', fn), os.path.join(out, 'engine', fn))
 def load(p): return np.asarray(Image.open(p).convert('RGB')).astype(int) if os.path.exists(p) else None
 rep.append('screens (differing pixels of 57344; mean abs diff)')
 for s in shots:
@@ -148,7 +218,8 @@ for s in shots:
     n = int((d > 24).sum())
     ys, xs = np.nonzero(d > 24)
     bb = ' bbox x%d-%d y%d-%d (scene %d, window %d)' % (xs.min(), xs.max(), ys.min(), ys.max(), int((ys < 136).sum()), int((ys >= 136).sum())) if n else ''
-    rep.append('  r%05d diff %6d px (%.1f%%)%s' % (s, n, 100.0 * n / (h * w), bb))
+    rb = ('  best of +-%d frames: %d px at %+d' % ((a.refine_range,) + best[s])) if s in best else ''
+    rep.append('  r%05d diff %6d px (%.1f%%)%s%s' % (s, n, 100.0 * n / (h * w), bb, rb))
     dimg = np.clip(d, 0, 255).astype(np.uint8)
     both = np.concatenate([o[:h, :w].astype(np.uint8), np.full((h, 4, 3), 255, np.uint8), e[:h, :w].astype(np.uint8), np.full((h, 4, 3), 255, np.uint8), np.stack([dimg] * 3, 2)], 1)
     Image.fromarray(both).save(os.path.join(out, 'diff', 'r%05d.png' % s))

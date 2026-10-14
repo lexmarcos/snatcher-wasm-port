@@ -59,12 +59,33 @@ fn main() {
             presses.insert(f.parse::<u64>().unwrap(), b.parse::<u8>().unwrap());
         }
     }
+    // SYNC=file.json: presses of an oracle session recorded by re/oracle/fid_play.py as [rel, pad, kind, since]
+    // (kind 'm' message waiting / 'u' menu key loop, since = frames after the wait began); each is applied relative to
+    // the ENGINE's own readiness so a few frames of drift do not desynchronise a long session
+    let mut sync: std::collections::VecDeque<(char, u64, u8)> = std::env::var("SYNC").ok().and_then(|f| std::fs::read_to_string(f).ok()).map(|t| {
+        // tiny parser for [[rel,pad,"k",since],...]
+        let mut v = std::collections::VecDeque::new();
+        for it in t.split('[').skip(2) {
+            let f: Vec<&str> = it.trim_end_matches(|c| c == ']' || c == ',' || c == ' ').split(',').collect();
+            if f.len() == 4 { v.push_back((f[2].trim().trim_matches('"').chars().next().unwrap_or('u'), f[3].trim().trim_matches(']').trim().parse().unwrap_or(0), f[1].trim().parse().unwrap_or(0))); }
+        }
+        v
+    }).unwrap_or_default();
+    let (mut ready_kind, mut ready_since, mut last_press) = (0u8, 0u64, 0u64);
     let shot_at: Vec<u64> = std::env::var("SHOTAT").map(|v| v.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_default();
     let mut last = String::new();
     let mut last_fx = String::new();
     let mut sheet: Vec<Vec<u8>> = vec![];
     for f in 1..=frames {
-        let pad = if inputs == "auto" { if f % 40 == 0 { 0x20 } else { 0 } } else { *presses.get(&f).unwrap_or(&0) };
+        let mut pad = if inputs == "auto" { if f % 40 == 0 { 0x20 } else { 0 } } else { *presses.get(&f).unwrap_or(&0) };
+        if !sync.is_empty() {
+            let w = e.wait_state();
+            if w != ready_kind { ready_kind = w; ready_since = f; }
+            if let Some(&(k, since, p)) = sync.front() {
+                let want = if k == 'm' { 1 } else { 2 };
+                if w == want && f - ready_since >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press {k} {since} pad {p}"); }
+            }
+        }
         if let Ok(v) = std::env::var("POKE") { // "frame:hexaddr:value,..." word pokes of sub-CPU registers before the tick
             for it in v.split(',') { let p: Vec<&str> = it.split(':').collect(); if p.len() == 3 && p[0].parse::<u64>().ok() == Some(f) { e.regs.set(u32::from_str_radix(p[1], 16).unwrap(), p[2].parse().unwrap()); } }
         }
