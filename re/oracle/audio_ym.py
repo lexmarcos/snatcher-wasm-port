@@ -22,6 +22,10 @@ HOOKS = {0xFF5306: 'S', 0xFF518C: 'C', 0xFF408A: 'T'}
 class AudioMachine(M.Machine):
     def __init__(self, *a, **k):
         self.ev = []
+        # optional callable() -> int|None: volume word to force at each fm_tick entry (the
+        # driver reads M:$FF7F5E during the tick; writing it only at tick entry keeps it
+        # constant for the whole tick like the real vint-time COMSTAT1 copy, M:0xFF4FB0)
+        self.vol_fn = None
         super().__init__(*a, **k)
         for pc in HOOKS:
             self.lib.core_add_hook(M.MAIN, pc)
@@ -31,6 +35,10 @@ class AudioMachine(M.Machine):
         if t is None:
             return super()._main_bios(pc)
         if t == 'T':
+            if self.vol_fn is not None:
+                w = self.vol_fn()
+                if w is not None:
+                    self.main.w16(0xFF7F5E, w)
             self.ev.append('T')
             self.ev.append('V %04x' % self.main.r16(0xFF7F5E))
         else:

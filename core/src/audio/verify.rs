@@ -19,6 +19,13 @@ pub struct Report {
     pub mismatches: Vec<(u32, String, Vec<(u8, u8, u8)>, Vec<(u8, u8, u8)>)>,
     /// volume word values seen at ticks other than 0xFFFF (the replay assumes 0xFFFF)
     pub odd_volume: Vec<(u32, u16)>,
+    /// number of volume words != 0xFFFF applied at ticks
+    pub volume_ticks: usize,
+    /// ticks replayed, `S` starts and `C` commands replayed
+    pub ticks: usize,
+    pub starts: Vec<u8>,
+    /// executed sequence commands 0xE0..=0xFF in our driver (coverage of the replay)
+    pub cmd_stats: [u32; 32],
 }
 
 impl Report {
@@ -78,14 +85,17 @@ pub fn replay(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize) -> Rep
             "S" | "C" | "T" => {
                 flush(&mut d, &mut rep, &mut oracle, frame, &cur_ev);
                 match k {
-                    "S" => { let id = hex(it.next()) as u8; d.start(id); cur_ev = format!("S {id:02x}"); }
+                    "S" => { let id = hex(it.next()) as u8; rep.starts.push(id); d.start(id); cur_ev = format!("S {id:02x}"); }
                     "C" => { let id = hex(it.next()) as u8; d.request(id); cur_ev = format!("C {id:02x}"); }
                     _ => {
                         // the volume word M:$FF7F5E is written by other main-CPU code (fades,
                         // boot): apply the value the original had at this tick (next `V` line)
                         if let Some(v) = lines.get(li + 1).and_then(|l| l.strip_prefix("V ")) {
-                            d.set_volume_word(u16::from_str_radix(v.trim(), 16).unwrap_or(0xFFFF));
+                            let w = u16::from_str_radix(v.trim(), 16).unwrap_or(0xFFFF);
+                            if w != 0xFFFF { rep.volume_ticks += 1; }
+                            d.set_volume_word(w);
                         }
+                        rep.ticks += 1;
                         d.tick(); cur_ev = "T".into();
                     }
                 }
@@ -94,6 +104,7 @@ pub fn replay(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize) -> Rep
         }
     }
     flush(&mut d, &mut rep, &mut oracle, frame, &cur_ev);
+    rep.cmd_stats = d.cmd_stats;
     rep
 }
 
@@ -101,22 +112,32 @@ pub fn replay(ip: Vec<u8>, fmwr: Vec<u8>, log: &str, max_mismatch: usize) -> Rep
 mod tests {
     use super::*;
 
-    /// Needs assets/raw (extraction) and assets/audio/ref/intro_ym.txt
-    /// (`re/oracle/audio_ym.py re/oracle/scenarios/intro.json 6600 assets/audio/ref/intro_ym.txt`).
+    /// Needs assets/raw (extraction) and the reference logs in assets/audio/ref/*.txt, which
+    /// `re/oracle/audio_ref.py` records from the ORIGINAL driver (see docs/re/audio.md,
+    /// "Verification against the oracle"). Skips when either is absent. Every log must replay
+    /// with every segment (the YM2612 writes between two driver entry events) identical.
     #[test]
-    fn fm_driver_matches_oracle_intro() {
+    fn fm_driver_matches_oracle_refs() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let raw = root.join("assets/raw");
-        let Ok(log) = std::fs::read_to_string(root.join("assets/audio/ref/intro_ym.txt")) else {
-            eprintln!("oracle reference log missing, skipped"); return
+        let Ok(dir) = std::fs::read_dir(root.join("assets/audio/ref")) else {
+            eprintln!("oracle reference logs missing, skipped"); return
         };
         let Ok(hdr) = std::fs::read(raw.join("header.bin")) else { eprintln!("assets missing, skipped"); return };
         let mut ip = hdr[0x200..0x800].to_vec();
         ip.extend_from_slice(&std::fs::read(raw.join("ip.bin")).unwrap());
         let fm = std::fs::read(raw.join("files/FMWR_1.BIN")).unwrap();
-        let rep = replay(ip, fm, &log, 5);
-        eprintln!("{rep}");
-        assert!(rep.segments > 1000, "too few segments: {}", rep.summary());
-        assert_eq!(rep.segments, rep.segments_equal, "{rep}");
+        let mut n = 0;
+        for e in dir.flatten() {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("txt") { continue }
+            let log = std::fs::read_to_string(&path).unwrap();
+            let rep = replay(ip.clone(), fm.clone(), &log, 5);
+            eprintln!("{}: {}", path.file_name().unwrap().to_string_lossy(), rep.summary());
+            assert!(rep.segments > 1000, "{}: too few segments: {}", path.display(), rep.summary());
+            assert_eq!(rep.segments, rep.segments_equal, "{}: {rep}", path.display());
+            n += 1;
+        }
+        if n == 0 { eprintln!("no reference logs, skipped"); }
     }
 }
