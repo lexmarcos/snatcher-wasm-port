@@ -222,7 +222,7 @@ impl Engine {
         // The original runs this as its own batch and waits for it (S:0xECAC) before state 1
         // queues the script load + 0F; the wait lets the new objects run their first script
         // entries (e.g. 9B persistent) before the scene clear. Modelled as a 1-frame wait.
-        vec![Action { cmd: 0x16, args: vec![] }, l(0x03, 0xECB6), l(0x03, 0xECC4), l(0x01, 0xED0E), Action { cmd: 0x10, args: vec![1] }]
+        vec![Action { cmd: 0x16, args: vec![] }, l(0x03, 0xECB6), l(0x03, 0xECC4), l(0x01, 0xED0E), Action { cmd: 0x10, args: vec![2] }]
     }
 
     /// Start a new game at SP06:0 (VM main-loop state 1, new-game branch).
