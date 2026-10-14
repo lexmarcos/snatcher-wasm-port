@@ -150,7 +150,7 @@ Name table (S:0x13552, 48 word offsets relative to the table, entry 0 empty) beg
 | 0A | 0x1016C | – | wait until `$1511E & 0x0F == 0` (PCM voices idle, **HYPOTHESIS**) or 0xE10 frames (60 s) |
 | 0B | 0x101A6 | – | wait until CD status (CDBSTAT) hi byte is 0x00 or 0x05 |
 | 0C | 0x101BC | w n | if `$7890 == 0` and no PCM voice (`$1511E&7`): `subfn_06(n, -1)` (**audio**: PCM sound effect) |
-| 0D | 0x101DC | w n | `sub_0150F4(n)`; `$9717=FF`; then (if table S:0x13FEC[n] ≠ FF) waits for `$7891`, else plays scene via `subfn_16` – S:0x13FEC is all FF in this build |
+| 0D | 0x101DC | w n | voice n: step 0 `sub_0150F4(n)`, `$9717=FF`; step 1 idle; step 2 if byte table S:0x13FEC[n] ≠ FF (1198 bytes: voice id → portrait scene number, **not** all FF – corrected, see docs/re/fidelity.md) `$7891 = 1` (main palette split); step ≥3 `$78BC=1`, `subfn_16(table[n])` |
 | 0E | 0x10238 | w trk | CD-DA: `cd_play_track(trk)` (CDBIOS 0x12 MSCPLAY1), wait until status == 0x0100 (playing) |
 | 0F | 0x1027E | – | scene clear: if `($788B&0x7F)|($788A&1) == 0` → black palettes (S:0xF560) and wait a frame; then `subfn_17` scene reset (kills non-persistent objects, main screen clear request `$7887=1`) |
 | 10 | 0x102AC | w n | wait n frames |

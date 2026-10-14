@@ -32,6 +32,7 @@ ap.add_argument('--engine-jump', default='')
 ap.add_argument('--eprelude', default='1540:32', help='engine: absolute-frame presses before rel 0 (dismiss the first Mika message)')
 ap.add_argument('--load', default='junker_hq')
 ap.add_argument('--skip-oracle', action='store_true')
+ap.add_argument('--rng', action='store_true', help='fix the RANDOM script nodes on both sides (poke $786A..D = 0 each oracle frame, engine FIDRNG)')
 ap.add_argument('--skip-engine', action='store_true')
 a = ap.parse_args()
 out = os.path.join(HERE, 'out', 'fid', a.name)
@@ -44,27 +45,35 @@ shots = sorted(set([int(x) for x in a.shots.split(',') if x] + (list(range(0, fr
 shots = [s for s in shots if s > 0]
 PY = os.path.join(HERE, '.venv', 'bin', 'python')
 
-# ---------------- oracle
+# ---------------- oracle (in-process, same loop as fid_play.py)
 if not a.skip_oracle:
-    seq, t = [], 0
-    for f, b in sorted(inputs):
-        seq.append([f - t - 1, 0]); seq.append([1, b]); t = f
+    sys.path.insert(0, HERE)
+    from machine import Machine
     if a.oracle_jump:
+        seq, t = [], 0
+        for f, b in sorted(inputs):
+            seq.append([f - t - 1, 0]); seq.append([1, b]); t = f
         cmd = [PY, '-I', 'interact_jump.py'] + a.oracle_jump.split() + ['--load', a.load, '--wait', str(a.owait), '--frames', str(frames),
                '--inputs', json.dumps(seq), '--shot-at', ','.join(map(str, shots)), '--shot-every', '0', '--out', os.path.join(out, 'oracle')]
+        subprocess.run(cmd, cwd=HERE, check=True, stdout=subprocess.DEVNULL)
+        for fn in os.listdir(os.path.join(out, 'oracle')):
+            m_ = re.match(r'f(\d+)\.png', fn)
+            if m_: os.replace(os.path.join(out, 'oracle', fn), os.path.join(out, 'oracle', 'r%05d.png' % int(m_.group(1))))
     else:
-        # idle owait frames first, then rel 0
-        pre = [[a.owait, 0]]
-        cmd = [PY, '-I', 'run.py', '--load', os.path.join('states', a.load + '.pkl'), '--frames', str(a.owait + frames), '--shot-every', '0',
-               '--shot-at', ','.join(str(s + a.owait + 4500) for s in shots), '--out', os.path.join(out, 'oracle'),
-               '--inputs', json.dumps(pre + seq)]
-    subprocess.run(cmd, cwd=HERE, check=True, stdout=subprocess.DEVNULL)
-    # normalise names: f<abs>.png -> r<rel>.png
-    base = 0 if a.oracle_jump else 4500 + a.owait
-    for fn in os.listdir(os.path.join(out, 'oracle')):
-        m = re.match(r'f(\d+)\.png', fn)
-        if m:
-            os.replace(os.path.join(out, 'oracle', fn), os.path.join(out, 'oracle', 'r%05d.png' % (int(m.group(1)) - base)))
+        m = Machine(trace_path=os.path.join(out, 'oracle', 'trace.jsonl'))
+        m.load_state(os.path.join(HERE, 'states', a.load + '.pkl'))
+        m.inputs = []
+        for _ in range(a.owait): m.step_frame(capture=False)
+        base0 = m.frame
+        press = dict((f, b) for f, b in inputs)
+        shotset = set(shots)
+        for rel in range(1, frames + 1):
+            if a.rng: m.sub.write(0x786A, bytes(4))
+            m.inputs = [[1, press.get(rel, 0)]]
+            m.step_frame(capture=rel in shotset)
+            if rel in shotset:
+                Image.fromarray(m.vdp.frame_image()).save(os.path.join(out, 'oracle', 'r%05d.png' % rel))
+            if m.main.halted or m.sub.halted: print('HALT'); break
 
 def oracle_passes():
     base = 4500 + a.owait if not a.oracle_jump else 0
@@ -83,6 +92,7 @@ if not a.skip_engine:
     subprocess.run(['cargo', 'build', '--release', '-p', 'snengine', '--example', 'run', '-q'], cwd=ROOT, check=True)
     pads = ','.join(([a.eprelude] if a.eprelude and not a.engine_jump else []) + ['%d:%d' % (f + a.ebase, b) for f, b in inputs])
     env = dict(os.environ, SHOTAT=','.join(str(s + a.ebase) for s in shots) or '0')
+    if a.rng: env['FIDRNG'] = '1'
     cmd = [os.path.join(ROOT, 'target', 'release', 'examples', 'run'), str(a.ebase + frames), '1000', os.path.join(out, 'engine'), pads]
     if a.engine_jump: cmd.append(a.engine_jump)
     r = subprocess.run(cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, text=True)

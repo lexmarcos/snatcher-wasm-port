@@ -17,6 +17,7 @@ fn main() {
     let raw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/raw/files");
     let mut e = Engine::new();
     e.trace = true;
+    e.fid_rng = std::env::var("FIDRNG").is_ok();
     let aw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/audio/web");
     if let (Ok(p), Ok(f)) = (std::fs::read_to_string(aw.join("pcm.json")), std::fs::read_to_string(aw.join("fm.json"))) {
         e.load_audio_manifests(&p, &f);

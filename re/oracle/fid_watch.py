@@ -11,6 +11,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--inputs', default='[]'); ap.add_argument('--frames', type=int, default=60)
 ap.add_argument('--watch', default='s:7892'); ap.add_argument('--wait', type=int, default=300)
 ap.add_argument('--from', dest='frm', type=int, default=1); ap.add_argument('--load', default='junker_hq')
+ap.add_argument('--rng', action='store_true', help='poke $786A..D = 0 every frame (pair with fid_cmp --rng)')
 ap.add_argument('--changes', action='store_true', help='print only frames where a value changed')
 a = ap.parse_args()
 m = Machine(trace_path=os.path.join(HERE, 'out', 'fid_watch_trace.jsonl'))
@@ -29,6 +30,7 @@ for w in a.watch.split(','):
     ws.append((w, cpu, ad, sz))
 last = None
 for i in range(1, a.frames + 1):
+    if a.rng: m.sub.write(0x786A, bytes(4))
     m.step_frame(capture=False)
     vals = []
     for w, cpu, ad, sz in ws:

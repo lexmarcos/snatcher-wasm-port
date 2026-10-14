@@ -15,6 +15,7 @@ ap.add_argument('--choices', default=''); ap.add_argument('--frames', type=int, 
 ap.add_argument('--wait', type=int, default=300); ap.add_argument('--load', default='junker_hq')
 ap.add_argument('--settle', type=int, default=12, help='frames the menu/message must have been ready before the policy presses')
 ap.add_argument('--cycle', action='store_true', help='ignore --choices: take the items of every distinct menu in turn (round robin)')
+ap.add_argument('--rng', action='store_true', help='poke $786A..D = 0 every frame (deterministic RANDOM nodes; pair with fid_cmp --rng)')
 ap.add_argument('--out', default=''); ap.add_argument('--quiet', action='store_true')
 ap.add_argument('--stop-script', default='', help='stop when script id ($980C) equals this hex value')
 a = ap.parse_args()
@@ -72,12 +73,16 @@ for rel in range(1, a.frames + 1):
             if want < 0: break
             if cur != want: pad = 0x02
             else: pad = 0x20; ci += 1; stage['items'] = None; stage['want'] = None
-    if pad:
-        script.append([rel, pad]); last_press = rel
-        m.inputs = [[1, pad]]
-    else:
-        m.inputs = [[1, 0]]
+    m.inputs = [[1, pad]]
+    if a.rng: s.write(0x786A, bytes(4))
     m.step_frame(capture=False)
+    if pad:
+        last_press = rel
+        # the sub's pressed flags `$7991` must show the press in this frame (a press that lands in a frame where the sub
+        # handler does not run, or is not delivered by the HLE pad model, is dropped from the recorded script)
+        seen = s.r8(0x7991) & (pad & 0x8F | (0x20 if pad & 0x20 else 0))
+        if seen: script.append([rel, pad])
+        else: print(rel, 'DROPPED press', hex(pad))
     sc = s.r16(0x980C)
     if sc != last_script:
         if not a.quiet: print(rel, 'SCRIPT', hex(last_script), '->', hex(sc))

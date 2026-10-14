@@ -106,6 +106,8 @@ pub struct Engine {
     pub menu_open_t: u32,
     /// frames the sub CPU's frame handler is still blocked (see `tick`)
     pub sub_stall: u32,
+    /// test harness: fixed VM random state (see `vm_pass`)
+    pub fid_rng: bool,
     menu_open_ready: u32,
     /// cursor move in progress: (frames, previous line, new line)
     pub menu_mv: Option<(u32, usize, usize)>,
@@ -158,7 +160,7 @@ impl Engine {
         Engine {
             files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None,
             vm, script: vec![], phase: VmPhase::Stopped, queue: vec![], qi: 0, seq_step: 0, seq_timer: 0, msg: None,
-            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
+            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
             top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(),
@@ -414,6 +416,9 @@ impl Engine {
     pub(crate) fn vm_pass(&mut self) {
         if self.script.is_empty() { return; }
         let script = std::mem::take(&mut self.script);
+        // harness (fid_cmp --rng): the oracle's RNG state `$786A..D` is poked to 0 every frame, the VM thread sees
+        // (a, c) = (0, 1) after the frame's step, so RANDOM nodes become deterministic and equal on both sides
+        if self.fid_rng { self.vm.rng_a = 0; self.vm.rng_c = 1; }
         let q = self.vm.run_pass(&script, &mut self.regs);
         self.script = script;
         if self.trace {
@@ -431,7 +436,7 @@ impl Engine {
         let wide = self.regs.get_b(0x7893) != 0;
         if self.trace {
             let txt: Vec<String> = items.iter().map(|&i| self.dbg_text(i)).collect();
-            self.out.push(Out::Log(format!("menu opened: {} items {:?}", items.len(), txt)));
+            self.out.push(Out::Log(format!("menu opened: {} items {:?} remembered {} depth {}", items.len(), txt, remembered, depth)));
         }
         let (m, rem) = TextMenu::new(items.len(), depth, remembered, wide);
         self.regs.set_b(0x9716, rem);
