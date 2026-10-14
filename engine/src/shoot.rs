@@ -659,3 +659,162 @@ fn end_check(e: &mut Engine, s: &mut Shoot) {
     }
     ww(e, 0x78E8, 3);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Engine with a synthetic copy of the stage tables (S:0x11F00..0x12200): every table row is the stage number times 0x10 + index so
+    /// individual tables can be overridden per test; the 32-entry random table (S:0x12010) is the original's shape 0,0,0,1,1,1,1,2,..
+    fn engine() -> Engine {
+        let mut e = Engine::new();
+        let mut m = vec![0u8; 0x300];
+        let rand_tab = [0u8, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8];
+        m[0x110..0x130].copy_from_slice(&rand_tab);
+        e.mem.map(0x11F00, m);
+        e.regs.set_b(0x78AF, 0xFF);
+        e
+    }
+    fn set_table(e: &mut Engine, table: u32, stage: usize, v: u8) {
+        let mut d = e.mem.bytes(0x11F00, 0x300);
+        d[(table - 0x11F00) as usize + stage] = v;
+        e.mem.map(0x11F00, d);
+    }
+
+    #[test]
+    fn gun_cell_thresholds() {
+        // S:0x12516: x < 0x60 -> column 0, < 0xA0 -> 1, else 2; y < 0x30 -> row 0, < 0x58 -> 1, else 2
+        let mut e = engine();
+        for (x, y, cell) in [(0u8, 0u8, 0u16), (0x5F, 0x2F, 0), (0x60, 0x30, 4), (0x9F, 0x57, 4), (0xA0, 0x58, 8), (0xFF, 0xFF, 8), (0x60, 0x2F, 1), (0xA0, 0x30, 5), (0x5F, 0x58, 6)] {
+            e.regs.set_b(0x798A, x); e.regs.set_b(0x798B, y);
+            gun_cell(&mut e);
+            assert_eq!(rw(&e, 0x7900), cell, "gun value ({x:#x},{y:#x})");
+        }
+    }
+
+    #[test]
+    fn miss_counter_never_wraps_to_zero() {
+        // S:0x1288A: the miss counter skips 0 after 0xFFFF (a zero would read as "no miss" in the scenario script)
+        let mut e = engine();
+        ww(&mut e, 0x790E, 0xFFFE);
+        miss(&mut e); assert_eq!(rw(&e, 0x790E), 0xFFFF);
+        miss(&mut e); assert_eq!(rw(&e, 0x790E), 0xFF);
+    }
+
+    #[test]
+    fn difficulty_steps_and_caps() {
+        // sub_01204E: speed -2 (never below 0); sub_01205C: +1 up to 0x20, 0x30 with the light gun outside stages 0 / 0x0B
+        let mut e = engine();
+        ww(&mut e, 0x78E0, 1);
+        ww(&mut e, 0x78E2, 1); speed_down(&mut e); assert_eq!(rw(&e, 0x78E2), 1);
+        ww(&mut e, 0x78E2, 4); speed_down(&mut e); assert_eq!(rw(&e, 0x78E2), 2);
+        ww(&mut e, 0x78E2, 0x20); speed_up(&mut e); assert_eq!(rw(&e, 0x78E2), 0x20);
+        ww(&mut e, 0x7972, 1);
+        speed_up(&mut e); assert_eq!(rw(&e, 0x78E2), 0x21);
+        ww(&mut e, 0x78E0, 0);
+        ww(&mut e, 0x78E2, 0x20); speed_up(&mut e); assert_eq!(rw(&e, 0x78E2), 0x20);
+    }
+
+    #[test]
+    fn hit_test_resolves_enemy_innocent_and_empty_cells() {
+        let mut e = engine();
+        let mut s = Shoot::default();
+        ww(&mut e, 0x78E0, 1);
+        set_table(&mut e, T_FLAGS, 1, 6); // enemies attack in this stage
+        // enemy (type 1, state 2) in cell 4 -> kill
+        s.f17[O_SHOT] = 4; s.f24[O_T0 + 4] = 0x12; ww(&mut e, 0x78FA, 3);
+        hit_test(&mut e, &mut s);
+        assert_eq!((rw(&e, 0x790A), rw(&e, 0x790C), rw(&e, 0x790E)), (1, 0, 0));
+        assert_eq!(s.f24[O_T0 + 4], 0x16, "target goes to state 6 (shot), type kept");
+        assert_eq!((rw(&e, 0x78FA), s.f17[O_SHOT]), (0, 0xFF), "shot machine back to idle");
+        // innocent (type 0 -> state nibble 2) in cell 2 -> civilian hit counter, speed -2, hit sound only when enemies do not attack
+        s.f17[O_SHOT] = 2; s.f24[O_T0 + 2] = 0x02; ww(&mut e, 0x78E2, 8); ww(&mut e, 0x78FA, 3);
+        hit_test(&mut e, &mut s);
+        assert_eq!((rw(&e, 0x790A), rw(&e, 0x790C), rw(&e, 0x78E2)), (1, 1, 6));
+        // empty cell -> miss; with attacking enemies and no gun the speed does not rise
+        s.f17[O_SHOT] = 7; ww(&mut e, 0x78E2, 8); ww(&mut e, 0x78FA, 3);
+        hit_test(&mut e, &mut s);
+        assert_eq!((rw(&e, 0x790E), rw(&e, 0x78E2)), (1, 8));
+        // ... the pad in a stage without attacks, or the gun, makes the game harder after a miss
+        set_table(&mut e, T_FLAGS, 1, 0);
+        s.f17[O_SHOT] = 7; ww(&mut e, 0x78FA, 3);
+        hit_test(&mut e, &mut s);
+        assert_eq!((rw(&e, 0x790E), rw(&e, 0x78E2)), (2, 9));
+    }
+
+    #[test]
+    fn stage_ten_trap_cells_hurt() {
+        // loc_012862: a shot at a trap cell (table S:0x12CE2 bit 1) costs one life cell, other empty cells are misses
+        let mut e = engine();
+        let mut s = Shoot::default();
+        ww(&mut e, 0x78E0, 0x0A);
+        // T_TYPE10 lives at S:0x12CE2 (outside the synthetic region): map it
+        e.mem.map(0x12CE2, vec![1, 2, 1, 3, 2, 3, 1, 2, 1, 0]);
+        s.f17[O_SHOT] = 1; ww(&mut e, 0x78FA, 3);
+        hit_test(&mut e, &mut s);
+        assert_eq!((rw(&e, 0x7910), rw(&e, 0x790E)), (1, 0), "cell 1 is a trap: life 1 lost");
+        s.f17[O_SHOT] = 0; ww(&mut e, 0x78FA, 3);
+        hit_test(&mut e, &mut s);
+        assert_eq!((rw(&e, 0x7910), rw(&e, 0x790E)), (1, 1), "cell 0 is empty: a miss");
+    }
+
+    #[test]
+    fn life_meter_stops_at_six_cells() {
+        let mut e = engine();
+        let mut s = Shoot::default();
+        s.f2c[O_LIFE] = 6;
+        for _ in 0..9 { life_down(&mut e, &mut s); }
+        assert_eq!(rw(&e, 0x7910), 6, "$7910 counts the lost cells (game over at 6)");
+        assert_eq!(s.f2c[O_LIFE], 0);
+    }
+
+    #[test]
+    fn target_state_machine_advances_on_timers() {
+        // sub_012884 / loc_012934: state 2 (target up) counts its timer down, then the script reaches the end marker and the state advances
+        let mut e = engine();
+        let mut s = Shoot::default();
+        ww(&mut e, 0x78E0, 1);
+        let t = O_T0;
+        // animation script of the target: byte at script+0 = end index of state 0, +1.. = per state end index
+        let mut script = vec![0u8; 16]; script[0] = 2; script[2] = 6; script[3] = 8; script[4] = 10;
+        e.mem.map(0x20000, script);
+        e.disp.sub.objs[t].script = 0x20000;
+        s.f24[t] = 0x12; s.f2c[t] = 2; e.disp.sub.objs[t].idx = 6;
+        target(&mut e, &mut s, t);                 // timer 2 -> 1
+        assert_eq!((s.f24[t], s.f2c[t]), (0x12, 1));
+        target(&mut e, &mut s, t);                 // timer 1 -> 0
+        assert_eq!((s.f24[t], s.f2c[t]), (0x12, 0));
+        target(&mut e, &mut s, t);                 // timer < 0 and the script reached the end index of state 2: next state (3)
+        assert_eq!(s.f24[t], 0x13, "state 2 -> 3, type nibble kept");
+        assert_eq!(e.disp.sub.objs[t].idx, 8, "animation index = end index of state 2 + 2");
+    }
+
+    #[test]
+    fn results_phases_end_the_sequence() {
+        // phase 3 -> 4 -> 5 -> done: `$78AF` (sequencer "shooting active" flag) drops to 0 and the sequence reports completion
+        let mut e = engine();
+        ww(&mut e, 0x78E0, 1);
+        set_table(&mut e, T_ACTIVE_PAD, 1, 1);  // phase 4 sub 0 is skipped at once for single-target stages
+        let mut s = Shoot::default();
+        ww(&mut e, 0x78E8, 3);
+        let mut frames = 0;
+        while e.regs.get_b(0x78AF) != 0 && frames < 200 { tick(&mut e, &mut s); frames += 1; }
+        assert_eq!(e.regs.get_b(0x78AF), 0);
+        assert_eq!(rw(&e, 0x78E8), 0, "state reset for the next stage");
+        assert!(frames < 40, "results take {frames} frames");
+    }
+
+    #[test]
+    fn pcm_busy_clears_when_the_first_channel_ends() {
+        // oracle (stage 4): $1511E bit 3 cleared when the channel-1 effect ended although a longer channel-0 effect still played
+        let mut e = engine();
+        e.ix.sfx_len.insert((33, 67), (77, 1));
+        e.ix.sfx_len.insert((33, 64), (179, 0));
+        e.pcm_bank = 33;
+        e.frame = 37; pcm(&mut e, 67);
+        e.frame = 44; pcm(&mut e, 64);
+        assert!(e.ix.pcm_busy);
+        e.frame = 113; pcm_poll(&mut e); assert!(e.ix.pcm_busy);
+        e.frame = 114; pcm_poll(&mut e); assert!(!e.ix.pcm_busy);
+    }
+}

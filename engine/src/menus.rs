@@ -707,4 +707,33 @@ mod tests {
         assert!(!in_bounds(-0x470200, 0x450000, -0x470000));
         assert!(in_bounds(0, 0x450000, -0x470000));
     }
+
+    #[test]
+    fn gun_raw_values_follow_the_pixel_one_to_one() {
+        // oracle gun model (docs/re/shooting.md): X = 2*H counter ~ px - 66 (even), Y = line + 1
+        assert_eq!(gun_raw(128, 100), (62, 101));
+        assert_eq!(gun_raw(130, 100).0, 64);
+        assert_eq!(gun_raw(200, 0), (134, 1));
+        assert_eq!(gun_raw(300, 500), (gun_raw(255, 223).0, 224));
+    }
+
+    #[test]
+    fn default_calibration_maps_the_picture_to_the_cell_thresholds() {
+        // value = raw - calib (S:0xD7B2, byte wrap) must be (px, py - 4): the 3x3 picture rows [16,52) [52,92) [92,..) and columns split at 96/160
+        let (cx, cy) = gun_default_calib();
+        for (px, py) in [(0, 0), (64, 32), (95, 51), (96, 52), (128, 72), (159, 91), (160, 92), (255, 140)] {
+            let (rx, ry) = gun_raw(px, py);
+            let (vx, vy) = (rx.wrapping_sub(cx), ry.wrapping_sub(cy));
+            assert_eq!(vx as i32, px & !1, "x value of pixel {px}");
+            assert_eq!(vy as i32, (py - 4).rem_euclid(256), "y value of line {py}");
+        }
+    }
+
+    #[test]
+    fn calibration_on_the_bullseye_equals_the_default() {
+        // title screen: aiming at the bullseye (128, 101) and pulling the trigger stores raw - 0x80 (+ GUN_CAL_BIAS_Y for the rows)
+        let (rx, ry) = gun_raw(128, 101);
+        let cal = (rx.wrapping_sub(0x80), ry.wrapping_sub(0x80).wrapping_add(GUN_CAL_BIAS_Y));
+        assert_eq!(cal, gun_default_calib());
+    }
 }
