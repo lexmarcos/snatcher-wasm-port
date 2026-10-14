@@ -1,42 +1,47 @@
 # Progress
 
 ## How to run
-See `README.md` for the full command list. Short version:
+See `README.md`. Short version:
 ```
-cargo build --release                                  # tools (snt)
+cargo build --release
 chdman extractcd -i "Snatcher (USA).chd" -o work/snatcher.cue -ob work/snatcher.bin
 ./target/release/snt extract work/snatcher.bin work/snatcher.cue assets/raw
-scripts/convert-music.sh                               # CD-DA → Opus
-scripts/build-web.sh && bun web/server.ts              # http://localhost:5300/
-re/disall.sh                                           # regenerate 68000 listings (re/out/dis)
+scripts/convert-music.sh                                   # CD-DA → Opus
+./target/release/snt audio-pcm assets/raw/files assets/audio
+./target/release/snt audio-fm assets/raw assets/audio && python3 -I re/py/audio_encode.py assets/audio
+scripts/build-web.sh && bun web/server.ts                  # http://localhost:5300/ (?newgame, ?scene=SP01:0, ?debug)
+cargo run --release -p snengine --example run -- <frames> <every> <outdir> [auto|f:bits,...] [SPnn:pc]   # native, PNG + sheet
+re/oracle: .venv/bin/python -I scenario.py scenarios/intro.json   # original code, reference PNGs (docs/re/oracle.md)
 ```
-Ports: 5300 = web port dev server; 5310 = asset viewer (web/viewer).
+Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
 
-## Milestones
-- **M0 extraction – DONE.** `snt extract` checks MODE1 sync/mode of every sector, carves
-  IP/SP from the header fields (sizes match: 0x6000 / 0x1800), parses ISO9660 (both-endian
-  root record check, all 100 extents inside track 1), dumps files and 20 CD-DA tracks.
-- **M1 code analysis – IN PROGRESS.** Sub program layout found (SP @0x6000, SUBCODE @0xD400),
-  script VM dispatch located, main CPU = vblank-driven slave. Tooling: Ghidra headless
-  (`re/analyze.sh`) + capstone recursive disassembler (`re/dis68k.py`) driven by label files.
-- M2 LZKN1 – workstream GRAPHICS (running).
-- M3 asset pipeline/viewer – workstreams GRAPHICS + AUDIO (running).
-- M4 script VM – workstream SCRIPT (running); ACTIONS (sequencer/text/menus) running.
-- **M5 engine – scaffold DONE**: `engine/` crate builds for wasm32, `web/` front end loads the
-  wasm, all game files from `assets/raw/files`, renders the framebuffer with integer scaling,
-  keyboard/gamepad input, WebAudio music/voice/sfx player, localStorage saves, debug overlay,
-  puppeteer screenshot test (`web/test/shot.ts`). Game logic not yet implemented.
-- ORACLE (dev-only HLE emulator of the original code, no BIOS) – workstream running.
+## Milestones (state matches the git history)
+- **M0 extraction – DONE.** IP/SP carved (sizes match header), 97 ISO files + 3 txt, 20 CD-DA tracks.
+- **M1 code analysis – DONE (ongoing labels).** SP @S:0x6000, SUBCODE @S:0xD400, main CPU is a
+  VBlank-driven display slave; label files `re/labels/*.txt`; Ghidra headless + capstone listings.
+- **M2 LZKN1 – DONE.** Same as Contra Hard Corps variant; Rust decoder byte-identical on 1440/1440 blobs.
+- **M3 assets – DONE.** Scenes/palettes/font decoded and rendered (viewer :5310); voices (1162),
+  PCM banks/drums/sfx, 122 FM sounds pre-rendered from a Rust translation of the 68k FM driver.
+- **M4 script VM – DONE.** 75 opcodes, disassembler consumes 100% of 39 SP files, reference VM.
+- **ORACLE – DONE.** BIOS-free HLE emulator (Musashi) runs the original from power-on to Junker HQ.
+- **M5 engine – IN PROGRESS.** New game plays the opening (Omni Building caption, ACT 1 card,
+  Junker HQ, Mika dialogue, command menu) matching oracle screenshots; scene timing within ~3%.
+  Web front end: canvas, input, WebAudio (CD/FM/voice/PCM), saves in localStorage.
+  Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
-## Workstreams (parallel agents) and file ownership
-| workstream | notes | code |
-|---|---|---|
-| GRAPHICS | docs/re/graphics.md | core/src/{lzkn,gfx}.rs, tools/src/cmds/gfx.rs, web/viewer |
-| SCRIPT | docs/re/script.md | core/src/script.rs, tools/src/cmds/script.rs |
-| ACTIONS | docs/re/actions.md | core/src/actions.rs, tools/src/cmds/actions.rs |
-| AUDIO | docs/re/audio.md | core/src/audio.rs, tools/src/cmds/audio.rs |
-| ORACLE | docs/re/oracle.md | re/oracle/ |
+## Resume here (order)
+1. **Build check first**: `cargo build --release && cargo test --release -p snengine -p sncore --lib`.
+   Uncommitted/partial work may exist from MODULES/INTERACT (engine/src/modules, menus.rs,
+   shoot.rs, `mod` lines in engine/src/lib.rs/game.rs); fix or remove the `mod` lines.
+2. **MODULES** (docs/re/modules.md): finish DATA_D2 title, D1/D0 intro, Y16 ending modules and
+   H40 (320 px) rendering; compare with `re/oracle/out/refs/*.png`. Then `scripts/build-web.sh`.
+3. **INTERACT** (docs/re/interact.md): menu highlight bar = object 0 (S:0xED1C, 7 sprites at y=136,
+   see oracle junker_menu.png), pointer/keypad/keyboard menus, shooting (`shoot_tick` S:0x1208E).
+4. **AUDIO-VERIFY** (docs/re/audio.md): compare kdriver YM writes with the oracle trace `ym` field.
+5. **Engine fidelity loop**: compare engine frames with oracle (`re/oracle/probe.py` per-line VDP
+   state + VRAM dump, `probe_mem.py`); then play further into Act 1 via SP01 debug menu.
+6. Ghidra DB: run `re/analyze.sh` with `cat re/labels/sub_*.txt` to import all names.
 
 ## Blockers
-- No Sega CD BIOS (by rule, not downloaded). Mitigation: HLE oracle (BIOS calls stubbed).
-- REA `open_binary` cannot load raw 68000 images; Ghidra is used headless instead.
+- No Sega CD BIOS (not downloaded by rule) → HLE oracle instead; YM2612/mix levels unverified by ear.
+- REA cannot load raw 68000 images; Ghidra headless is used.

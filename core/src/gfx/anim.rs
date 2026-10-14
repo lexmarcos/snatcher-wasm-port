@@ -409,7 +409,7 @@ impl Runtime {
                         _ => { self.scroll_mode(2); self.scroll.vel[sel * 2 + 1] = w as i16; }
                     }
                 }
-                0x10 => { self.objs[i].flags |= 1; self.tree_flags(i, true); }
+                0x10..=0x13 => { self.objs[i].flags |= 1; self.tree_flags(i, true); } // ops 90–93 (actions.md §8.2)
                 0x14 => { let s = slot(b[1]); self.objs[s].flags &= 2; self.tree_flags(s, false); }
                 0x15 => { let s = slot(b[1]); self.objs[s] = Obj::default(); }
                 0x16 => { let s = slot(b[1]); self.objs[s].flags = 3; }

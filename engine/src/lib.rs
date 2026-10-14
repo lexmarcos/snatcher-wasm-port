@@ -6,6 +6,9 @@ use wasm_bindgen::prelude::*;
 
 pub mod fb;
 pub mod game;
+pub mod modules;
+pub mod menus;
+pub mod shoot;
 
 pub use game::{Engine, Out, H, W};
 
@@ -51,6 +54,15 @@ impl Game {
     }
     /// Voice clip lengths in frames (from the audio manifest), so waits match the audio.
     pub fn set_voice_len(&mut self, id: u16, frames: u32) { self.e.voice_len.insert(id, frames); }
+    /// Light gun (mouse) state: `present` = a gun is plugged into port 2 (the game uses it when
+    /// the option is on), `x`/`y` = screen pixels, `trigger`/`aux` = buttons (bit5/bit6 of $7985).
+    pub fn set_gun(&mut self, present: bool, x: i32, y: i32, trigger: bool, aux: bool) {
+        let ix = &mut self.e.ix;
+        ix.gun_present = present; ix.gun_x = x; ix.gun_y = y;
+        ix.gun_buttons = (trigger as u8) << 5 | (aux as u8) << 6;
+    }
+    /// FM sound duration in frames; `loops` = true for sounds with a loop (never "done").
+    pub fn set_fm_len(&mut self, id: u16, frames: u32, loops: bool) { self.e.fm_len.insert(id, if loops { None } else { Some(frames) }); }
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).
     pub fn tick(&mut self, pad: u16) {
         self.e.tick(pad as u8);
@@ -60,6 +72,8 @@ impl Game {
                 Out::MusicStop => "{\"t\":\"music_stop\"}".into(),
                 Out::Voice { id } => format!("{{\"t\":\"voice\",\"id\":{id}}}"),
                 Out::Pcm { id, kind } => format!("{{\"t\":\"pcm\",\"id\":{id},\"kind\":{kind}}}"),
+                Out::Fm { id, music } => format!("{{\"t\":\"fm\",\"id\":{id},\"music\":{music}}}"),
+                Out::PcmSfx { id, bank } => format!("{{\"t\":\"pcmsfx\",\"id\":{id},\"bank\":{bank}}}"),
                 Out::Save { slot, data } => format!("{{\"t\":\"save\",\"slot\":{slot},\"data\":\"{}\"}}", b64(&data)),
                 Out::Log(s) => format!("{{\"t\":\"log\",\"msg\":{:?}}}", s),
             });

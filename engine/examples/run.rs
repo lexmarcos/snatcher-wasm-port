@@ -16,6 +16,11 @@ fn main() {
     let raw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/raw/files");
     let mut e = Engine::new();
     e.trace = true;
+    let aw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/audio/web");
+    if let (Ok(p), Ok(f)) = (std::fs::read_to_string(aw.join("pcm.json")), std::fs::read_to_string(aw.join("fm.json"))) {
+        e.load_audio_manifests(&p, &f);
+        println!("audio manifests: {} voices, {} fm", e.voice_len.len(), e.fm_len.len());
+    }
     for n in FILE_NAMES.iter() {
         if *n == "PCMLD_01.BIN" { continue; }
         if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); }
@@ -47,6 +52,10 @@ fn main() {
         let d = e.debug_info();
         if d.split("\"seq\"").nth(1) != last.split("\"seq\"").nth(1) { println!("{f:6} {d}"); last = d; }
         if let Ok(v) = std::env::var("VRAMDUMP") { if f == frames { std::fs::write(v, &e.disp.vdp.vram).unwrap(); } }
+        if std::env::var("OBJDUMP").is_ok() && f == frames {
+            for (i, o) in e.disp.sub.objs.iter().enumerate() { if o.active == 1 { println!("obj {i} x {} y {} flags {:02x} idx {} script {:x} frame {:x}", o.x >> 16, o.y >> 16, o.flags, o.idx, o.script, o.frame); } }
+            for (i, sp) in e.disp.vdp.sprites.iter().enumerate() { println!("spr {i} {:?}", sp); }
+        }
         if std::env::var("CRAM").is_ok() && f % every == 0 { println!("cram A {:03x?}\ncram B {:03x?}", &e.disp.vdp.cram[..32], &e.disp.vdp.cram_b[..32]); }
         if f % every == 0 {
             sheet.push(e.fb.clone());

@@ -62,10 +62,21 @@ async function main() {
   } catch (e) {
     msg.textContent = String(e) + " – or pick the extracted files folder";
   }
+  // saves (localStorage, base64 of the 0x1C0-byte save block) → CONTINUE slots 1..4
+  for (let slot = 1; slot <= 4; slot++) {
+    let d: string | null = null;
+    try { d = localStorage.getItem(`snatcher.save.${slot}`); } catch {}
+    if (d) game.set_save(slot, Uint8Array.from(atob(d), (c) => c.charCodeAt(0)));
+  }
   if (params.has("scene")) game.debug_jump(params.get("scene")!);
+  else if (params.has("newgame")) game.new_game();
   else game.boot();
 
-  const audio = new AudioOut("/assets/web/");
+  const audio = new AudioOut("/assets/");
+  const { pcm, fm } = await audio.loadManifests();
+  if (pcm?.voices) for (const [id, v] of Object.entries<any>(pcm.voices)) game.set_voice_len(Number(id), Math.ceil(v.seconds * 60));
+  if (fm?.sounds) for (const [id, v] of Object.entries<any>(fm.sounds)) game.set_fm_len(Number(id), Math.ceil(v.seconds * 60), v.loop_start != null);
+  if (!pcm || !fm) console.warn("audio manifests missing – run the audio pipeline (README)");
   const input = new Input(canvas);
   const img = ctx.createImageData(W, H);
   let last = performance.now(), acc = 0;
@@ -87,11 +98,10 @@ async function main() {
   }
   function handleEvent(e: any) {
     switch (e.t) {
-      case "music": audio.music(e.track, e.loop ?? true); break;
-      case "music_stop": audio.stopMusic(e.fade ?? 0); break;
+      case "music": audio.cd(e.track); break;
+      case "fm": audio.fmCmd(e.id, e.music); break;
       case "voice": audio.voice(e.id); break;
-      case "sfx": audio.sfx(e.id); break;
-      case "pcm": audio.sfx(e.id); break;
+      case "pcmsfx": audio.pcmSfx(e.id, e.bank); break;
       case "log": console.log("[engine]", e.msg); break;
       case "save": try { localStorage.setItem(`snatcher.save.${e.slot}`, e.data); } catch {} break;
       case "load": { let d: string | null = null; try { d = localStorage.getItem(`snatcher.save.${e.slot}`); } catch {} game.save_loaded?.(e.slot, d ?? ""); break; }
