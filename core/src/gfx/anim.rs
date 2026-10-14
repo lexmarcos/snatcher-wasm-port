@@ -102,6 +102,9 @@ pub struct Runtime {
     pub mail_next: (u8, u8),
     /// S:$7891 → S:$B6405: palette-split request (persistent on the main side; 0xFF = refresh only).
     pub split_req: u8,
+    /// `split_req` after the mailbox delay (see `tick`)
+    pub split_out: u8,
+    split_next: [u8; 4],
     /// Word RAM staging buffers S:0xB8000/0xBA000/0xBC000/0xBE000 (8 KiB each).
     pub tilebuf: Vec<Vec<u8>>,
     pub rng: [u8; 4],
@@ -130,7 +133,7 @@ impl Default for Runtime {
             objs: vec![Obj::default(); 64], palch: [PalCh::default(); 12], palch_rr: 11,
             shadow: [0; 128], pal_dirty: 0, vram_list: None, vram_delay: 0, scroll: Scroll::default(),
             tilech: [TileCh::default(); 7], tilebuf: vec![vec![0u8; 0x2000]; 4],
-            fx_a: 0, fx_b: 0, fx_reset: 0, mail: (0, 0), mail_next: (0, 0), split_req: 0,
+            fx_a: 0, fx_b: 0, fx_reset: 0, mail: (0, 0), mail_next: (0, 0), split_req: 0, split_out: 0, split_next: [0; 4],
             rng: [0; 4], frame: 0, budget: 1, cd_time: 0, pause_groups: 0, events: vec![],
             f7866: 0, f788a: 0, f788b: 0, f7887: 0, last_dma: 0xFF00,
         }
@@ -702,6 +705,10 @@ impl Runtime {
         vdp.vscroll_a = -((self.scroll.pos[1] >> 16) as i16);
         vdp.hscroll_b = (self.scroll.pos[2] >> 16) as i16;
         vdp.vscroll_b = -((self.scroll.pos[3] >> 16) as i16);
+        // 3 frames: main `$E036` is set one frame after `$7891` and the raster split shows two frames later (oracle,
+        // fid_watch `m:E036w` and screens: voice portrait window white from frame N+3/N+4)
+        self.split_out = self.split_next[3];
+        self.split_next = [std::mem::take(&mut self.split_req), self.split_next[0], self.split_next[1], self.split_next[2]];
         self.frame = self.frame.wrapping_add(1);
     }
 }

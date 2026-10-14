@@ -503,8 +503,19 @@ impl Display {
         self.sub.tick(mem, &mut self.vdp);
         let (a, b) = std::mem::take(&mut self.sub.mail);
         self.main.mailbox(a, b);
-        let req = std::mem::take(&mut self.sub.split_req);
+        let req = std::mem::take(&mut self.sub.split_out);
         if req != 0 { self.main.e036 = if req == 0xFF { 0 } else { req as u16 }; }
+        let p = &self.sub.scroll.pos;
+        let ss = [(p[0] >> 16) as i16, (p[1] >> 16) as i16, (p[2] >> 16) as i16, (p[3] >> 16) as i16];
+        let r = self.main.vblank(ss);
+        self.vdp.hscroll_a = self.main.e700.0 as i16;
+        self.vdp.hscroll_b = self.main.e700.1 as i16;
+        self.vdp.raster = Some(r);
+    }
+
+    /// A frame in which the sub CPU's handler did not run (it was busy): only the main CPU's VBlank work (effects, raster).
+    pub fn frame_stalled(&mut self) {
+        if self.main_only { return; }
         let p = &self.sub.scroll.pos;
         let ss = [(p[0] >> 16) as i16, (p[1] >> 16) as i16, (p[2] >> 16) as i16, (p[3] >> 16) as i16];
         let r = self.main.vblank(ss);

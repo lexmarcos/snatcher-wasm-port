@@ -104,6 +104,8 @@ pub struct Engine {
     pub menu_close: Option<(MenuResult, u32)>,
     /// frames since the menu opening sequence started (`menu_open_frame`)
     pub menu_open_t: u32,
+    /// frames the sub CPU's frame handler is still blocked (see `tick`)
+    pub sub_stall: u32,
     menu_open_ready: u32,
     /// cursor move in progress: (frames, previous line, new line)
     pub menu_mv: Option<(u32, usize, usize)>,
@@ -156,7 +158,7 @@ impl Engine {
         Engine {
             files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None,
             vm, script: vec![], phase: VmPhase::Stopped, queue: vec![], qi: 0, seq_step: 0, seq_timer: 0, msg: None,
-            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
+            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
             top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(),
@@ -290,12 +292,24 @@ impl Engine {
 
     pub fn tick(&mut self, pad: u8) {
         self.frame += 1;
-        self.menu_in = self.menu_in_cur;
-        if let Some(inp) = self.input.as_mut() { inp.update(pad); self.menu_in_cur = (inp.pressed, inp.held, inp.repeat); }
         if self.voice_left > 0 { self.voice_left -= 1; }
         if self.voice_music_left > 0 && self.voice_music_left != u32::MAX { self.voice_music_left -= 1; if self.voice_music_left == 0 { self.regs.set_b(0x980E, 0); } }
         if self.sfx_left > 0 && self.sfx_left != u32::MAX { self.sfx_left -= 1; if self.sfx_left == 0 { self.regs.set_b(0x980F, 0); } }
         if let Some(s) = self.cd_start { self.disp.sub.cd_time = cd_time_bcd(self.frame - s); }
+
+        // The sub CPU is busy (voice start: PCM set-up/first stream copy) and its frame handler (S:0xD6EE: sequencer,
+        // objects, palette/tile channels, text, input) does not run; the main CPU keeps rendering (oracle: no S:0xD6EE
+        // in frames 5298/5299 after a voice start, `hookpc`).
+        if self.sub_stall > 0 && self.top == Top::Game {
+            self.sub_stall -= 1;
+            self.disp.frame_stalled();
+            let mut fb = std::mem::take(&mut self.fb);
+            self.disp.render(&mut fb);
+            self.fb = fb;
+            return;
+        }
+        self.menu_in = self.menu_in_cur;
+        if let Some(inp) = self.input.as_mut() { inp.update(pad); self.menu_in_cur = (inp.pressed, inp.held, inp.repeat); }
 
         // VM thread (runs while the sequencer is idle)
         crate::menus::frame_hook(self);
@@ -316,6 +330,9 @@ impl Engine {
         }
 
         self.disp.frame(&self.mem);
+        // mirror of the sub-side busy flags for watch/debug and `cmd15`: `$7886` VRAM list loading, `$7887` screen-reset handshake
+        self.regs.set_b(0x7886, self.disp.sub.vram_list.is_some() as u8);
+        self.regs.set_b(0x7887, self.disp.sub.f7887);
         self.e061_hist = [self.disp.main.e061, self.e061_hist[0]];
         self.e06e_hist = [self.disp.main.e06e as u8, self.e06e_hist[0]];
         let evs: Vec<_> = self.disp.sub.events.drain(..).collect();
@@ -675,13 +692,13 @@ impl Engine {
                     0 => {
                         self.regs.set_b(0x9717, 0xFF);
                         if (1..=35).contains(&n) { self.pcm_bank = n; } else {
-                            self.voice_left = *self.voice_len.get(&n).unwrap_or(&90);
+                            self.voice_left = *self.voice_len.get(&n).unwrap_or(&90) + 6; // +6: oracle voice intervals are 5-7 frames longer than the decoded length (fid_cmp, play4)
                             self.out.push(Out::Voice { id: n });
                         }
                         self.seq_step = 1;
                         false
                     }
-                    1 => { self.seq_step = 2; false }
+                    1 => { self.seq_step = 2; self.sub_stall = 2; false }
                     2 => {
                         // sub_013FAA: table byte != FF -> `$7891 = 1` (main palette split request, consumed by S:0xD78C)
                         if self.portrait_scene(n).is_some() { self.disp.sub.split_req = 1; self.seq_step = 3; false } else { true }
@@ -694,7 +711,18 @@ impl Engine {
                 }
             }
             0x0E => { let t = w(0); self.cd_start = Some(self.frame); self.out.push(Out::Music { track: t }); true }
-            0x0F => { self.scene_clear(); true }
+            0x0F => {
+                // S:0x1027E: step 0 black-out (S:0xF560, once) and wait a frame, then subfn_17 (S:0xF5E8) which raises `$7887`;
+                // the sequencer is blocked until the handshake finished, then the command completes (oracle: 463 / 464 / 466)
+                if self.seq_step == 0 {
+                    let keep = (self.disp.sub.f788b & 0x7F) | (self.disp.sub.f788a & 1);
+                    if keep == 0 { self.black_out(); return false; }
+                    self.scene_clear();
+                    self.seq_step = 1;
+                    return false;
+                }
+                true
+            }
             0x10 => {
                 if self.seq_step == 0 { self.seq_step = 1; self.seq_timer = w(0) as u32; }
                 if self.seq_timer == 0 { return true; }
@@ -769,9 +797,6 @@ impl Engine {
     /// Sequencer command 0F (S:0x1027E): black-out unless palettes are kept, then
     /// `subfn_17` (S:0xF5E8) scene reset.
     fn scene_clear(&mut self) {
-        let sub = &self.disp.sub;
-        let keep = (sub.f788b & 0x7F) | (sub.f788a & 1);
-        if keep == 0 { self.black_out(); }
         // subfn_17 (S:0xF5E8)
         if self.disp.sub.f788b == 0 { self.black_out(); }
         self.disp.sub.palch = Default::default();           // subfn_14: palette channels off
@@ -789,6 +814,7 @@ impl Engine {
         if self.disp.sub.f788b & 2 == 0 {
             // $7887 = 1 → B6403 = 3: main clears planes A and B (graphics.md: 0xE000/0xC000, 4 KiB)
             for a in (0xC000..0xD000).chain(0xE000..0xEC80) { self.disp.vdp.vram[a] = 0; }
+            self.disp.sub.f7887 = 1; // S:0xF682: `$7887 = 1` (handshake with main, blocks the sequencer 2 frames)
         }
         self.disp.sub.f788b = 0;
     }
