@@ -174,3 +174,7 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 ## Regras acrescentadas pela revisão de SP30 (4/5)
 * "reception booth/desk" = sempre "balcão de recepção" (nunca "cabine") no diálogo e no menu. Gillian e Random: "Não tem dúvida", "Não tem sinal de...", "com certeza"; "tem cheiro de" (não "cheira a"); imperativos coloquiais ("Fica calmo", "Não baixa a guarda"); Gillian: "identificar eles", "se a gente tivesse".
 * Siglas nas listas técnicas do Metal Gear mantêm a expansão do inglês traduzida (RMN com "ressonância magnética nuclear", STM com "microscópios de tunelamento").
+
+## Regras acrescentadas pela revisão de SP32 (4/5)
+* Metal Gear mantém "há/Haverá", nunca "tem/vai ter", mesmo em piadas. Gillian com Metal Gear: imperativos coloquiais ("não baixa a guarda", "liga a sua luz") e "pra gente" em vez de -mos na fala direta. "nosy" = "enxerido". Autocorreção "er," = "digo,".
+* Taxista: "o senhor" em toda a cena (só a revelação hostil pode trocar). "Junk Team" = "Equipe de Limpeza Junker"; "Kyoto Summit" = "Cúpula de Kyoto". "Que tal ...?" sempre com interrogação.
