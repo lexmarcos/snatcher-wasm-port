@@ -178,3 +178,8 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 ## Regras acrescentadas pela revisão de SP32 (4/5)
 * Metal Gear mantém "há/Haverá", nunca "tem/vai ter", mesmo em piadas. Gillian com Metal Gear: imperativos coloquiais ("não baixa a guarda", "liga a sua luz") e "pra gente" em vez de -mos na fala direta. "nosy" = "enxerido". Autocorreção "er," = "digo,".
 * Taxista: "o senhor" em toda a cena (só a revelação hostil pode trocar). "Junk Team" = "Equipe de Limpeza Junker"; "Kyoto Summit" = "Cúpula de Kyoto". "Que tal ...?" sempre com interrogação.
+
+## Regras acrescentadas pelas revisões de SP33, SP34 e SP35 (3->4/5 depois das correções, 4/5, 4/5)
+* Balcão da recepção do QG: "balcão de recepção"; "booth" sozinho = "balcão"; "shutter" = "cortina de aço" (rótulos CORTINA DE AÇO, ABRIR CORTINA); "abrir a cortina (do balcão)"; "atrás do balcão". "cabine" só para as cabines do estande de tiro. "UNDER FRONT DESK" = "SOB A MESA PRÓXIMA".
+* Salas citadas no diálogo coincidem com o menu: "sala do computador", "Sala dos Detetives", "Sala do Chefe". "Gillian's apartment" = "seu apartamento" nas falas de viagem; "10-4!" = "Positivo!"; "This is it!" = "É isso!".
+* Jamie (casual): "tem" no lugar de "há", "a gente" com verbo no singular ("a gente deve", "a gente pode"), nunca "devemos/ficarmos/tenhamos" nem "o senhor" para o Gillian. Napoleon: "a gente pode/não pode". "genetic manipulants" = "animais geneticamente modificados". Varredura de "Receio que" nas falas de Gillian, Napoleon, Harry, Random, Jamie e Katrina feita (SP00-SP35).
