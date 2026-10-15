@@ -26,6 +26,8 @@ the SNATCHER logo, JAPAN, "Dec. 2047 NEO KOBE CITY". All are pictures. The Neo K
   code; the letters come from a picture tile set, not from the message font, so they cannot be translated by the pack.
 
 ## In-game pictures with legible text (to verify one by one in the viewer)
+* **SP09 file reading** (script label L_0ff4, silent replay L_10e9): Metal Gear reads an investigation file aloud on a framed screen; the pages are pictures drawn by the animation objects 0x14..0x1c of DATA_G0 (no script string), shown while the voice clips 221-235 (2.1 min) play. English only (docs/voice-inventory.md).
+* GAME OVER picture and the videophone not-in-service / no-video banners (SP18, SP35): graphics that go with voice clips 48, 1193, 1191.
 * GAME OVER picture (shown at state 4, then the game restarts at the title: `Engine::reset_to_title`).
 * Staff roll of the ending (DATA_Y16): the credit lines are tile text (names, job titles in English/Japanese romanisation).
 * Posters, signs and screens inside the room scenes (hospital neon "OLEEN", Konami posters, shop signs, newspaper headlines). They matter for

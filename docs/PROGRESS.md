@@ -45,6 +45,13 @@ Open items, in suggested order:
 5. YM2612: the real chip model has a DAC noise floor / ladder distortion the engine lacks (high bands 10-30 dB higher in noisy sounds); levels agree, nothing retuned (oracle2 section 5).
 6. Larger engine item left: after the GAME OVER restart the title chain timing (`SP_RELOAD_FRAMES` = 90) is from one real-BIOS measurement; the copyright/logo/title phase of the real restart lasts 840 frames like a cold boot.
 
+## Resume here: voice subtitles (survey done 2026-10-15, docs/voice-inventory.md)
+Result: 1146 of the 1162 voice clips (82.8 min) are started by scripts (op 0x04 CMD0D, the only audible path); **no clip plays together with a message box string**
+(every voice is followed by CMD0A, the wait). Per clip: voice-only 1085 (77.3 min), with-text 15 (2.1 min, the SP09 file-reading pictures), partial 3 (GAME OVER and two videophone banners), unknown 43 (3.0 min, a SAY right before / after the clip, not a transcript), 16 never started.
+The screen while a clip plays is the dialogue strip with an empty message box (86 % of the minutes), a black screen (6 %) or a picture without strip (3 %): the strip is free for subtitles.
+Tool: `snt voice-inventory` (+ `engine/examples/voice_probe.rs`, `scripts/voice-inventory.sh`, `re/oracle2/o2_voicebox.py`); CSVs in `work/voice/`.
+Next if the owner wants subtitles: (1) transcribe the 1146 clips with local Whisper (estimates in the doc, nothing installed), (2) translate to pt-BR keyed by clip id, (3) show through the message-box path on `Out::Voice` for the clip length, (4) listen to the clips for speaker / non-speech effects (the 43 `unknown` ones first).
+
 ## Resume here: translation pt-BR (task: translate every batch, review with a subagent, apply, commit)
 Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style, adaptations), status table at the end of this file (regenerate: `python3 -I scripts/i18n-progress.py`).
 Workflow per batch: `snt i18n-ctx` (dump, work/ only) -> write a patch `SPnn@off | ~text` (`~` = auto line breaks, `|` = forced break) -> `snt i18n-import` + `snt i18n-check` (0 failures) ->

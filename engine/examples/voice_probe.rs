@@ -2,7 +2,7 @@
 //! that starts, what the screen shows while it plays (message box with text / empty box / scene art / black screen).
 //! Dev tool only; the engine is not changed.
 //!
-//!   cargo run --release -p snengine --example voice_probe -- <outdir> <max-frames> [flags=zero|ones|alt] SPnn:pc[:choice,choice[:scene]] [...]
+//!   cargo run --release -p snengine --example voice_probe -- <outdir> <max-frames> [flags=zero|ones|alt|randN] SPnn:pc[:choice,choice[:scene]] [...]
 //!
 //! Output (stdout), one line per voice start:
 //!   PROBE SPnn:pc id=<voice id> frame=<n> box=<empty|text|art|black> msg=<0|1> top=<non-black % of the upper picture> low=<non-black % of the box area> png=<file>
@@ -30,6 +30,7 @@ fn main() {
         if let Ok(d) = std::fs::read(raw.join(n)) { files.push((n.to_string(), d)); }
     }
     for p in probes {
+        let tag = { let mut h: u32 = 0x811c9dc5; for b in p.bytes() { h ^= b as u32; h = h.wrapping_mul(16777619); } format!("{h:08x}") };
         let mut it = p.split(':');
         let (f, pc) = (it.next().expect("SPnn"), it.next().expect("pc"));
         let path: Vec<u16> = it.next().map(|x| x.split(',').filter_map(|h| u16::from_str_radix(h, 16).ok()).collect()).unwrap_or_default();
@@ -48,6 +49,11 @@ fn main() {
         match flags.as_str() {
             "ones" => for b in e.vm.save[sncore::script::vm::VARS_OFF..].iter_mut() { *b = 0xFF; },
             "alt" => for (i, b) in e.vm.save[sncore::script::vm::VARS_OFF..].iter_mut().enumerate() { *b = if i % 2 == 0 { 0xAA } else { 0x55 }; },
+            x if x.starts_with("rand") => {
+                // pseudo-random story flags (seed after "rand"), to reach branches that need particular variable values
+                let mut st: u64 = x[4..].parse::<u64>().unwrap_or(1).wrapping_mul(0x9E3779B97F4A7C15) | 1;
+                for b in e.vm.save[sncore::script::vm::VARS_OFF..].iter_mut() { st ^= st << 13; st ^= st >> 7; st ^= st << 17; *b = (st >> 24) as u8; }
+            }
             _ => {}
         }
         let mut pending: Vec<(u64, u16)> = vec![]; // (capture frame, id)
@@ -82,6 +88,14 @@ fn main() {
                     let strip = frac(0, W, 150, 214);
                     let cls = if top < 1.0 && strip < 1.0 && gap < 1.0 { "black" } else if gap > 10.0 || bot > 10.0 { "fullscreen" } else if strip < 1.0 { "strip-empty" } else { "strip-portraits" };
                     let low = strip;
+                    // text drawn in the picture (document / terminal screens): rows of the picture area with many bright / dark transitions
+                    let bright = |x: usize, y: usize| -> bool { let i = (y * W + x) * 4; fb[i] >= 200 && fb[i + 1] >= 200 && fb[i + 2] >= 200 };
+                    let mut txt = 0usize;
+                    for y in 4..136.min(H) {
+                        let (mut tr, mut nb, mut prev) = (0usize, 0usize, false);
+                        for x in 0..W { let b = bright(x, y); if b != prev { tr += 1; } if b { nb += 1; } prev = b; }
+                        if tr >= 12 && (8..=120).contains(&nb) { txt += 1; }
+                    }
                     // dialogue strip icons: runs of non-black columns in y 150..214 separated by >= 4 black columns, hashed (FNV-1a) without position
                     let mut icons: Vec<String> = vec![];
                     let colnb = |x: usize| (150..214).any(|y| px(x, y));
@@ -99,13 +113,13 @@ fn main() {
                         for y in rows.0..(rows.0 + 20).min(rows.1 + 1) { for xx in x0..x1 { let i = (y * W + xx) * 4; for b in 0..3 { h ^= fb[i + b] as u64; h = h.wrapping_mul(0x100000001b3); } } }
                         icons.push(format!("{:08x}:{}x{}", h as u32, x1 - x0, rows.1 - rows.0 + 1));
                     }
-                    let name = format!("{out}/{f}_{pc}_{id}.png");
+                    let name = format!("{out}/{f}_{pc}_{tag}_{id}.png");
                     let w = BufWriter::new(std::fs::File::create(&name).unwrap());
                     let mut enc = png::Encoder::new(w, W as u32, H as u32);
                     enc.set_color(png::ColorType::Rgba);
                     enc.set_depth(png::BitDepth::Eight);
                     enc.write_header().unwrap().write_image_data(fb).unwrap();
-                    println!("PROBE {f}:{pc} id={id} frame={fr} box={cls} msg={} top={top:.1} low={low:.1} gap={gap:.1} bot={bot:.1} icons={} png={name}", e.msg.is_some() as u8, icons.join(","));
+                    println!("PROBE {f}:{pc} id={id} frame={fr} box={cls} msg={} top={top:.1} low={low:.1} gap={gap:.1} bot={bot:.1} txt={txt} icons={} png={name}", e.msg.is_some() as u8, icons.join(","));
                 } else { k += 1; }
             }
             // give up when nothing happens for a long time (waiting on a menu that auto-press cannot pass)

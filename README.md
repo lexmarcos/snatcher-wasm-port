@@ -49,5 +49,6 @@ export/import them as JSON from the menu.
 - `docs/PROGRESS.md` – milestones, current state, next steps.
 - `docs/RE_NOTES.md` and `docs/re/*.md` – reverse-engineering notes with evidence.
 - `docs/re/oracle.md`, `docs/re/oracle2.md` – the two dev-only test oracles (BIOS-free HLE; real Sega CD BIOS on Genesis Plus GX, needs your own BIOS image).
+- `docs/voice-inventory.md` – every voice clip (1162 clips, 83 min): where it plays, whether text is shown, duration; subtitle feasibility. `scripts/voice-inventory.sh` rebuilds it.
 - `docs/re/web.md` – web front end (sources, audio graph, saves, tests, status).
 - `re/README.md` – disassembly/Ghidra workflow.

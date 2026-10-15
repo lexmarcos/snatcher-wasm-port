@@ -1,0 +1,20 @@
+# Voice clips whose picture carries text (found by eye on the voice_probe screenshots; graphics, not script strings).
+# id <TAB> class <TAB> note.  with-text = the picture shows the spoken text; partial = text in the picture but not a transcript.
+221	with-text	SP09 L_0ff4: file reading screen, text pages in DATA_G0 animation objects 0x14..0x1c (L_10e9 is the silent replay)
+222	with-text	same
+223	with-text	same
+224	with-text	same
+225	with-text	same
+226	with-text	same
+227	with-text	same
+228	with-text	same
+229	with-text	same
+230	with-text	same
+231	with-text	same
+232	with-text	same
+233	with-text	same
+234	with-text	same
+235	with-text	same
+48	partial	GAME OVER picture (the word only), used by every game-over path
+1193	partial	videophone screen with the not-in-service banner (SP18, SP35)
+1191	partial	videophone screen with the no-video banner (SP18 L_155b)

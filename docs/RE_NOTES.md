@@ -98,7 +98,7 @@ Full list with LBAs: `assets/raw/filelist.tsv` (generated).
   was cleared, re-entered the handler once more and wrote the 0x0EEE buffer $FFEC80 to CRAM 0..3
   (address wrap) – a white panel that the engine had copied. Fixed in the oracle (IE1 clear
   withdraws the pending level-4 request) and removed from the renderer; the portrait panel is dark.
-- **Voice-only lines have no text.** SP06 L_032e etc. use CMD0D (voice) + CMD0A (wait) without SAY;
+- **Voice-only lines have no text** (full inventory of all 1146 started clips, their classes, durations and screens: docs/voice-inventory.md). SP06 L_032e etc. use CMD0D (voice) + CMD0A (wait) without SAY;
   the only text-stream starters in SUBCODE are cmd 05 (S:0x100FC), the message box (S:0x136CE,
   S:0x13A8C) and a debug display (S:0x106C0). The oracle shows the same empty dark panel.
 - **CD-DA stops on every disc read**: sequencer cmd 11 step 0 is `bra cd_pause` (S:0x102D2); the

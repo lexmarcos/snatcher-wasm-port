@@ -1,7 +1,9 @@
 //! Voice inventory (docs/voice-inventory.md): every place where a voice clip is started, whether a message box
 //! string is shown with it, and how long the clip is.
 //!
-//!   snt voice-inventory <files-dir> [--csv out.csv] [--md out.md] [--scene-csv out.csv]
+//!   snt voice-inventory <files-dir> [--csv triggers.csv] [--clips-csv clips.csv] [--scenes-csv scenes.csv] [--md tables.md]
+//!       [--probes list.txt] [--probe-results file ...] [--icons docs/voice-icons.tsv] [--graphics-text docs/voice-graphics-text.tsv]
+//!   (`--probes` writes the entry points for engine/examples/voice_probe.rs, `--probe-results` reads its output; see docs/voice-inventory.md)
 //!
 //! Static analysis of the 39 script files (SPnn.BIN): each `CMD0D #id` node (script op 0x04, the only path that starts a
 //! voice: sequencer command 0x0D -> pcm_play_voice S:0x154F8; ids 1..35 select a PCM bank and are silent) is followed
@@ -287,7 +289,7 @@ fn scene_walk(seq: &[Ev], cur: &mut BTreeSet<String>, at_voice: &mut dyn FnMut(u
         match e {
             Ev::Voice { pc, .. } => at_voice(*pc, cur),
             Ev::Scene(r) => { *cur = BTreeSet::from([scene_name(*r)]); }
-            Ev::Goto(l) => at_jump(None, *l, cur),
+            Ev::Goto(l) | Ev::Gosub(l) => at_jump(None, *l, cur),
             Ev::Jump(f, l) | Ev::Call(f, l) => at_jump(Some(*f), *l, cur),
             Ev::Branch(alts) => {
                 // each alternative starts from the same state; afterwards any of them may have changed the scene
@@ -339,6 +341,7 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
     let mut probe_files: Vec<String> = vec![];
     let mut clips_csv: Option<&str> = None;
     let mut icons_file: Option<&str> = None;
+    let mut gfx_file: Option<&str> = None;
     let mut scenes_csv: Option<&str> = None;
     let mut it = opts.iter();
     while let Some(o) = it.next() {
@@ -347,6 +350,7 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
             "--md" => md = it.next().map(|s| s.as_str()),
             "--probes" => probes = it.next().map(|s| s.as_str()),
             "--probe-results" => { if let Some(f) = it.next() { probe_files.push(f.clone()); } }
+            "--graphics-text" => gfx_file = it.next().map(|s| s.as_str()),
             "--icons" => icons_file = it.next().map(|s| s.as_str()),
             "--clips-csv" => clips_csv = it.next().map(|s| s.as_str()),
             "--scenes-csv" => scenes_csv = it.next().map(|s| s.as_str()),
@@ -521,6 +525,14 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
         probe_icons.get(&id).and_then(|m| m.iter().max_by_key(|(k, v)| (**v, std::cmp::Reverse((*k).clone()))).map(|(k, _)| k.clone())).unwrap_or_default()
             .split('+').filter(|x| !x.is_empty()).map(|h| icon_names.get(h).cloned().unwrap_or_else(|| h.to_string())).collect()
     };
+    // clips whose picture carries text (reviewed by eye on the probe screenshots): id <TAB> class (with-text | partial) <TAB> note
+    let mut gfx_text: HashMap<u16, String> = HashMap::new();
+    if let Some(f) = gfx_file {
+        for l in fs::read_to_string(f).map_err(|e| format!("{f}: {e}"))?.lines() {
+            let c: Vec<&str> = l.split('\t').collect();
+            if c.len() >= 2 && !l.starts_with('#') { if let Ok(id) = c[0].trim().parse::<u16>() { gfx_text.insert(id, c[1].trim().to_string()); } }
+        }
+    }
     let spk_name = |s: u8| -> String { if s >= 2 { names.get(s as usize - 1).cloned().unwrap_or_default() } else { String::new() } };
     struct Row<'a> { t: &'a Trigger, class: &'static str, secs: f64, kind: u8, env: u8, pan: u8, text: Option<(u16, u8)>, rel: &'static str, via_jump: bool, next_voice: bool, menu: bool, ctx: String, dynbox: String, present: String }
     let mut rows: Vec<Row> = Vec::new();
@@ -531,6 +543,7 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
         let after = t.outcomes.iter().find_map(|o| if let Outcome::Text { text, spk, hops: 0, waited: true, .. } = o { Some((*text, *spk)) } else { None });
         let via_jump = t.outcomes.iter().any(|o| matches!(o, Outcome::Text { hops, .. } if *hops > 0));
         let (class, rel, text) = if bank { ("bank", "none", None) }
+            else if let Some(c) = gfx_text.get(&t.id) { (if c == "with-text" { "with-text" } else { "partial" }, "text-in-picture", None) }
             else if simul.is_some() { ("with-text", "simultaneous", simul) }
             else if after.is_some() { ("unknown", "text-after-wait", after) }
             else if t.prev_say.is_some() { ("unknown", "text-before", t.prev_say) }
@@ -541,6 +554,19 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
         rows.push(Row { t, class, secs, kind, env, pan, text, rel, via_jump,
             next_voice: t.outcomes.iter().any(|o| matches!(o, Outcome::Voice { .. })), menu: t.outcomes.contains(&Outcome::Menu), ctx, dynbox: if bank { String::new() } else { probe_cls(t.id) }, present: if bank { String::new() } else { icon_list(t.id).join("+") } });
     }
+    // clips the probes did not reach: infer the screen class from the scene resource of the trigger when probed clips share it
+    let mut scene_cls: HashMap<String, BTreeMap<String, usize>> = HashMap::new();
+    for r in rows.iter().filter(|r| !r.dynbox.is_empty() && !r.t.scene.contains(" | ") && r.t.scene != "?" && !r.t.scene.starts_with('(')) {
+        *scene_cls.entry(r.t.scene.clone()).or_default().entry(r.dynbox.clone()).or_default() += 1;
+    }
+    let mut inferred = 0;
+    for r in rows.iter_mut().filter(|r| r.dynbox.is_empty() && r.class != "bank") {
+        let sc = r.t.scene.split(" | ").filter(|x| *x != "?" && !x.starts_with('(')).collect::<Vec<_>>();
+        let mut m: BTreeMap<String, usize> = BTreeMap::new();
+        for x in &sc { if let Some(c) = scene_cls.get(*x) { for (k, v) in c { *m.entry(k.clone()).or_default() += v; } } }
+        if let Some((k, _)) = m.iter().max_by_key(|(k, v)| (**v, std::cmp::Reverse((*k).clone()))) { r.dynbox = format!("{k} (inferred)"); inferred += 1; }
+    }
+    eprintln!("screen class: probed {} voice triggers, inferred from the scene {inferred}", rows.iter().filter(|r| r.class != "bank" && !r.dynbox.is_empty() && !r.dynbox.contains("inferred")).count());
     let csv_esc = |s: &str| s.replace(',', ";");
     let mut out = String::from("id,kind,seconds,file,act,pc,label,scene,class,text_rel,text_off,text_spk,speaker,context_speakers,text_via_jump,next_voice,menu_next,reachable,screen,portraits,env,pan\n");
     for r in &rows {
@@ -567,24 +593,24 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
 
     // ---- per clip (unique voice id)
     #[derive(Default)]
-    struct Clip { secs: f64, kind: u8, n: usize, vo: usize, unk: usize, wt: usize, reach: usize, dbg_only: bool, files: BTreeSet<u8>, first: (u8, usize), scenes: BTreeSet<String> }
+    struct Clip { secs: f64, kind: u8, n: usize, vo: usize, unk: usize, wt: usize, pa: usize, reach: usize, dbg_only: bool, files: BTreeSet<u8>, first: (u8, usize), scenes: BTreeSet<String> }
     let mut clips: BTreeMap<u16, Clip> = BTreeMap::new();
     for r in rows.iter().filter(|r| r.class != "bank") {
         let c = clips.entry(r.t.id).or_default();
         if c.n == 0 { c.first = (r.t.file, r.t.pc); c.secs = r.secs; c.kind = r.kind; }
         c.n += 1;
-        match r.class { "voice-only" => c.vo += 1, "unknown" => c.unk += 1, "with-text" => c.wt += 1, _ => {} }
+        match r.class { "voice-only" => c.vo += 1, "unknown" => c.unk += 1, "with-text" => c.wt += 1, "partial" => c.pa += 1, _ => {} }
         if r.t.reachable && r.t.file != 1 { c.reach += 1; }
         c.files.insert(r.t.file);
     }
     for c in clips.values_mut() { c.dbg_only = c.reach == 0; }
     let unused: Vec<u16> = table.iter().filter(|v| v.kind != 1 && !clips.contains_key(&v.id)).map(|v| v.id).collect();
-    let clip_class = |c: &Clip| -> &'static str { if c.wt > 0 { "with-text" } else if c.vo > 0 { "voice-only" } else { "unknown" } };
+    let clip_class = |c: &Clip| -> &'static str { if c.wt > 0 { "with-text" } else if c.pa > 0 { "partial" } else if c.vo > 0 { "voice-only" } else { "unknown" } };
     let clip_sorted = clips.iter().map(|(id, c)| (*id, c)).collect::<Vec<_>>();
     if let Some(p) = clips_csv {
         let mut o = String::from("id,kind,seconds,class,triggers,voice_only_triggers,adjacent_text_triggers,reachable_in_game,files,first_file,first_pc,screen\n");
         for (id, c) in &clip_sorted {
-            o += &format!("{id},{},{:.3},{},{},{},{},{},{},SP{:02},{:04x},{}\n", c.kind, c.secs, clip_class(c), c.n, c.vo, c.unk, c.reach > 0, c.files.iter().map(|f| format!("SP{f:02}")).collect::<Vec<_>>().join("/"), c.first.0, c.first.1, probe_cls(*id));
+            o += &format!("{id},{},{:.3},{},{},{},{},{},{},SP{:02},{:04x},{}\n", c.kind, c.secs, clip_class(c), c.n, c.vo, c.unk, c.reach > 0, c.files.iter().map(|f| format!("SP{f:02}")).collect::<Vec<_>>().join("/"), c.first.0, c.first.1, rows.iter().find(|r| r.t.id == *id).map(|r| r.dynbox.clone()).unwrap_or_default());
         }
         for id in &unused {
             let v = table.iter().find(|v| v.id == *id).unwrap();
@@ -607,12 +633,16 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
         for n in r.present.split('+') { if !n.is_empty() { *g.present.entry(n.to_string()).or_default() += 1; } }
         g.pcs = (g.pcs.0.min(r.t.pc), g.pcs.1.max(r.t.pc));
     }
+    let nice = |k: &str| -> String {
+        let (b, inf) = match k.strip_suffix(" (inferred)") { Some(b) => (b, "*"), None => (k, "") };
+        format!("{}{inf}", match b { "strip-empty" => "empty strip", "strip-portraits" => "strip + portraits", "black" => "black", "fullscreen" => "no strip", x => x })
+    };
     let box_label = |m: &BTreeMap<String, usize>| -> String {
         if m.is_empty() { return "not probed".into(); }
         let total: usize = m.values().sum();
         let mut v: Vec<_> = m.iter().collect();
         v.sort_by_key(|(k, c)| (std::cmp::Reverse(**c), (*k).clone()));
-        v.iter().take(2).map(|(k, c)| if v.len() == 1 || **c * 10 >= total * 9 { k.to_string() } else { format!("{k} {}%", **c * 100 / total) }).collect::<Vec<_>>().join(", ")
+        v.iter().take(2).map(|(k, c)| if v.len() == 1 || **c * 10 >= total * 9 { nice(k) } else { format!("{} {}%", nice(k), **c * 100 / total) }).collect::<Vec<_>>().join(", ")
     };
     let hint = |g: &Grp| -> String {
         let mut parts: Vec<String> = vec![];
@@ -641,7 +671,7 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
     println!("voice clips in the disc table: {total_clips} ({:.1} min); started by a script: {} ({:.1} min); never started: {} ({:.1} min)", total_secs / 60.0, clips.len(), clips.values().map(|c| c.secs).sum::<f64>() / 60.0, unused.len(), unused_secs / 60.0);
     for (k, (n, s)) in &tot { println!("  {k}: {n} clips, {:.1} min", s / 60.0); }
     let dbg: Vec<_> = clip_sorted.iter().filter(|(_, c)| c.dbg_only).collect();
-    println!("  clips started only by the SP01 debug menu or unreachable code: {} ({:.1} min)", dbg.len(), dbg.iter().map(|(_, c)| c.secs).sum::<f64>() / 60.0);
+    if !dbg.is_empty() { println!("  clips started only by the SP01 debug menu or unreachable code: {} ({:.1} min)", dbg.len(), dbg.iter().map(|(_, c)| c.secs).sum::<f64>() / 60.0); }
 
     if let Some(p) = md {
         let mut m = String::new();
@@ -650,8 +680,24 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
         for (k, (n, s)) in &tot { m += &format!("| {k} | {n} | {} |\n", min(*s)); }
         m += &format!("| never started by any script | {} | {} |\n", unused.len(), min(unused_secs));
         m += &format!("| **all voice clips of the disc** | **{total_clips}** | **{}** |\n\n", min(total_secs));
+        // screen while the clip plays (clip level: the class of its first trigger)
+        let mut sc_tab: BTreeMap<String, (usize, usize, f64)> = BTreeMap::new();
+        for (id, c) in &clip_sorted {
+            let d = rows.iter().find(|r| r.t.id == *id).map(|r| r.dynbox.clone()).unwrap_or_default();
+            let inf = d.contains("inferred");
+            let base = if d.is_empty() { "not probed".to_string() } else { d.replace(" (inferred)", "") };
+            let e = sc_tab.entry(base).or_default();
+            e.0 += 1; if inf { e.1 += 1; } e.2 += c.secs;
+        }
+        m += "| screen while the clip plays | clips | of which inferred from the scene | minutes |\n|---|---:|---:|---:|\n";
+        for (k, (n, inf, secs)) in &sc_tab { m += &format!("| {} | {n} | {inf} | {} |\n", nice(k), min(*secs)); }
+        m += "\n";
+        // adjacent text
+        let adj: Vec<&Row> = rows.iter().filter(|r| r.class == "unknown").collect();
+        let (after, before) = (adj.iter().filter(|r| r.rel == "text-after-wait").count(), adj.iter().filter(|r| r.rel == "text-before").count());
+        m += &format!("adjacent text (class unknown): {} triggers, {after} with the text after the wait, {before} with the text before the voice\n\n", adj.len());
         // per file
-        m += "| file | act | triggers (voice-only / adjacent text) | distinct clips | minutes | \n|---|---|---:|---:|---:|\n";
+        m += "| file | act | triggers (voice-only / other) | distinct clips | minutes |\n|---|---|---:|---:|---:|\n";
         for fi in 0..39u8 {
             let rs: Vec<&Row> = rows.iter().filter(|r| r.class != "bank" && r.t.file == fi).collect();
             if rs.is_empty() { continue; }
@@ -667,6 +713,11 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
         m += "| file | label | act | scene resource(s) | clips | seconds | screen while the clip plays | speaker hint |\n|---|---|---|---|---:|---:|---|---|\n";
         for g in gv {
             m += &format!("| SP{:02} | L_{:04x} | {} | {} | {} | {:.0} | {} | {} |\n", g.file, g.label, g.act, scene_short(g), g.ids.len(), g.secs, box_label(&g.boxes), hint(g));
+        }
+        m += "\n";
+        m += "| id | seconds | class | file | pc | relation | text offset | speaker of that text |\n|---|---:|---|---|---|---|---|---|\n";
+        for r in rows.iter().filter(|r| r.class != "bank" && r.class != "voice-only") {
+            m += &format!("| {} | {:.1} | {} | SP{:02} | {:04x} | {} | {} | {} |\n", r.t.id, r.secs, r.class, r.t.file, r.t.pc, r.rel, r.text.map(|x| format!("{:04x}", x.0)).unwrap_or_default(), r.text.map(|x| spk_name(x.1)).unwrap_or_default());
         }
         m += "\n";
         m += &format!("unused clip ids: {}\n", unused.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(" "));
