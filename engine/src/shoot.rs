@@ -120,6 +120,12 @@ pub fn cmd1f(e: &mut Engine) -> bool {
 
 /// `shoot_tick` S:0x1208E.
 fn tick(e: &mut Engine, s: &mut Shoot) {
+    // an object killed by its animation (op 0x00 -> `Obj::default()`) loses its extra fields too: the original clears the whole 0x50-byte slot
+    // (oracle: target slot zero after the kill, `$78EC` stops counting it)
+    for k in O_T0..O_T0 + 9 {
+        let o = &e.disp.sub.objs[k];
+        if o.script == 0 && o.anim_table == 0 && o.active == 0 && s.f24[k] != 0xFF { s.f17[k] = 0; s.f24[k] = 0; s.f2c[k] = 0; }
+    }
     pcm_poll(e);
     ww(e, 0x1511E, if e.ix.pcm_busy { 0x0800 } else { 0 });
     match rw(e, 0x78E8) {

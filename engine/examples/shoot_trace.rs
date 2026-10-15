@@ -96,7 +96,7 @@ fn main() {
         k += 1;
         e.tick(pad);
         e.out.clear();
-        if e.regs.get(0x78E8) != 0 || e.regs.get(0x78EA) >= 2 { break; }
+        if e.queue.get(e.qi).map(|a| a.cmd) == Some(0x18) && (e.regs.get(0x78E8) != 0 || e.regs.get(0x78EA) >= 2) { break; }
         if k > 8000 { eprintln!("stage did not start (menu {menu_no})"); std::process::exit(1); }
     }
     eprintln!("stage started after {k} frames: $78E0={:04x} pcm_bank={}", e.regs.get(0x78E0), e.pcm_bank);
@@ -121,7 +121,7 @@ fn main() {
             for o in e.out.drain(..) {
                 match o {
                     snengine::game::Out::PcmSfx { id, .. } => snd.push(format!("[\"06\",{}]", id)),
-                    snengine::game::Out::Fm { id, music: false } => snd.push(format!("[\"12\",{}]", id)),
+                    snengine::game::Out::Fm { id, .. } => snd.push(format!("[\"12\",{}]", id)),
                     _ => {}
                 }
             }

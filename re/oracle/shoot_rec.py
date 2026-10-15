@@ -23,6 +23,7 @@ def snap(s):
     for n in SLOTS:
         b = 0x7A00 + n * 0x50
         o[str(n)] = [s.r16(b), s.r8(b + 0x25), s.r16(b + 6), s.r16(b + 0xA), s.r16(b + 0x28), s.r8(b + 0x17), s.r8(b + 0x24), s.r16(b + 0x2C)]
+    w['q'] = s.r16(0x9940 + s.r16(0x9B40))     # sequencer command being executed
     return {'w': w, 'o': o}
 
 
@@ -147,7 +148,7 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
             # logical pad bytes this handler run works with (sampled earlier in the handler: S:0xD664 / S:0xDFD6)
             ev.append(('h', s.r8(0x7990), s.r8(0x7991), s.r8(0x7992), s.r8(0x7985), s.r8(0x798A), s.r8(0x798B)))
         elif pc in hooks:
-            ev.append((hooks[pc], s.d(0) & 0xFFFF))
+            ev.append((hooks[pc], s.d(0) & 0xFFFF, s.r32(s.a(7))))   # + return address (who played it)
         else:
             orig(pc)
     m._sub_bios = hk
@@ -156,7 +157,7 @@ def record(m, script, frames, rng=True, shots=(), outdir=None, gun=None, log=Non
     # frame 0 = the first frame in which setup step 1 (wait for the main CPU's gun-detect answer) has completed ($78EA >= 2): the wait before it (scene VRAM list / tile loading, up to ~20
     # frames) is display-side work that is compared elsewhere; both sides align here
     k = 0
-    while not (s.r16(0x78E8) != 0 or s.r16(0x78EA) >= 2) and k < 400:
+    while not (s.r16(0x9940 + s.r16(0x9B40)) == 0x18 and (s.r16(0x78E8) != 0 or s.r16(0x78EA) >= 2)) and k < 400:
         m.inputs = [[1, 0]]
         m.step_frame()
         k += 1

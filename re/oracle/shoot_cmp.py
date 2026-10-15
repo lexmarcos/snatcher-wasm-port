@@ -25,7 +25,7 @@ def main():
     ap.add_argument('--from', dest='frm', type=int, default=0)
     ap.add_argument('--n', type=int, default=6, help='first N divergences per field')
     ap.add_argument('--min-run', type=int, default=4, help='only differences that persist for N consecutive frames count (sub-CPU stalls inside a tick shift single values by 1-2 frames)')
-    ap.add_argument('--skip', default='7984,7986,7988,798A,7990,7992,7902,7904,1511E', help='words not compared')
+    ap.add_argument('--skip', default='7984,7986,7988,798A,7990,7992,7902,7904,1511E,q', help='words not compared')
     a = ap.parse_args()
     o, e = load(a.oracle), load(a.engine)
     n = min(len(o), len(e) - a.lag)
@@ -73,6 +73,14 @@ def main():
     bad = next((i for i, (a, b) in enumerate(zip(so, se)) if a[1:] != b[1:]), None)
     dmax = max([abs(a[0] - b[0]) for a, b in zip(so, se) if a[1:] == b[1:]] or [0])
     print('sounds: oracle %d engine %d, first sequence mismatch %s, max frame delta %d' % (len(so), len(se), (so[bad], se[bad]) if bad is not None else None, dmax))
+    def cmds(tr):
+        out, last = [], None
+        for r in tr:
+            v = r['w'].get('q')
+            if v != last:
+                out.append('f%d:%02x' % (r['f'], v or 0)); last = v
+        return ' '.join(out[-12:])
+    print('queue cmds oracle (last 12 changes):', cmds(o)); print('queue cmds engine (last 12 changes):', cmds(e))
     print('phases oracle:', tl(o)); print('phases engine:', tl(e))
     print('final oracle:', fin(o)); print('final engine:', fin(e))
     print('compared %d frames, %d differing fields' % (n - a.frm, tot))

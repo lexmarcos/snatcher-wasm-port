@@ -1,0 +1,41 @@
+# SHOOTING workstream labels (sub CPU, SUBCODE, main CPU IP) – docs/re/shooting.md
+# format: address name [f] # comment   (sub = S:, main = M: in the comment)
+0x1208E shoot_tick f                 # cmd 0x18 per frame; jump table S:0x1209A on $78E8 (0 setup, 1 countdown, 2 play, 3 end check, 4 results, 5 exit)
+0x120B2 shoot_setup f                # phase 0, steps $78EA: 0 palette + COMFLAG bit5 (gun-ID request), 1 wait for the main ack + tile channels, 2 plane-B scroll, 3 init
+# (labelled in sub_70_interact.txt) 0x1220C shoot_init_targets f         # S:0x12248 quirk: clears only target 0's active word
+# (labelled in sub_70_interact.txt) 0x12400 shoot_input f                # draw/holster (logical bit 6), pad aim cell from held bits, recoil after a hit ($78F8 >= 2)
+0x12516 shoot_gun_cell f             # $7900 = column(x: <0x60, <0xA0) + 3 * row(y: <0x30, <0x58) from $798A/$798B
+# (labelled in sub_70_interact.txt) 0x1254E shoot_recoil f               # jitter of the pad crosshair (rand & 15 - 8)
+# (labelled in sub_70_interact.txt) 0x125F2 shoot_shot f                 # object 21 state machine $78FA 0 -> 4 -> 5 -> 1 -> 2 -> 3 -> 0; gun cell sampled 2 frames after the trigger
+# (labelled in sub_70_interact.txt) 0x1274A shoot_hit_test f             # state 3: resolve the shot against the target of cell $7901
+0x12862 shoot_trap_cells f           # stage 0x0A: table S:0x12CE2 bit 1 = trap
+0x12850 shoot_miss f                 # $790E++, skips 0 after 0xFFFF
+0x12884 shoot_targets f              # nine targets, state in +0x24 (low nibble), timer +0x2C, script end indices via sub_012042
+0x12B2E shoot_spawner f              # $78FC 0 timer / 1 pick cell (rand table S:0x12010) / 2 start; move.l a0,$791C
+0x12C1E shoot_target_type f          # per stage; template objects 26.. copied by sub_012CF0
+0x12D9A shoot_attack f               # enemy attack object 24, $78FE
+0x12E66 shoot_player_hit f           # sound 0x13 + life cell
+0x12EC8 shoot_end_check f            # life 6 / kills / spawns -> phase 3
+0x13052 shoot_results f              # phase 4 (sub 0 waits for $1511E bit 3 = PCM effect playing)
+0x1312E shoot_exit f                 # phase 5 -> $78AF = 0
+0x13150 seq_cmd_1f_tally f           # sequencer cmd 0x1F: every other vint ($7848 even), counters objects 58/59 (+0x28) count down, then reset
+0x11F10 tbl_hit_sfx                  # per-stage tables (15 bytes each, index $78E0): 11F10 hit sfx, 11F20 ready sfx, 11F30 shot sfx, 11F40 attack sfx
+0x11F50 tbl_first_phase              # 11F50 first phase, 11F60 spawn delay, 11F70 initial speed, 11F80/11F90 kills pad/gun, 11FA0 spawns
+0x11FB0 tbl_active_targets           # 11FB0/11FC0 max simultaneous pad/gun, 11FD0 flags (attacks), 11FE0 aim x, 11FE6 aim y, 11FEC cell xy
+0x12010 tbl_rand32                   # 32-entry 0..8 table indexed by rand & 0x1F (sub_012030)
+0x12CE2 tbl_stage10_cells
+0x1511E pcm_status_word              # bit0 stream start, bit1 voice, bit2 bank loaded, bit3 PCM effect playing (set S:0x15342, cleared S:0x15998)
+0x1530E subfn_06_body f              # PCM effect: loop S:0x15C32 copies up to 4096 sample bytes (1-2 frames of sub CPU)
+0xD644 frame_rng_step                # jsr sub_00fd96 once per frame-handler run, before the pad read and the sequencer
+0xD7B2 gun_regs_copy f               # COMCMD0..3 -> $7980..$7987; $798A = $7986 - $7988, $798B = $7987 - $7989
+0xDFD6 pad_logical f                 # $7990 held / $7991 pressed / $7992 repeat from $7980/$7981 via the button config
+0x29930 calib_store                  # DATA_D2: $7988 = $7986 - 0x80, $7989 = $7987 - 0x80
+0x299B2 calib_test_cursor            # object 16 = ($798A - 0x0B, $798B - 0x23)
+# main CPU (IP)
+# main CPU: 0xFF1284 pad_read_frame f          # sub_ff1284 -> sub_ff1298: held in $A12010, edge in $A12011, ID in COMCMD1 high
+# main CPU: 0xFF1358 port_id_read f            # TH sequence table M:0xFF1386 -> 4 bits; 1 = light gun
+# main CPU: 0xFF13E2 gun_read f                # sub_ff13f6: PAD2 buttons -> $A12015 bit5/6, $E058 (flash request)
+# main CPU: 0xFF148A gun_ext_int f             # external interrupt handler: HV counter -> $E054
+# main CPU: 0xFF14CC gun_report f              # $A12016 = X = 2 * H, $A12017 = Y = V
+# main CPU: 0xFF13BA gun_int_enable f          # VDP reg 0x0B bit 3 (IE2)
+# main CPU: 0xFF1A44 gun_flash f               # trigger frame: white buffer $EC80 -> CRAM 0/1

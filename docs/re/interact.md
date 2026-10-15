@@ -15,8 +15,8 @@ All four interaction types are played and compared with the ORIGINAL code (oracl
 | alphabet keyboard (`$79FE` 3, SP05 via SP04 "LOAD I.D. FILE") | same input script on both: cursor movement, typing, backspace + key-press animation, OK/Start, two-step match (`$971A` 1 → 2) → "Alice Gibson" for ALICE, "No matching names on file." for CPO; open/close window effects |
 | phone keypad (`$79FE` 2, direct dial `$971E`, SP35 videophone) | typed digits, cursor, auto-complete after the expected length (table S:0x11938: "177" → SP02 call), window clear on open |
 | pointer mode (`$79FE` 1, dark room SP26:0BA4 "TURN ON LIGHT") | `$96D0/$96D4` per frame and `$96DC` region ids equal to the oracle (±1 px); bar hidden while B is held; flashlight sprites match |
-| shooting (SYS MINIGAME, seq cmd 0x18) | stage 0 (SP01 debug menu "SHOOTING → ACT1 → SCENE_JUNKER"): READY/GO!, life meter, enemy/civilian targets, crosshair/flash look like the oracle; shot state machine `$78FA` 4→5→1→2→3→0 and `$7908/$790E` counts identical; stage 0x0B and the ACT2 QUEEN01 stage (SP01 debug menu) run to the game-over exit without errors; ACT3 stages were not reached |
-| light gun / mouse | engine side tested headless (`GUN=x:y:from GUNB=frame:bits` in the runner: x=100,y=60 → cell 4, hit test runs); web side `input.ts` builds and exposes the state |
+| shooting (SYS MINIGAME, seq cmd 0x18) | **all 15 stages frame-exact vs the original** (phases, spawner, targets, attacks, life, hits/misses, sounds, exit; pad and light gun) – `docs/re/shooting.md` |
+| light gun / mouse | oracle emulates the Justifier (`m.gun`); calibration screen and the mouse→raw→value mapping agree with it (docs/re/shooting.md) |
 
 ### Bugs found and fixed in this pass (all with evidence)
 1. **Highlight bar never visible** – not a flags problem: the bar *tiles* were never loaded. The VM-thread
@@ -54,8 +54,9 @@ All four interaction types are played and compared with the ORIGINAL code (oracl
   on release the region id comes from the map S:0x109E8 at ((X+0x48)>>2, (Y+0x28)>>2) and `$9717` clears.
 - Shooting pad aiming reads `in_held` ($7990) bits (S:0x124BA), the shot reads `in_pressed` ($7991): bit 6 = draw/holster, bit 5 = fire.
 - Light gun: `$7985` (edge) bit 5 trigger, bit 6 second button; `$798A/$798B` = gun X/Y − calibration; cell = (x<0x60 ? 0 : x<0xA0 ? 1 : 2) +
-  3·(y<0x30 ? 0 : y<0x58 ? 3 : 6) (S:0x12516). The target sprites are 32×32 at x 48/112/176, y 16/56/96 (OBJDUMP), so the thresholds
-  0x60/0xA0/0x30/0x58 equal the screen-pixel edges between the cells: HYPOTHESIS that after the title calibration the gun values are screen pixels.
+  3·(y<0x30 ? 0 : y<0x58 ? 3 : 6) (S:0x12516). The target sprites are 32×32 at x 48/112/176, y 16/56/96 (OBJDUMP), the X thresholds
+  0x60/0xA0 are the screen edges between the columns (value = x after calibrating on the bullseye); the Y thresholds do NOT match the rows after a bullseye
+  calibration (docs/re/shooting.md, "31-line discrepancy").
 - `$7972` (gun mode) is read only by the shooting code (S:0x1205C–0x13086); the original sets it from option `$78B8` + port ID (S:0xD766).
   The web build replaces the option: gun mode = the player clicked the canvas (see below).
 
@@ -80,12 +81,9 @@ soon as a keyboard/gamepad pad input is used, so pad aiming keeps working unchan
   `SP01:b:455,11,3b8` (engine) / SP01:0 + key navigation (oracle).
 
 ## Approximate / not verified (HYPOTHESIS)
-- Timing: the oracle's HLE pad model delivers `in_held` only every other frame (`$7990` alternates 0x0808/0000 while a button is held; `_pad_read` TH model),
-  so held-button timings of the oracle (aiming, key repeat) cannot be used as ground truth; the shot animation wait is 4 frames in the engine vs 6 in the oracle.
+- **Shooting, pad and light gun, all 15 stages: compared frame-exact with the ORIGINAL, see `docs/re/shooting.md`** (oracle pad bug fixed, oracle light-gun
+  model, per-frame RNG step, PCM busy wait, calibration and gun mapping). What remains there: sub-CPU stalls by PCM sample copies are not modelled (engine side), the
+  trigger flash (CRAM 0/1 white for one frame, M:0xFF1A44) is not drawn, absolute raw gun values come from the oracle's HV model.
 - Keypad/keyboard key-press animation waits time out after 180 frames; redraw latency of the original's render streams is approximated by fixed delays.
 - Diagonal pointer speed (200 iterations) is fitted, single direction is exact.
-- Gun calibration (`$7988/$7989`) from the title screen is not modelled (0); gun mouse coordinates are used as screen pixels.
-- Not compared: shooting results/exit phases (3–5), stages ≥ 1 visually against the oracle, enemy attack/damage rules (logic ported from disassembly only),
-  PCM-busy back-pressure (`$1511E`) treated as idle.
 - cmd 0x15 (built-in scene + grid position) is ported but not exercised (no script reached it).
-- Next: compare more stages (SP01 debug menu paths in `jump_path` form) frame-wise once the oracle pad sampling is fixed; calibrate the gun from the title module.
