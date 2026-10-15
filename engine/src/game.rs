@@ -240,6 +240,7 @@ impl Engine {
         self.top = Top::Game;
         let (vm, q) = Vm::from_save(blk, &mut self.regs);
         self.vm = vm;
+        if self.trace { self.out.push(Out::Log(format!("pass pc={:04x} q=[{}]", self.vm.pc, q.iter().map(|a| format!("({}, {:?})", a.cmd, a.args)).collect::<Vec<_>>().join(", ")))); }
         let mut all = self.vm_thread_init();
         all.extend(q);
         self.start_queue(all);
@@ -352,6 +353,10 @@ impl Engine {
         if let Some(n) = self.ix.rng_seq.as_mut() { *n = n.wrapping_add(1); self.disp.sub.rng = n.wrapping_mul(2654435761).to_be_bytes(); }
         self.disp.sub.rand();
         if self.top == Top::Game { self.play_time_tick(); }
+        for c in 0..2 { // PCM effect channels: bit 3 of $1511E clears when the first channel's sample ended (S:0x15998, see shoot.rs)
+            let u = self.ix.pcm_ch_until[c];
+            if u != 0 && self.frame >= u { self.ix.pcm_ch_until[c] = 0; self.ix.pcm_busy = false; }
+        }
         self.menu_in = self.menu_in_cur;
         if let Some(inp) = self.input.as_mut() {
             inp.update(pad);
@@ -759,13 +764,19 @@ impl Engine {
             0x07 => { self.fm_cmd(w(0), true); true }   // FM music (S:0x1011E: $980E = n, subfn_12)
             0x08 => self.cmd_message(w(0), w(1)),
             0x09 => { self.obj_control(w(0), w(1) as usize) }
-            0x0A => { // wait until voice idle or 0xE10 frames
+            0x0A => { // S:0x1016C: wait until `$1511E & 0xF == 0` (PCM voice bits 0-2 and effect bit 3) or 0xE10 frames
                 self.seq_timer += 1;
-                self.voice_left == 0 || self.seq_timer >= 0xE10
+                self.voice_left == 0 && !self.ix.pcm_busy || self.seq_timer >= 0xE10
             }
             0x0B => { let hi = self.cd_status() >> 8; hi == 0 || hi == 5 } // S:0x101A6: wait until CD status hi byte is 0 (stopped / track ended) or 5 (paused)
             0x0C => {
-                if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 { self.out.push(Out::PcmSfx { id: w(0), bank: self.pcm_bank }); }
+                // S:0x101BC: `$7890 == 0` and `$1511E & 7 == 0` (no voice) -> subfn_06(n, -1), which sets `$1511E` bit 3 (effect playing;
+                // cleared when the first effect channel ends, see shoot.rs `pcm`); a following cmd 0A waits for it
+                if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 {
+                    self.out.push(Out::PcmSfx { id: w(0), bank: self.pcm_bank });
+                    if let Some(&(len, ch)) = self.ix.sfx_len.get(&(self.pcm_bank, w(0))) { self.ix.pcm_ch_until[(ch & 1) as usize] = self.frame + len as u64; }
+                    self.ix.pcm_busy = true;
+                }
                 true
             }
             0x0D => { // voice (S:0x101DC): voice start, one idle frame, then the speaker's portrait scene S:0x13FEC[n]
@@ -773,8 +784,9 @@ impl Engine {
                 match self.seq_step {
                     0 => {
                         self.regs.set_b(0x9717, 0xFF);
-                        // S:0x15502 `$15120 = voice id` (saved in the save block, replayed on CONTINUE); bank-select entries (type 0x82) reset it to FFFF (S:0x155EE)
-                        self.regs.set(0x15120, if (1..=35).contains(&n) { 0xFFFF } else { n });
+                        // S:0x15502 `$15120 = n` (saved in the save block, replayed on CONTINUE: `0D[d6] 0A`, S:0x15024); table entries of type 0x82
+                        // (real voices, ids >= 36) reset it to FFFF at S:0x155EE, bank-load entries (ids 1..35, type 1) keep it (oracle: 0D[0x10] -> $15120 = 0x10)
+                        self.regs.set(0x15120, if (1..=35).contains(&n) { n } else { 0xFFFF });
                         if (1..=35).contains(&n) { self.pcm_bank = n; } else {
                             self.voice_left = *self.voice_len.get(&n).unwrap_or(&90) + 6; // +6: oracle voice intervals are 5-7 frames longer than the decoded length (fid_cmp, play4)
                             self.out.push(Out::Voice { id: n });
@@ -866,8 +878,17 @@ impl Engine {
 
     /// `subfn_12`: FM request. Music sets `$980E`, sfx `$980F` (0x3D/0xFF → 0); the main CPU
     /// reports completion through COMCMD7 (S:0xDF52), modelled with fm.json durations.
+    /// Frames until the done flag (`$980E` / `$980F`) of FM sound `id` clears; `None` = loops.
+    pub(crate) fn fm_done_len(&self, id: u16, music: bool) -> Option<u32> {
+        let tail = if music { 118 } else { 34 };
+        self.fm_len.get(&id).copied().unwrap_or(Some(60 + tail)).map(|l| l.saturating_sub(tail).max(1))
+    }
+
     pub fn fm_cmd(&mut self, id: u16, music: bool) {
-        let len = self.fm_len.get(&id).copied().unwrap_or(Some(60));
+        // done-flag time: the manifest durations (`fm.json` seconds, rendered audio) include a fixed release tail of 34 frames
+        // (sfx) / 118 frames (music); the original's done report comes when the sequence ends. Oracle (`fid_fmlen.py`, injected
+        // 07/1C commands, 74 ids): oracle = manifest - 34 (sfx) / manifest - 118 (music) for every id (+-1).
+        let len = self.fm_done_len(id, music);
         let flag = if id == 0xFF || id == 0x3D { 0 } else { id as u8 };
         if music {
             self.regs.set_b(0x980E, flag);

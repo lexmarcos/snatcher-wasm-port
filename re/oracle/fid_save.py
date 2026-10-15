@@ -43,3 +43,5 @@ print('oracle file == $9C00 block at the end of the run:', ofile[:0x1C0] == blk)
 if a.dump: open(a.dump, 'w').write(ofile[:0x1C0].hex())
 diff = [i for i in range(min(len(edata), 0x1C0)) if edata[i] != ofile[i]]
 print('differing bytes:', len(diff), [(hex(i), hex(ofile[i]), hex(edata[i])) for i in diff[:40]])
+# files for the CONTINUE round trip (fid_cont.py)
+for k, v in files.items(): open(os.path.join(HERE, 'out', 'fid2', 'bram_%s.hex' % k), 'w').write(v.hex())

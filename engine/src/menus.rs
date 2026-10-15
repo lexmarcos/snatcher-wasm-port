@@ -70,7 +70,7 @@ fn y_lo(e: &Engine, slot: usize) -> u8 { (e.disp.sub.objs[slot & 63].y >> 16) as
 /// Queue-command-0x1C style sound (S:0x13E0A): `$980F = n`, PCM effect n.
 pub fn sfx_1c(e: &mut Engine, n: u16) {
     e.regs.set_b(0x980F, if n == 0x3D { 0 } else { n as u8 });
-    e.sfx_left = 30;
+    e.sfx_left = if n == 0x3D { 0 } else { e.fm_done_len(n, false).unwrap_or(u32::MAX) }; // oracle: sfx 0x1D done flag 19-20 frames
     e.out.push(Out::Pcm { id: n, kind: 0 });
 }
 

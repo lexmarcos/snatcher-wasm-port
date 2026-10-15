@@ -19,9 +19,25 @@ fn main() {
     e.trace = true;
     e.fid_rng = std::env::var("FIDRNG").is_ok();
     let aw = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/audio/web");
-    if let (Ok(p), Ok(f)) = (std::fs::read_to_string(aw.join("pcm.json")), std::fs::read_to_string(aw.join("fm.json"))) {
+    if let (Ok(p_), Ok(f)) = (std::fs::read_to_string(aw.join("pcm.json")), std::fs::read_to_string(aw.join("fm.json"))) {
+        let p = p_.clone();
         e.load_audio_manifests(&p, &f);
         println!("audio manifests: {} voices, {} fm", e.voice_len.len(), e.fm_len.len());
+        // PCM effect lengths per (bank, id), like web/src/main.ts (samples / rate * 60)
+        let j = json::parse(&p_);
+        if let Some(sfx) = j.get("sfx").and_then(|s| s.obj()) {
+            for (id, s) in sfx {
+                let (src, off) = (s.get("src").and_then(|x| x.str()).unwrap_or(""), s.get("offset").and_then(|x| x.str()).unwrap_or(""));
+                let chan = s.get("chan").and_then(|x| x.num()).unwrap_or(0.0) as u8;
+                let len = |seg: &json::J| -> Option<u32> { Some(((seg.get("samples")?.num()? / seg.get("rate")?.num()?) * 60.0).ceil() as u32) };
+                let banks = j.get("banks").and_then(|b| b.obj()).cloned().unwrap_or_default();
+                if src == "drum" {
+                    if let Some(l) = j.get("drum").and_then(|d| d.get(off)).and_then(|seg| len(seg)) { for b in banks.keys() { e.ix.sfx_len.insert((b.parse().unwrap_or(0), id.parse().unwrap_or(0)), (l, chan)); } }
+                } else {
+                    for (b, segs) in &banks { if let Some(l) = segs.get(off).and_then(|seg| len(seg)) { e.ix.sfx_len.insert((b.parse().unwrap_or(0), id.parse().unwrap_or(0)), (l, chan)); } }
+                }
+            }
+        }
     }
     for n in FILE_NAMES.iter() {
         if *n == "PCMLD_01.BIN" { continue; }
@@ -154,5 +170,30 @@ fn main() {
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
         enc.write_header().unwrap().write_image_data(&img).unwrap();
+    }
+}
+
+/// Minimal JSON reader for the audio manifests (dev tool only).
+mod json {
+    use std::collections::BTreeMap;
+    #[derive(Clone, Debug)]
+    pub enum J { Null, Num(f64), Str(String), Arr(Vec<J>), Obj(BTreeMap<String, J>) }
+    impl J {
+        pub fn get(&self, k: &str) -> Option<&J> { if let J::Obj(m) = self { m.get(k) } else { None } }
+        pub fn obj(&self) -> Option<&BTreeMap<String, J>> { if let J::Obj(m) = self { Some(m) } else { None } }
+        pub fn num(&self) -> Option<f64> { if let J::Num(n) = self { Some(*n) } else { None } }
+        pub fn str(&self) -> Option<&str> { if let J::Str(s) = self { Some(s) } else { None } }
+    }
+    pub fn parse(s: &str) -> J { let b = s.as_bytes(); let mut i = 0; val(b, &mut i) }
+    fn ws(b: &[u8], i: &mut usize) { while *i < b.len() && (b[*i] as char).is_whitespace() { *i += 1; } }
+    fn val(b: &[u8], i: &mut usize) -> J {
+        ws(b, i);
+        match b.get(*i) {
+            Some(b'{') => { *i += 1; let mut m = BTreeMap::new(); loop { ws(b, i); if b[*i] == b'}' { *i += 1; break; } if b[*i] == b',' { *i += 1; continue; } let k = match val(b, i) { J::Str(s) => s, _ => String::new() }; ws(b, i); *i += 1; let v = val(b, i); m.insert(k, v); } J::Obj(m) }
+            Some(b'[') => { *i += 1; let mut v = vec![]; loop { ws(b, i); if b[*i] == b']' { *i += 1; break; } if b[*i] == b',' { *i += 1; continue; } v.push(val(b, i)); } J::Arr(v) }
+            Some(b'"') => { *i += 1; let st = *i; while b[*i] != b'"' { if b[*i] == b'\\' { *i += 1; } *i += 1; } let s = String::from_utf8_lossy(&b[st..*i]).to_string(); *i += 1; J::Str(s) }
+            Some(_) => { let st = *i; while *i < b.len() && !matches!(b[*i], b',' | b'}' | b']') { *i += 1; } let t = std::str::from_utf8(&b[st..*i]).unwrap_or("").trim(); t.parse::<f64>().map(J::Num).unwrap_or(J::Null) }
+            None => J::Null,
+        }
     }
 }

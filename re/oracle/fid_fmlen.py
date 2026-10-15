@@ -36,5 +36,6 @@ for i in ids:
     res[i] = {'oracle': d, 'start_delay': t0, 'manifest_frames': int(-(-mf.get('seconds', 0) * 60 // 1)) if mf else None}
     print(hex(i), res[i], flush=True)
     if cmd == 0x07: run(0x07, 0xFF, 0x980E, 5)            # stop the music
+    else: run(0x1C, 0x3D, 0x980F, 5)                      # stop the sfx (a looping one would block the next)
     for _ in range(30): m.step_frame(capture=False)
 json.dump(res, open(sys.argv[1], 'w'), indent=1)
