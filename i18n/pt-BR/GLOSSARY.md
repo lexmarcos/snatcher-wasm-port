@@ -161,3 +161,8 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * O quadro "Face to face" da sala do Chefe é "quadro"; a foto escondida da Praça Vermelha é "foto". Mensagens de memorando: "o segredo do quadro no escritório do Chefe". Nas descrições de itens vale "escritório do Chefe"; o rótulo de menu da sala é "Sala do Chefe".
 * "CALL" (gritar o nome de alguém na casa do Gibson, SP25) = CHAMAR; "CALL" ao telefone = LIGAR. Listas de números de telefone mantêm um item por linha, como no inglês (usar quebras forçadas).
 * Gillian sempre põe o pronome depois do verbo ("procurar ela", "encontrar ela", "vejo ele") e chama a Katrina com imperativo coloquial ("Responde"). "Time is of the essence" = "Não temos tempo a perder". "Yeah. Open it!" (dublada) = "Sim. Abre!".
+
+## Regras acrescentadas pelas revisões de SP26 e SP27 (4/5 e 4/5)
+* Gillian e Random falam "tem/não tem" (não "há") na fala solta e nas confirmações ("..., tem?"); Metal Gear mantém "há". "De que tipo de X você está falando?" com a preposição. "reception desk/booth" = "balcão (da recepção)". "sala do fundo" para a sala no final do corredor.
+* Napoleon (e o porteiro quando é ele): "Relaxa", "a gente vai", "Pensa", "Tá bom"; nunca "Não se preocupe" nem a forma em -mos. Falantes informais dizem "com certeza" (não "definitivamente"). "untrustworthy" = "que não merece confiança".
+* "Outer Heaven" masculino também entre aspas ("fósforos do "Outer Heaven""). "Face to face" (quadro e bilhete) = "quadro"; "foto" só para a foto da Praça Vermelha e a do templo. Varredura global feita em SP00-SP28 depois de cada lote (as cópias de strings iguais podem trazer a versão antiga).

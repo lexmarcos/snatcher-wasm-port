@@ -50,7 +50,7 @@ Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style,
 Workflow per batch: `snt i18n-ctx` (dump, work/ only) -> write a patch `SPnn@off | ~text` (`~` = auto line breaks, `|` = forced break) -> `snt i18n-import` + `snt i18n-check` (0 failures) ->
 `snt i18n-preview` screenshots -> review subagent (sonnet, prompt in work/i18n/review_prompt.txt, not committed) -> apply fixes -> commit `i18n: SPxx translated + reviewed (score n/5)` -> add the file to `i18n/pt-BR/reviews.tsv`.
 Shared menu labels: `i18n/pt-BR/menu.json` (`snt i18n-learn-menu`, `snt i18n-apply-menu`).
-NEXT: SP26 (translated, review pending), SP27 (translating), then SP28 ... in file order; SP01 (developer debug menu) last.
+NEXT: SP28 SP29 (translated, review pending), SP30 (translating), then SP32 ... in file order; SP01 (developer debug menu) last.
 Warning: never re-import an old whole patch file after fixes were applied (it overwrites the fixes); edit the patch source or import a small fix patch.
 
 ## Controllers (Xbox / PlayStation / Switch, button icons) – status 2026-10-15
@@ -98,18 +98,18 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP23 | 270 | 270 |  | yes | 4 |
 | SP24 | 190 | 190 |  | yes | 4 |
 | SP25 | 212 | 212 |  | yes | 4 |
-| SP26 | 426 | 426 |  | no |  |
-| SP27 | 220 | 72 | 9 | no |  |
-| SP28 | 321 | 85 | 11 | no |  |
-| SP29 | 68 | 4 |  | no |  |
-| SP30 | 278 | 41 |  | no |  |
+| SP26 | 426 | 426 |  | yes | 4 |
+| SP27 | 220 | 211 | 9 | yes | 4 |
+| SP28 | 321 | 310 | 11 | no |  |
+| SP29 | 68 | 68 |  | no |  |
+| SP30 | 278 | 62 |  | no |  |
 | SP31 | 0 | 0 |  | no |  |
 | SP32 | 275 | 66 |  | no |  |
 | SP33 | 221 | 62 | 9 | no |  |
-| SP34 | 53 | 5 |  | no |  |
-| SP35 | 404 | 103 | 42 | no |  |
+| SP34 | 53 | 7 |  | no |  |
+| SP35 | 404 | 104 | 42 | no |  |
 | SP36 | 68 | 3 |  | no |  |
-| SP37 | 199 | 48 |  | no |  |
-| SP38 | 58 | 8 |  | no |  |
-| **total** | **10728** | **8685** | | | |
+| SP37 | 199 | 49 |  | no |  |
+| SP38 | 58 | 9 |  | no |  |
+| **total** | **10728** | **9139** | | | |
 <!-- i18n-table-end -->
