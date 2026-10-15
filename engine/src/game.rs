@@ -1117,7 +1117,9 @@ impl Engine {
     fn cmd_message(&mut self, spk: u16, off: u16) -> bool {
         if self.msg.is_none() {
             let wide = self.regs.get_b(0x7893);
-            self.msg = Some(MessageBox::new(spk, self.tr_off(off), wide));
+            // pt-BR dialogue layout (10 px line pitch) only for a string that has a translation; the English fallback keeps the original one
+            let tall = self.i18n.pt && self.i18n.map.contains_key(&off);
+            self.msg = Some(MessageBox::new(spk, self.tr_off(off), wide).tall(tall));
         }
         let confirm = self.input.as_ref().map(|i| i.pressed & btn::L_CONFIRM != 0).unwrap_or(false);
         let fast = self.input.as_ref().map(|i| i.held & btn::L_CONFIRM != 0).unwrap_or(false) || self.regs.get_b(0x9727) != 0;

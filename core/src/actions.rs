@@ -80,6 +80,9 @@ pub struct TextWindow {
     pub x: u8,           // $972A
     pub y: u8,           // $972B
     pub fixed: bool,     // $9728
+    /// pt-BR dialogue layout (docs/i18n.md): accented capitals are drawn as the original capital plus the accent in the rows above the
+    /// cell (`i18n::tall_cap`). Set per render stream by `start_tall`; `start` (menus, English) clears it.
+    pub tall: bool,
     pub dirty_rows: u8,  // $9729 (bit per tile row, informative)
     stream: Vec<u8>,
     pos: usize,
@@ -90,7 +93,7 @@ impl Default for TextWindow { fn default() -> Self { Self::new() } }
 impl TextWindow {
     pub fn new() -> Self {
         let mut w = TextWindow { pix: vec![0; WIN_W * WIN_H], busy: false, paused: false, counter: 0,
-            delay: 0, colour: 0, x: 0, y: 0, fixed: false, dirty_rows: 0, stream: Vec::new(), pos: 0 };
+            delay: 0, colour: 0, x: 0, y: 0, fixed: false, tall: false, dirty_rows: 0, stream: Vec::new(), pos: 0 };
         w.clear();
         w
     }
@@ -101,7 +104,10 @@ impl TextWindow {
         self.busy = false;
     }
     /// `sub_013DD0` / sequencer cmd 05: start a render stream (counter and delay reset to 0).
-    pub fn start(&mut self, stream: &[u8]) {
+    pub fn start(&mut self, stream: &[u8]) { self.start_with(stream, false); }
+    /// `start` for a stream of the pt-BR dialogue layout (`tall` glyph forms for the accented capitals).
+    pub fn start_with(&mut self, stream: &[u8], tall: bool) {
+        self.tall = tall;
         self.stream = stream.to_vec();
         self.pos = 0;
         self.delay = 0;
@@ -119,7 +125,19 @@ impl TextWindow {
         let y0 = self.y as usize;
         self.dirty_rows |= 1 << ((y0 >> 3) & 7);
         self.dirty_rows |= 1 << (((y0 + 7) >> 3) & 7);
-        if let Some(bits) = font.glyphs.get(g) {
+        if let Some((base, accent, low)) = if self.tall { crate::i18n::tall_cap(c) } else { None } {
+            // dialogue layout: the original capital (rows 0..7 of the cell, unchanged) + the accent in the rows just above the cell + cedilla in row 7
+            let acc = crate::i18n::TALL_ACCENT_ROWS as usize;
+            self.dirty_rows |= 1 << ((y0.saturating_sub(acc) >> 3) & 7);
+            let mut put = |y: Option<usize>, row: u8| {
+                let Some(py) = y.filter(|&py| py < WIN_H) else { return };
+                for k in 0..8 { if row & (0x80 >> k) != 0 && x0 + k < WIN_W { self.pix[py * WIN_W + x0 + k] = self.colour & 15; } }
+            };
+            if let Some(bits) = font.glyphs.get(base) {
+                for (r, &row) in bits.iter().enumerate() { put(Some(y0 + r), if r == 7 { row | low } else { row }); }
+            }
+            for (k, &row) in accent.iter().enumerate().skip(2 - acc) { put((y0 + k).checked_sub(2), row); }
+        } else if let Some(bits) = font.glyphs.get(g) {
             for (r, &row) in bits.iter().enumerate() {
                 for k in 0..8 {
                     if row & (0x80 >> k) != 0 {
@@ -211,14 +229,20 @@ pub struct MessageBox {
     pub wide_mode: u8,   // $7893 (portrait mode 0/1/2)
     pub wait_idx: u8,    // $9742 (byte offset into WAIT_ANIM, steps of 2)
     pub wait_cnt: u8,    // $9743
+    /// pt-BR dialogue layout: 10 px line pitch and `TALL_ACCENT_ROWS` accent rows above the first line (docs/i18n.md); false = the original layout
+    pub tall: bool,
 }
 
 impl MessageBox {
     /// `spk_word` = first command argument (lo byte = speaker+1), `text_off` = second.
     pub fn new(spk_word: u16, text_off: u16, wide_mode: u8) -> Self {
         MessageBox { state: 0, speaker: (spk_word & 0xFF) as i16 - 1, pos: text_off as usize, colour: 1, line_y: 0,
-            end: false, stop: 0, keep_anim: spk_word >> 8 == 2, name_y: 0, wide_mode, wait_idx: 0, wait_cnt: 0 }
+            end: false, stop: 0, keep_anim: spk_word >> 8 == 2, name_y: 0, wide_mode, wait_idx: 0, wait_cnt: 0, tall: false }
     }
+    /// Use the pt-BR dialogue layout for this message.
+    pub fn tall(mut self, tall: bool) -> Self { self.tall = tall; self }
+    fn pitch(&self) -> u8 { if self.tall { crate::i18n::TALL_PITCH as u8 } else { 9 } }
+    fn accent(&self) -> u8 { if self.tall { crate::i18n::TALL_ACCENT_ROWS as u8 } else { 0 } }
     fn open_cmd(&self) -> u8 { match self.wide_mode { 1 => 0x14, 2 => 0x16, _ => 0x0F } }
 
     /// Build one line's render stream (`txt_build_line` with the header of S:0x13A0E).
@@ -255,23 +279,23 @@ impl MessageBox {
             10 => { win.clear(); self.colour = 1; self.end = false; self.state = 2; MsgEvent::ScreenCmd(self.open_cmd()) }
             2 => {
                 self.state = 3;
-                if self.speaker == 0 { self.line_y = self.name_y; return MsgEvent::ScreenCmd(0x15); }
-                if self.speaker < 0 { self.line_y = self.name_y; return MsgEvent::None; }
+                if self.speaker == 0 { self.line_y = self.name_y + self.accent(); return MsgEvent::ScreenCmd(0x15); }
+                if self.speaker < 0 { self.line_y = self.name_y + self.accent(); return MsgEvent::None; }
                 if let Some((col, name)) = names.get(self.speaker as usize) {
                     let mut s = vec![0xFC, 0x00, 0xF9, 0x01, 0xFB, 0x10, self.name_y, 0xFE, *col];
                     s.extend_from_slice(name);
                     s.push(0xFF);
-                    win.start(&s);
+                    win.start_with(&s, self.tall);
                 }
-                self.line_y = self.name_y + 9;
+                self.line_y = self.name_y + 9 + self.accent();
                 MsgEvent::None
             }
             3 => {
                 let s = self.build_line(text);
-                win.start(&s);
+                win.start_with(&s, self.tall);
                 // sub_013A90
                 if self.end || self.stop == 3 { self.state = 4; } else {
-                    self.line_y += 9;
+                    self.line_y += self.pitch();
                     if self.line_y >= 0x39 { self.state = 4; }
                 }
                 MsgEvent::None

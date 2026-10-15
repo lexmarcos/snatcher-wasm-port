@@ -77,6 +77,58 @@ pub fn pt_glyph_bitmaps() -> Vec<([u8; 8], u8)> {
 pub fn pt_code(ch: char) -> Option<u8> { PT_GLYPHS.iter().position(|g| g.ch == ch).map(|i| PT_BASE + i as u8) }
 pub fn pt_char(code: u8) -> Option<char> { code.checked_sub(PT_BASE).and_then(|i| PT_GLYPHS.get(i as usize)).map(|g| g.ch) }
 
+// ---------------------------------------------------------------- dialogue layout (10 px line pitch, full-height capitals)
+
+/// Dialogue windows (message box with or without a name, narration) are drawn with a 10 px line pitch in pt-BR: `TALL_ACCENT_ROWS`
+/// rows above the glyph cell for the accent of a capital, then the 8 rows of the glyph cell. Menus keep the 9 px pitch. docs/i18n.md
+/// ("Dialogue and menu layouts") has the numbers.
+pub const TALL_PITCH: u32 = 10;
+/// Rows reserved above the 8x8 cell of a dialogue line for the accent of a capital (1 = a single row, 2 = a two-row accent).
+pub const TALL_ACCENT_ROWS: u32 = 2;
+
+/// An accented capital of the dialogue windows: exactly the glyph of the original capital `base` (rows 0..6, unchanged) plus the accent in the
+/// rows above it (`accent` = the two rows just above the glyph, top first; with `TALL_ACCENT_ROWS` = 1 only the lower one is drawn) and, for Ç,
+/// the cedilla in row 7. Advance width = that of the base letter.
+pub struct TallCap { pub ch: char, pub base: char, pub accent: [&'static str; 2], pub cedilla: &'static str }
+
+macro_rules! t { ($c:expr, $b:expr, [$a0:expr, $a1:expr]) => { TallCap { ch: $c, base: $b, accent: [$a0, $a1], cedilla: "........" } }; }
+
+pub const TALL_CAPS: &[TallCap] = &[
+    t!('Á', 'A', ["......#.", ".....#.."]),
+    t!('À', 'A', [".#......", "..#....."]),
+    t!('Â', 'A', ["...##...", "..#..#.."]),
+    t!('Ã', 'A', ["..##.#..", ".#..#..."]),
+    t!('É', 'E', ["....#...", "...#...."]),
+    t!('Ê', 'E', ["...#....", "..#.#..."]),
+    t!('Í', 'I', ["...#....", "..#....."]),
+    t!('Ó', 'O', ["....#...", "...#...."]),
+    t!('Ô', 'O', ["...#....", "..#.#..."]),
+    t!('Õ', 'O', ["..##.#..", ".#..#..."]),
+    t!('Ú', 'U', [".....#..", "....#..."]),
+    t!('Ü', 'U', ["..#..#..", "........"]),
+    TallCap { ch: 'Ç', base: 'C', accent: ["........", "........"], cedilla: "...#...." },
+];
+
+fn art_row(s: &str) -> u8 { s.bytes().enumerate().fold(0u8, |a, (c, ch)| if ch == b'#' { a | 0x80 >> c } else { a }) }
+
+/// The dialogue form of an accented capital: (glyph index of the base capital `code - 0x20`, accent rows top first, row 7).
+pub fn tall_cap(code: u8) -> Option<(usize, [u8; 2], u8)> {
+    let ch = pt_char(code)?;
+    let t = TALL_CAPS.iter().find(|t| t.ch == ch)?;
+    Some((t.base as usize - 0x20, [art_row(t.accent[0]), art_row(t.accent[1])], art_row(t.cedilla)))
+}
+
+/// Y of the first text line of a message box: below the name line (speaker >= 2) or at the top; in the 10 px layout the accent rows come first.
+pub fn first_line_y(speaker: u32, tall: bool) -> u32 {
+    (if speaker >= 2 { LINE_PITCH } else { 0 }) + if tall { TALL_ACCENT_ROWS } else { 0 }
+}
+
+/// Text lines per page of a message box (the page ends when the next line would start at Y >= `PAGE_LIMIT_Y`).
+pub fn lines_per_page(speaker: u32, tall: bool) -> usize {
+    let (pitch, mut y, mut n) = (if tall { TALL_PITCH } else { LINE_PITCH }, first_line_y(speaker, tall), 1);
+    loop { y += pitch; if y >= PAGE_LIMIT_Y { return n; } n += 1; }
+}
+
 // ---------------------------------------------------------------- markup
 
 /// Readable markup of a raw script string (without the FF terminator).
@@ -183,15 +235,21 @@ pub struct LineInfo {
     pub text: Vec<u8>,
     /// the line ended because of the 50 character cut (not a F2/F6/FF)
     pub cut: bool,
+    /// the window is full after this line and the text goes on: the engine breaks the page here by itself (no F6)
+    pub full_page: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgLayout { pub lines: Vec<LineInfo>, pub pages: usize }
 
 /// Simulate `MessageBox::build_line` over a whole message. `speaker` is the SAY speaker value (0 none, 1 narration, >= 2 named).
-pub fn layout_message(raw: &[u8], speaker: u8, widths: &[u8]) -> MsgLayout {
+pub fn layout_message(raw: &[u8], speaker: u8, widths: &[u8]) -> MsgLayout { layout_message_in(raw, speaker, widths, false) }
+
+/// `layout_message` for the dialogue layout of pt-BR (`tall` = 10 px pitch, accent rows first) or the original one.
+pub fn layout_message_in(raw: &[u8], speaker: u8, widths: &[u8], tall: bool) -> MsgLayout {
     let x0 = if speaker == 1 { X_NARRATION } else { X_SPEECH };
-    let mut y = if speaker >= 2 { LINE_PITCH } else { 0 };
+    let pitch = if tall { TALL_PITCH } else { LINE_PITCH };
+    let mut y = first_line_y(speaker as u32, tall);
     let first_y = y;
     let mut pos = 0usize;
     let mut page = 0usize;
@@ -215,10 +273,10 @@ pub fn layout_message(raw: &[u8], speaker: u8, widths: &[u8]) -> MsgLayout {
                 _ => { x += advance(widths, c); n += 1; text.push(c); }
             }
         }
-        lines.push(LineInfo { page, y, x_end: x, chars: n, text, cut });
+        lines.push(LineInfo { page, y, x_end: x, chars: n, text, cut, full_page: false });
         if ended || stop == 3 { page += 1; y = first_y; } else {
-            y += LINE_PITCH;
-            if y >= PAGE_LIMIT_Y { page += 1; y = first_y; }
+            y += pitch;
+            if y >= PAGE_LIMIT_Y { page += 1; y = first_y; lines.last_mut().unwrap().full_page = true; }
         }
         if pos > raw.len() + 1 && !ended { break; }
     }

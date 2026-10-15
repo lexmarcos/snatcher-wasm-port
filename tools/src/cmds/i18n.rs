@@ -11,6 +11,7 @@
 //!   snt i18n-apply-menu <lang-dir> <files-dir> [--force]       fill common menu labels from <lang-dir>/menu.json (keyed by hash)
 //!   snt i18n-fill-dups <lang-dir> <files-dir>                  reuse a translation for identical English strings in other files (same speaker class)
 //!   snt i18n-rewrap <lang-dir> <files-dir> [all|SPnn..]        re-flow messages whose lines became too wide after mechanical edits
+//!   snt i18n-reflow <lang-dir> <files-dir> [all|SPnn..] [--dry]  re-paginate the dialogue for the pt-BR 10 px layout (5 / 6 lines per page)
 //!   snt i18n-status <lang-dir> <files-dir>                     translated / total per file
 use sncore::i18n as i;
 use sncore::script::{self as sc, Node, Operand};
@@ -35,6 +36,7 @@ pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
         "i18n-learn-menu" if args.len() == 3 => Some(learn_menu(&args[1], &args[2])),
         "i18n-fill-dups" if args.len() == 3 => Some(fill_dups(&args[1], &args[2])),
         "i18n-rewrap" if args.len() >= 3 => Some(rewrap(&args[1], &args[2], &args[3..])),
+        "i18n-reflow" if args.len() >= 3 => Some(reflow_cmd(&args[1], &args[2], &args[3..])),
         "i18n-kinds" if args.len() == 2 => Some(kind_counts(&args[1])),
         _ => None,
     }
@@ -487,10 +489,13 @@ fn check_file(dir: &str, lang: &str, spn: u8, widths: &[u8], names: &[String], r
         if it.entry { rep.fails.push(format!("{t}: text-entry menu item must stay English")); continue; }
         let (oc, ob, oa, op) = tokens(orig);
         let (pc, pb, pa, pp) = tokens(&bytes);
+        // the pt-BR dialogue layout has fewer lines per page, so the translation may add explicit page breaks (never remove the author's);
+        // an {auto} string must keep the page structure of the English one (no extra button press in the middle of an action scene)
+        let page_ok = if it.kind == Kind::Say && pa == 0 { pp >= op } else { pp == op };
         if oc != pc { rep.fails.push(format!("{t}: colour sequence differs (EN {oc:?} PT {pc:?})")); }
         if ob != pb { rep.fails.push(format!("{t}: button placeholders differ (EN {ob:02x?} PT {pb:02x?})")); }
         if oa != pa { rep.fails.push(format!("{t}: auto-advance {{auto}} count differs (EN {oa} PT {pa})")); }
-        if op != pp { rep.fails.push(format!("{t}: page break {{page}} count differs (EN {op} PT {pp})")); }
+        if !page_ok { rep.fails.push(format!("{t}: page break {{page}} count differs (EN {op} PT {pp}{})", if it.kind == Kind::Say && pa == 0 { ", fewer than English" } else { "" })); }
         match it.kind {
             Kind::Choice => {
                 if bytes.contains(&i::NL) || bytes.contains(&i::PAGE) { rep.fails.push(format!("{t}: menu label has a line or page break")); }
@@ -500,14 +505,19 @@ fn check_file(dir: &str, lang: &str, spn: u8, widths: &[u8], names: &[String], r
                 if w > i::RIGHT_MENU { rep.fails.push(format!("{t}: menu label ends at x={w} px (starts at x={}), limit {} (EN {ow})", i::X_MENU, i::RIGHT_MENU)); }
             }
             Kind::Say => {
-                let l = i::layout_message(&bytes, it.spk, widths);
+                // dialogue windows are drawn with the 10 px pitch in pt-BR: 5 lines per page with a name, 6 without; English keeps 9 px (6 / 7)
+                let l = i::layout_message_in(&bytes, it.spk, widths, true);
                 let lo = i::layout_message(orig, it.spk, widths);
+                let cap = i::lines_per_page(it.spk as u32, true);
                 for (k, line) in l.lines.iter().enumerate() {
                     let (x0, right) = if it.spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) };
                     if line.x_end > right {
                         rep.fails.push(format!("{t}: line {} is {} px wide, limit {} ({}): \"{}\"", k + 1, line.x_end - x0, right - x0, spk_label(names, it.spk), i::bytes_to_markup(&line.text)));
                     }
                     if line.cut { rep.fails.push(format!("{t}: line {} reaches the 50 character cut", k + 1)); }
+                    if line.full_page {
+                        rep.fails.push(format!("{t}: page {} is full ({cap} lines, {}) and the text goes on without {{page}}: run i18n-reflow", line.page + 1, spk_label(names, it.spk)));
+                    }
                 }
                 if l.pages > lo.pages {
                     let msg = format!("{t}: {} pages, English has {} ({})", l.pages, lo.pages, spk_label(names, it.spk));
@@ -710,7 +720,7 @@ fn paint(img: &mut [u8], w: usize, x0: usize, y0: usize, win: &sncore::actions::
 fn frame_pages(font: &sncore::actions::Font, names: &[(u8, Vec<u8>)], text: &[u8], spk: u8) -> Vec<sncore::actions::TextWindow> {
     use sncore::actions::{MessageBox, MsgEvent, TextWindow};
     let mut win = TextWindow::new();
-    let mut m = MessageBox::new(spk as u16, 0, 0);
+    let mut m = MessageBox::new(spk as u16, 0, 0).tall(true); // pt-BR dialogue layout
     let mut pages = vec![];
     for _ in 0..4000 {
         if win.busy { win.set_fast(); win.tick(font); continue; }
@@ -1035,5 +1045,148 @@ pub fn rewrap(lang: &str, dir: &str, which: &[String]) -> Result<(), String> {
         if changed { write_entries(&path, &format!("SP{n:02}"), &e)?; }
     }
     println!("rewrap: {fixed} entries re-flowed");
+    Ok(())
+}
+
+// ---------------------------------------------------------------- i18n-reflow (pt-BR dialogue layout, 10 px line pitch)
+
+/// Result of re-paginating one message for the pt-BR dialogue layout.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Repaged {
+    pub text: Vec<u8>,
+    /// `{page}` breaks inserted
+    pub pages_added: usize,
+    /// pages (between the author's `{page}`) whose line breaks were moved
+    pub rewrapped: usize,
+    /// `{auto}` pages that do not fit in the window even after a greedy re-wrap (indexes into the author's pages): the wording must be shortened
+    pub unfit: Vec<usize>,
+}
+
+/// The words of a message in order (split at spaces, line and page breaks): re-flowing must never change them.
+pub fn words_of(raw: &[u8]) -> Vec<Vec<u8>> {
+    raw.split(|&c| c == b' ' || c == i::NL || c == i::PAGE).filter(|w| !w.is_empty()).map(|w| w.to_vec()).collect()
+}
+
+/// A line that ends a sentence (. ? !, possibly followed by quotes, brackets or colour tokens): the preferred place for an added page break.
+fn sentence_end(line: &[u8]) -> bool {
+    let mut t = line;
+    while let Some(&c) = t.last() {
+        if matches!(c, 0xF8..=0xFE | i::AUTO | b'"' | b'\'' | b')' | b' ') { t = &t[..t.len() - 1]; } else { break; }
+    }
+    matches!(t.last(), Some(b'.' | b'?' | b'!'))
+}
+
+/// Greedy fill of the real box width (colour / button / auto tokens stay attached to their word because words are split at spaces only).
+fn greedy_lines(seg: &[u8], spk: u8, widths: &[u8]) -> Vec<Vec<u8>> {
+    let (x0, right) = if spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) };
+    let limit = right - x0;
+    let space = i::advance(widths, b' ');
+    let mut lines: Vec<Vec<u8>> = vec![];
+    let mut cur: Vec<u8> = vec![];
+    let mut w = 0u32;
+    for word in seg.split(|&c| c == b' ' || c == i::NL).filter(|w| !w.is_empty()) {
+        let ww: u32 = word.iter().map(|&c| i::advance(widths, c)).sum();
+        if !cur.is_empty() {
+            if w + space + ww > limit { lines.push(std::mem::take(&mut cur)); w = 0; } else { cur.push(b' '); w += space; }
+        }
+        cur.extend_from_slice(word);
+        w += ww;
+    }
+    lines.push(cur);
+    lines
+}
+
+/// Split `lines` into the fewest pages of at most `cap` lines; among those prefer breaks after a sentence, then evenly sized pages.
+/// Returns the page sizes.
+fn split_pages(lines: &[Vec<u8>], cap: usize) -> Vec<usize> {
+    let n = lines.len();
+    let k = (n + cap - 1) / cap;
+    // best[j][i] = (breaks not at a sentence end, sum of squared page sizes) for the first i lines in j pages
+    let mut best: Vec<Vec<Option<((u32, u32), usize)>>> = vec![vec![None; n + 1]; k + 1];
+    best[0][0] = Some(((0, 0), 0));
+    for j in 1..=k {
+        for i in j..=n {
+            for sz in 1..=cap.min(i) {
+                let prev = i - sz;
+                let Some(((nb, sq), _)) = best[j - 1][prev] else { continue };
+                let brk = if prev > 0 && !sentence_end(&lines[prev - 1]) { 1 } else { 0 };
+                let cost = (nb + brk, sq + (sz * sz) as u32);
+                if best[j][i].map_or(true, |(c, _)| cost < c) { best[j][i] = Some((cost, sz)); }
+            }
+        }
+    }
+    let mut sizes = vec![];
+    let (mut j, mut i) = (k, n);
+    while j > 0 { let sz = best[j][i].map(|b| b.1).unwrap_or(cap.min(i)); sizes.push(sz); i -= sz; j -= 1; }
+    sizes.reverse();
+    sizes
+}
+
+/// Re-paginate a message for the pt-BR dialogue windows (5 lines per page with a name, 6 without). Never changes a word. The author's
+/// `{page}` stay; a page with too many lines is re-wrapped greedily when that saves a page (always tried first for `{auto}`) and split with
+/// added `{page}` otherwise. An `{auto}` message never gets an added `{page}`: it is re-wrapped or reported in `unfit`.
+pub fn repaginate(raw: &[u8], spk: u8, widths: &[u8]) -> Repaged {
+    let cap = i::lines_per_page(spk as u32, true);
+    let auto = raw.contains(&i::AUTO);
+    let mut out = Repaged::default();
+    for (si, seg) in raw.split(|&c| c == i::PAGE).enumerate() {
+        if si > 0 { out.text.push(i::PAGE); }
+        let author: Vec<&[u8]> = seg.split(|&c| c == i::NL).collect();
+        if author.len() <= cap { out.text.extend_from_slice(seg); continue; }
+        let greedy = greedy_lines(seg, spk, widths);
+        let pages = |n: usize| (n + cap - 1) / cap;
+        let lines: Vec<Vec<u8>> = if auto {
+            if greedy.len() > cap { out.unfit.push(si); out.text.extend_from_slice(seg); continue; }
+            greedy
+        } else if pages(greedy.len()) < pages(author.len()) { greedy } else { author.iter().map(|l| l.to_vec()).collect() };
+        if lines.iter().map(|l| l.as_slice()).ne(author.iter().copied()) { out.rewrapped += 1; }
+        let mut at = 0;
+        let sizes = split_pages(&lines, cap);
+        for (pi, sz) in sizes.iter().enumerate() {
+            if pi > 0 { out.text.push(i::PAGE); out.pages_added += 1; }
+            for (li, l) in lines[at..at + sz].iter().enumerate() {
+                if li > 0 { out.text.push(i::NL); }
+                out.text.extend_from_slice(l);
+            }
+            at += sz;
+        }
+    }
+    out
+}
+
+/// `snt i18n-reflow <lang-dir> <files-dir> [all|SPnn..] [--dry]`: re-paginate every translated dialogue string for the pt-BR layout (docs/i18n.md
+/// "Dialogue and menu layouts"). Deterministic and idempotent; `--dry` only reports. Prints the `{auto}` strings that still do not fit.
+pub fn reflow_cmd(lang: &str, dir: &str, which: &[String]) -> Result<(), String> {
+    let dry = which.iter().any(|w| w == "--dry");
+    let which: Vec<&String> = which.iter().filter(|w| *w != "--dry").collect();
+    let widths = font_widths(dir)?;
+    let names = spk_names(dir);
+    let list: Vec<u8> = if which.is_empty() || which[0] == "all" { (0..=38).collect() } else { which.iter().map(|s| sp_arg(s)).collect::<Result<_, _>>()? };
+    let (mut strings, mut added, mut wrapped, mut auto_changed) = (0usize, 0usize, 0usize, 0usize);
+    let mut unfit: Vec<String> = vec![];
+    for n in list {
+        if !Path::new(&format!("{dir}/SP{n:02}.BIN")).exists() { continue; }
+        let fd = load_file(dir, n)?;
+        let by: HashMap<u16, &Item> = fd.items.iter().map(|x| (x.off, x)).collect();
+        let path = lang_path(lang, &format!("SP{n:02}"));
+        let mut e = read_entries(&path)?;
+        let mut changed = false;
+        for (off, en) in e.iter_mut() {
+            let Some(it) = by.get(off) else { continue };
+            if it.kind != Kind::Say || it.entry { continue; }
+            let Ok(b) = i::markup_to_bytes(&en.text) else { continue };
+            let r = repaginate(&b, it.spk, &widths);
+            for pg in &r.unfit { unfit.push(format!("SP{n:02}@{off:04x} page {} ({}): {}", pg + 1, spk_label(&names, it.spk), en.text)); }
+            if r.text == b { continue; }
+            if words_of(&r.text) != words_of(&b) { return Err(format!("SP{n:02}@{off:04x}: re-flow changed the words (bug)")); }
+            strings += 1; added += r.pages_added; wrapped += r.rewrapped;
+            if b.contains(&i::AUTO) { auto_changed += 1; println!("auto SP{n:02}@{off:04x} re-wrapped: {}", i::bytes_to_markup(&r.text)); }
+            en.text = i::bytes_to_markup(&r.text);
+            changed = true;
+        }
+        if changed && !dry { write_entries(&path, &format!("SP{n:02}"), &e)?; }
+    }
+    for u in &unfit { println!("UNFIT (auto-advance, shorten the wording) {u}"); }
+    println!("reflow{}: {strings} strings changed, {added} page breaks added, {wrapped} pages re-wrapped, {auto_changed} auto-advance strings re-wrapped, {} auto-advance pages do not fit", if dry { " (dry run)" } else { "" }, unfit.len());
     Ok(())
 }
