@@ -6,7 +6,7 @@
   Promise Mika, Modnar death) and both SP38 endings with the DATA_Y16 staff roll - replayed in the engine: **2984 of 2986 action queues identical** (the 2 oracle-only passes and 2 engine-only passes are
   the last pass of a run cut at its frame limit), every session ends with the same story position. Screens: 70-95 % of the sampled frames are pixel-exact (<= 60 px) or exact at a +-12 frame offset;
   the rest are animation phase (cockpit shake parity, scrolling pans, blinking) and the known items below. Per-session numbers: `re/oracle/out/fid2/*.out`.
-- Staff roll (Y16) from the script path: pixel-identical for 31000 frames (0 px in 9/9 samples 4200-5400, 28990-31400), START at the end (30990+) gives the same Junker logo screen.
+- Staff roll (Y16) from the script path: pixel-identical for 31000 frames (0 px in 9/9 samples 4200-5400, 28990-31400), START at the end (press 30990+) gives the same Junker logo screen (0 px at 31060 and 32500; the fade frames 31000 / 31400 differ by a few frames of phase).
 - CONTINUE round trip and save block: `fid_save.py` / `fid_cont.py` (finding 19): equal.
 - Web smoke test after the changes: see PROGRESS.md.
 - **Open / known differences** (all HYPOTHESIS unless noted):
