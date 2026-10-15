@@ -38,7 +38,8 @@ URL parameters: `?newgame` (skip title/intro), `?scene=SP01:0` (debug scene jump
 `?debug` (engine state overlay, also F1). Tests: `scripts/test-web.sh [outdir]` (unit tests + headless Chrome UI
 checks + `web/test/shot.ts` screenshots; uses port 5301, or `PORT`).
 
-Controls: arrows = D-pad, Z/X/C (or A/S/D) = A/B/C, Space = B, Enter = Start; gamepads via the Gamepad API.
+Controls: arrows = D-pad, Z/X/C (or A/S/D) = A/B/C, Space = B, Enter = Start; Xbox, PlayStation and Switch gamepads via the Gamepad API
+(per-family defaults, remappable in the menu; the game text shows the icon of the button of the last used device, see `docs/re/web.md` section 6).
 Light gun (shooting sections): mouse to aim, left button = trigger, right button = second button; any pad key switches
 back to the pad. Esc = menu (pauses; volume sliders, smooth scaling, save export/import, controls), F = fullscreen,
 M = mute, F1 = debug. The game pauses while the tab is hidden. Saves live in `localStorage` (`snatcher.save.N`);

@@ -115,12 +115,26 @@ fn art(a: &[&str; 8]) -> Art {
     for (r, s) in a.iter().enumerate() { for (c, ch) in s.bytes().enumerate() { o[r][c] = (ch == b'#') as u8; } }
     o
 }
-/// Stamp a 3x5 letter at (row, col): `knock` clears the pixels (letter cut out of a filled shape), else sets them.
-fn stamp(a: &mut Art, l: char, row: usize, col: usize, knock: bool) {
-    for (r, s) in letter(l).iter().enumerate() {
+/// 4x5 letters for the big icons (disc, ring, keycap): a bit wider than the 3x5 labels so that Z/X/C/A/B/Y stay readable.
+fn letter4(c: char) -> [&'static str; 5] {
+    match c {
+        'A' => [".##.", "#..#", "####", "#..#", "#..#"],
+        'B' => ["###.", "#..#", "###.", "#..#", "###."],
+        'C' => [".###", "#...", "#...", "#...", ".###"],
+        'X' => ["#..#", "#..#", ".##.", "#..#", "#..#"],
+        'Y' => ["#..#", "#..#", ".##.", ".##.", ".##."],
+        'Z' => ["####", "...#", ".##.", "#...", "####"],
+        _ => ["....", "....", "....", "....", "...."],
+    }
+}
+/// Stamp a letter at (row, col): `big` = 4x5 icon letter, else 3x5 label letter; `knock` clears the pixels (letter cut out of a filled shape), else sets them.
+fn stamp_with(a: &mut Art, rows: [&str; 5], row: usize, col: usize, knock: bool) {
+    for (r, s) in rows.iter().enumerate() {
         for (c, ch) in s.bytes().enumerate() { if ch == b'#' { a[row + r][col + c] = (!knock) as u8; } }
     }
 }
+fn stamp(a: &mut Art, l: char, row: usize, col: usize, knock: bool) { stamp_with(a, letter(l), row, col, knock) }
+fn stamp_big(a: &mut Art, l: char, row: usize, col: usize, knock: bool) { stamp_with(a, letter4(l), row, col, knock) }
 fn holes(a: &mut Art, cells: &[(usize, usize)]) { for &(r, c) in cells { a[r][c] = 0; } }
 fn pack(a: &Art) -> [u8; 8] {
     let mut o = [0u8; 8];
@@ -144,8 +158,8 @@ fn pad_family(fam: usize) -> Vec<Art> {
     let mut v = Vec::new();
     for (i, &ch) in letters.iter().enumerate() {
         v.push(match fam {
-            0 => { let mut a = art(&DISC); stamp(&mut a, ch, 2, 2, true); a }
-            2 => { let mut a = art(&RING); stamp(&mut a, ch, 2, 2, false); a }
+            0 => { let mut a = art(&DISC); stamp_big(&mut a, ch, 2, 2, true); a }
+            2 => { let mut a = art(&RING); stamp_big(&mut a, ch, 2, 2, false); a }
             _ => art(match i { 0 => &CROSS, 1 => &RING, 2 => &SQUARE, _ => &TRIANGLE }),
         });
     }
@@ -163,7 +177,7 @@ fn pad_family(fam: usize) -> Vec<Art> {
 pub fn icon_glyphs() -> Vec<([u8; 8], u8)> {
     let mut all: Vec<Art> = Vec::new();
     for fam in 0..3 { all.extend(pad_family(fam)); }
-    for ch in ['Z', 'X', 'C'] { let mut a = art(&CAP); stamp(&mut a, ch, 1, 2, true); all.push(a); }
+    for ch in ['Z', 'X', 'C'] { let mut a = art(&CAP); stamp_big(&mut a, ch, 1, 2, true); all.push(a); }
     let mut e = art(&CAP);
     holes(&mut e, &[(2, 6), (3, 6), (4, 6), (4, 2), (5, 1), (5, 2), (5, 3), (5, 4), (5, 5), (5, 6), (6, 2)]);
     all.push(e);

@@ -46,6 +46,17 @@ Open items (each with evidence in the named doc), in suggested order:
 4. Front end: touch controls, voice pan / music ducking – docs/re/web.md, docs/re/audio.md.
 5. YM2612 output vs real hardware (no chip reference available) – docs/re/audio.md.
 
+## Controllers (Xbox / PlayStation / Switch, button icons) – status 2026-10-15
+Done and tested (details, tables, checklist: `docs/re/web.md` section 6): family detection (30 real id strings), standard + raw (Firefox-style) layouts,
+radial dead zone, last-used-device tracking with hot-plug, per-family default maps and a remap screen (`snatcher.padmaps` in localStorage), View/Share/-
+opens the web menu, 32 icon glyphs (codes 0x86-0xA5, `core/src/prompt.rs`) printed for `{EC}/{EE}/{F0}` and the word START (SP09), `set_prompt` wasm API,
+help panel with SVG icons. Engine default stays `Style::Genesis` (original letters): fidelity/regression output unchanged.
+Tests: `bun test web/test` (gamepads), `bun web/test/pads.ts` (stubbed pads in headless Chrome, screenshots in `work/shots`), `cargo test -p snengine --test prompts`,
+`core/src/prompt.rs` unit tests; all in `scripts/test-web.sh` / cargo.
+Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the Firefox/Linux raw tables for Switch Pro (HYPOTHESIS);
+(2) rumble needs an engine event for shot/player hit (web.md 6.6); (3) icons for the title "PUSH START" and the options pad-configuration screen
+(baked into graphics); (4) optional: gamepad navigation of the web menu.
+
 ## Blockers
 - No Sega CD BIOS (not downloaded by rule) → HLE oracle instead; YM2612/mix levels unverified by ear.
 - REA cannot load raw 68000 images; Ghidra headless is used.
