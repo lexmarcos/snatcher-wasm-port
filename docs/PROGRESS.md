@@ -45,6 +45,14 @@ Open items, in suggested order:
 5. YM2612: the real chip model has a DAC noise floor / ladder distortion the engine lacks (high bands 10-30 dB higher in noisy sounds); levels agree, nothing retuned (oracle2 section 5).
 6. Larger engine item left: after the GAME OVER restart the title chain timing (`SP_RELOAD_FRAMES` = 90) is from one real-BIOS measurement; the copyright/logo/title phase of the real restart lasts 840 frames like a cold boot.
 
+## Resume here: translation pt-BR (task: translate every batch, review with a subagent, apply, commit)
+Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style, adaptations), status table at the end of this file (regenerate: `python3 -I scripts/i18n-progress.py`).
+Workflow per batch: `snt i18n-ctx` (dump, work/ only) -> write a patch `SPnn@off | ~text` (`~` = auto line breaks, `|` = forced break) -> `snt i18n-import` + `snt i18n-check` (0 failures) ->
+`snt i18n-preview` screenshots -> review subagent (sonnet, prompt in work/i18n/review_prompt.txt, not committed) -> apply fixes -> commit `i18n: SPxx translated + reviewed (score n/5)` -> add the file to `i18n/pt-BR/reviews.tsv`.
+Shared menu labels: `i18n/pt-BR/menu.json` (`snt i18n-learn-menu`, `snt i18n-apply-menu`).
+NEXT: SP08 (first half translated, second half from offset 5e20 on missing), then SP09 ... in file order; SP01 (developer debug menu) last.
+Warning: never re-import an old whole patch file after fixes were applied (it overwrites the fixes); edit the patch source or import a small fix patch.
+
 ## Controllers (Xbox / PlayStation / Switch, button icons) – status 2026-10-15
 Done and tested (details, tables, checklist: `docs/re/web.md` section 6): family detection (30 real id strings), standard + raw (Firefox-style) layouts,
 radial dead zone, last-used-device tracking with hot-plug, per-family default maps and a remap screen (`snatcher.padmaps` in localStorage), View/Share/-
@@ -59,3 +67,49 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 ## Blockers
 - A real Sega CD BIOS is now used by oracle2 (user-supplied, never committed); YM2612/mix levels are checked against Nuked YM2612 but not against real hardware.
 - REA cannot load raw 68000 images; Ghidra headless is used.
+
+## Translation pt-BR (docs/i18n.md) - status
+<!-- i18n-table-begin -->
+| file | strings | translated | not translatable (typed entries / kept) | reviewed | score |
+|---|---|---|---|---|---|
+| SP00 | 8 | 8 |  | yes | 4 |
+| SP01 | 126 | 1 |  | no |  |
+| SP02 | 259 | 251 |  | yes | 4 |
+| SP03 | 316 | 316 |  | yes | 4 |
+| SP04 | 289 | 289 |  | yes | 4 |
+| SP05 | 275 | 118 | 163 | yes | 4 |
+| SP06 | 592 | 590 |  | yes | 4 |
+| SP07 | 389 | 389 |  | yes | 4 |
+| SP08 | 703 | 500 |  | no |  |
+| SP09 | 522 | 40 | 46 | no |  |
+| SP10 | 430 | 30 |  | no |  |
+| SP11 | 333 | 34 |  | no |  |
+| SP12 | 280 | 32 |  | no |  |
+| SP13 | 534 | 31 |  | no |  |
+| SP14 | 411 | 43 |  | no |  |
+| SP15 | 382 | 46 |  | no |  |
+| SP16 | 34 | 6 | 9 | no |  |
+| SP17 | 28 | 0 | 18 | no |  |
+| SP18 | 472 | 15 | 42 | no |  |
+| SP19 | 122 | 0 |  | no |  |
+| SP20 | 150 | 0 |  | no |  |
+| SP21 | 645 | 49 |  | no |  |
+| SP22 | 165 | 29 |  | no |  |
+| SP23 | 270 | 27 |  | no |  |
+| SP24 | 190 | 31 |  | no |  |
+| SP25 | 212 | 36 |  | no |  |
+| SP26 | 426 | 37 |  | no |  |
+| SP27 | 220 | 28 | 9 | no |  |
+| SP28 | 321 | 36 | 11 | no |  |
+| SP29 | 68 | 1 |  | no |  |
+| SP30 | 278 | 23 |  | no |  |
+| SP31 | 0 | 0 |  | no |  |
+| SP32 | 275 | 32 |  | no |  |
+| SP33 | 221 | 26 | 9 | no |  |
+| SP34 | 53 | 2 |  | no |  |
+| SP35 | 404 | 12 | 42 | no |  |
+| SP36 | 68 | 1 |  | no |  |
+| SP37 | 199 | 25 |  | no |  |
+| SP38 | 58 | 3 |  | no |  |
+| **total** | **10728** | **3137** | | | |
+<!-- i18n-table-end -->
