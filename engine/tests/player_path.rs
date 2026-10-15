@@ -172,12 +172,12 @@ pub fn save_png(path: &str, fb: &[u8]) {
 /// no CD-DA track is still playing when the game's own FM music starts.
 #[test]
 fn skipping_intro_at_several_points_stops_cd_track() {
-    for delay in [60u64, 400, 1200, 2400] {
+    for delay in [60u64, 400, 1200, 2400, 8300, 9500] {
         let Some(mut e) = engine() else { return };
         e.boot();
         let (mut intro_at, mut cd_playing, mut leaked, mut log) = (None, false, None, vec![]);
         let mut done = false;
-        for f in 0..12000u64 {
+        for f in 0..20000u64 {
             let mut pad = 0u8;
             match e.top {
                 snengine::game::Top::Title => if f % 60 == 30 { pad = START },
