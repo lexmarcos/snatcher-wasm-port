@@ -98,3 +98,11 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
   Personalidade e apelido concordam com o gênero da pessoa (Taeko, Kathleen, Kathy, Kimberley, Marlyse, Eiko, Xyla = feminino). "anti-SNATCHER" com hífen.
 * Nos arquivos de SP05 os nomes aparecem como no texto original: "Jean Jack" (sem hífen) e "Chin Sho Oh". Erros de digitação do inglês ("Dormitore") não se reproduzem.
 * Citações da cultura pop usam a versão brasileira conhecida (Sailor Moon: "Em nome da Lua, eu vou castigar você!"). "contrary" = "do contra".
+
+## Regras acrescentadas pela revisão de SP08 (4/5 e 4/5)
+* Harry e Gillian usam imperativos coloquiais: "Para com isso", "Esquece", "Relaxa", "Me deixa em paz", "Escuta", "Olha", "Dá uma olhada" (nunca "Pare/Esqueça/Relaxe/Escute/Olhe/Dê").
+* "console" (DO SOMETHING > CONSOLE) = CONSOLAR. "make advances" = "dar em cima de". "you know" final = "sabe". Peças de xadrez ("rei", "rainha") em minúsculas. Salas ("Sala dos Detetives", "Sala do Chefe") em maiúscula inicial.
+* Efeitos sonoros: "<<sniff>>" cheirando = "<<fungada>>"; chorando = "<<choro>>"; soluço = "<<hic>>".
+* SP08@42b7 (expansão da sigla JUNKER na placa) fica em inglês. "Insectors" fica como nome do robô.
+* Quando o jogador digita a resposta num teclado em inglês (SP09, enigma da marca de nascença de Katrina), os avisos dizem "(em inglês)" e a ficha de Katrina em SP05 traz as palavras
+  a digitar entre parênteses (BIRTHMARK, HEART-SHAPED, INNER THIGH).
