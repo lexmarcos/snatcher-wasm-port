@@ -103,7 +103,7 @@ class Vdp2:
 
 class Machine2:
     def __init__(self, trace_path=None, verbose=False, bios=None, ym='nuked (ym2612)', cd_latency=None, opts=None,
-                 content=CUE, savedir=None, gun=False, port2=None, seq_trace=True):
+                 content=CUE, savedir=None, gun=False, port2=None, seq_trace=True, sysdir=None):
         self.L = L = lib()
         self.trace = open(trace_path, 'w') if trace_path else None
         self.frame = 0
@@ -117,7 +117,7 @@ class Machine2:
         self.audio = []             # list of int16 stereo arrays when record_audio
         self.record_audio = False
         self.last_cd_event = None
-        self.sysdir = os.path.join(HERE, 'sys')
+        self.sysdir = sysdir or os.environ.get('O2_SYSDIR') or os.path.join(HERE, 'sys')
         # a fresh save dir per run: the core persists internal backup RAM (scd_U.brm) there, a leftover file would break determinism
         self.savedir = savedir or tempfile.mkdtemp(prefix='o2save_', dir=os.environ.get('TMPDIR'))
         os.makedirs(self.savedir, exist_ok=True)

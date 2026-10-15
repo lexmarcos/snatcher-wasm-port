@@ -8,10 +8,11 @@ are never copied or committed (`Sega Mega CD BIOS/` and `re/oracle2/third_party|
 ## What is used
 - Core: github.com/libretro/Genesis-Plus-GX, commit `393f70cd64c7334564c19a424c383f53986c13f4` (2026-10-09), cloned to `re/oracle2/third_party/Genesis-Plus-GX`
   (gitignored), built by `re/oracle2/build.sh` with the core's own Makefile (`Makefile.libretro platform=unix`), no core file is edited.
-- BIOS: `Sega CD (U) - Model 1 v1.10 (1992).bin`, 131072 bytes, **SHA-1 f4f315adcef9b8feb0364c21ab7f0eaf5457f3ed**. This is the hash listed for
-  `bios_CD_U.bin` (US Sega CD, model 1 v1.10) in the Genesis Plus GX / libretro documentation (from memory of the docs, no network check was made).
-  Cross-check candidates in the folder: `Model 2 v2.00w` (SHA-1 5adb6c3af218c60868e6b723ec47e36bbdf5e6f0) and `[BIOS] Sega CD (USA) (v1.00)` (c5c24e6439a148b7f4c7ea269d09b7a23fe25075).
-  The core wants it as `<system dir>/bios_CD_U.bin` (`libretro.c` `CD_BIOS_US`); the region comes from the disc's security code, here US.
+- BIOS: `Sega CD (U) - Model 1 v1.10 (1992).bin`, 131072 bytes, **SHA-1 f4f315adcef9b8feb0364c21ab7f0eaf5457f3ed**, MD5 2efd74e3232ff260e371b99f84024f7f (the Model 1 BIOS that the core's wiki recommends for
+  compatibility). The libretro documentation (docs.libretro.com/library/genesis_plus_gx, MD5 only, no SHA-1) lists for `bios_CD_U.bin` the MD5 854b9150240a198070150e4566ae1290, which is **our Model 2 v2.00w file**
+  (SHA-1 5adb6c3af218c60868e6b723ec47e36bbdf5e6f0), so that one matches the documentation and the Model 1 file is a different, known-good dump (not listed there). Cross-check: the intro scenario run with the Model 2
+  v2.00w BIOS (`O2_SYSDIR=re/oracle2/sys_m2`, a symlink dir) gives the same 12/12 pixel-identical reference screens (game frames 3-16 earlier/later, same behaviour). The third candidate `[BIOS] Sega CD (USA) (v1.00)`
+  has SHA-1 c5c24e6439a148b7f4c7ea269d09b7a23fe25075 (MD5 96ea588d647f2ab1f291279fc691663c), not run. The core wants the file as `<system dir>/bios_CD_U.bin` (`libretro.c` `CD_BIOS_US`); region from the disc's security code (US).
 - YM2612: option `genesis_plus_gx_ym2612 = nuked (ym2612)` (cycle-accurate Nuked OPN2, YM2612 variant), the most accurate mode of the core.
 - Other options set by `Machine2`: CD access time `enabled` (core default, models seek/latency approximately), no RAM cartridge
   (`genesis_plus_gx_cart_size = disabled`; with the default cart the game asks "CD Backup RAM Cart SET. Which will you use?"), audio filter off.
