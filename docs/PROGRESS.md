@@ -108,8 +108,8 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP33 | 221 | 217 | 9 | yes | 4 |
 | SP34 | 53 | 53 |  | yes | 4 |
 | SP35 | 404 | 365 | 42 | yes | 4 |
-| SP36 | 68 | 68 |  | no |  |
-| SP37 | 199 | 199 |  | no |  |
-| SP38 | 58 | 58 |  | no |  |
+| SP36 | 68 | 68 |  | yes | 4 |
+| SP37 | 199 | 199 |  | yes | 4 |
+| SP38 | 58 | 58 |  | yes | 4 |
 | **total** | **10728** | **10296** | | | |
 <!-- i18n-table-end -->

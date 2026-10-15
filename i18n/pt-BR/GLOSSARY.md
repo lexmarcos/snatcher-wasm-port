@@ -183,3 +183,8 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * Balcão da recepção do QG: "balcão de recepção"; "booth" sozinho = "balcão"; "shutter" = "cortina de aço" (rótulos CORTINA DE AÇO, ABRIR CORTINA); "abrir a cortina (do balcão)"; "atrás do balcão". "cabine" só para as cabines do estande de tiro. "UNDER FRONT DESK" = "SOB A MESA PRÓXIMA".
 * Salas citadas no diálogo coincidem com o menu: "sala do computador", "Sala dos Detetives", "Sala do Chefe". "Gillian's apartment" = "seu apartamento" nas falas de viagem; "10-4!" = "Positivo!"; "This is it!" = "É isso!".
 * Jamie (casual): "tem" no lugar de "há", "a gente" com verbo no singular ("a gente deve", "a gente pode"), nunca "devemos/ficarmos/tenhamos" nem "o senhor" para o Gillian. Napoleon: "a gente pode/não pode". "genetic manipulants" = "animais geneticamente modificados". Varredura de "Receio que" nas falas de Gillian, Napoleon, Harry, Random, Jamie e Katrina feita (SP00-SP35).
+
+## Regras acrescentadas pelas revisões de SP36, SP37 e SP38 (4/5 cada)
+* Respostas de um mesmo menu de quiz são da mesma classe gramatical (ESPIRRO, TOSSE, BOCEJO, SOLUÇO). "container" = "contêiner/contêineres" em menus e diálogo. "back room" = "sala do fundo".
+* Mika usa imperativos formais ("Pare", "Não fique", "Aguente firme") em todo o jogo; Gillian e Jamie usam "Não se preocupa", "Aguenta firme", "tem como/não tem como", "a gente achou". "Não se preocupe" é de Metal Gear, do Chefe e da Mika.
+* Patentes: General, Coronel/coronel, Major/major, Capitão/capitão, Segundo-Tenente/segundo-tenente (com hífen). "has a nice ring to it" = "soa bem". Imagens de beisebol ("bottom of the ninth") viram "minutos finais da partida".
