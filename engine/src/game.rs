@@ -400,7 +400,12 @@ impl Engine {
                 }
                 // anim op 9F → subfn_06(id) PCM sfx (unless muted / voice playing)
                 gfx::anim::Event::Periodic { id } => {
-                    if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 { self.out.push(Out::PcmSfx { id: id as u16, bank: self.pcm_bank }); }
+                    if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 {
+                        self.out.push(Out::PcmSfx { id: id as u16, bank: self.pcm_bank });
+                        // subfn_06 sets `$1511E` bit 3 (PCM effect playing, S:0x15342); the object op re-triggers every 8 frames, so the bit stays set while
+                        // the object runs (oracle, Alton plaza: bit 3 set 166..644, a following cmd 0A waited for it)
+                        if let Some(&(len, ch)) = self.ix.sfx_len.get(&(self.pcm_bank, id as u16)) { self.ix.pcm_ch_until[(ch & 1) as usize] = self.frame + len as u64; self.ix.pcm_busy = true; }
+                    }
                 }
                 gfx::anim::Event::Byte7893(b) => self.regs.set_b(0x7893, b),
                 // scene chunk 8 (S:0xF7D6 → M:$236406): main VBlank M:0xFF330C → sub_ff1538 (0xFF = 32x64 planes) / sub_ff1540 (64x32):

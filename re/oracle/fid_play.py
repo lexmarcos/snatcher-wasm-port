@@ -42,7 +42,7 @@ def text(off):
         if c == 0xFF: break
         out.append(chr(c) if 0x20 <= c < 0x7F else ('/' if c == 0xF2 else '|' if c == 0xF6 else '~'))
     return ''.join(out)
-script = []; ecount = 0; last_act = 0; ready_since = {}; last_press = -100; ci = 0; prev_busy = 0; last_script = s.r16(0x980C); stage = {}
+script = []; pending = None; ecount = 0; last_act = 0; ready_since = {}; last_press = -100; ci = 0; prev_busy = 0; last_script = s.r16(0x980C); stage = {}
 for rel in range(1, a.frames + 1):
     pad = 0
     busy = s.r8(0x9B44)
@@ -104,7 +104,12 @@ for rel in range(1, a.frames + 1):
         # handler does not run, or is not delivered by the HLE pad model, is dropped from the recorded script)
         seen = s.r8(0x7991) & (pad & 0x8F | (0x20 if pad & 0x20 else 0))
         if seen: script.append([rel, pad, pkind, psince])
-        else: print(rel, 'DROPPED press', hex(pad))
+        else: pending = (rel, pad, pkind, psince)       # the flag may show up a frame or two later (stalled sub frames latch the press)
+    if pending and not pad:
+        if rel - pending[0] <= 3:
+            if s.r8(0x7991) & (pending[1] & 0x8F | (0x20 if pending[1] & 0x20 else 0)) or (pending[2] == 'm' and s.r8(0x9740) != 5):
+                script.append(list(pending)); pending = None      # a message press counts when the box left state 5 (the flag is not always visible after the step)
+        else: print(pending[0], 'DROPPED press', hex(pending[1])); pending = None
     sc = s.r16(0x980C)
     if sc != last_script:
         if not a.quiet: print(rel, 'SCRIPT', hex(last_script), '->', hex(sc))

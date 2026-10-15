@@ -438,7 +438,9 @@ impl Runtime {
                 0x24 => { self.f788a |= 1; }
                 0x2E => { self.f788a |= 2; }
                 0x1D => { self.events.push(Event::Sound { id: b[1], kind: 0 }); }
-                0x1F => { if self.frame & 7 == 0 { self.events.push(Event::Periodic { id: b[1] }); } }
+                // op 9F (S:0xFC0C): `$7890 == 0` and no voice ($1511E & 7 == 0) -> subfn_06(arg); executed once per script step (oracle, Alton plaza: one
+                // call, effect 0x1B, `$1511E` bit 3 set for the sample length). The old `frame & 7` gating skipped the effect most of the time.
+                0x1F => { self.events.push(Event::Periodic { id: b[1] }); }
                 0x20 => { self.objs[i].flip = b[3]; }
                 0x22 => { self.objs[i].hold = 0; if self.vram_list.is_some() { self.objs[i].hold = 1; return; } }
                 0x27 => { self.objs[i].pal_override = b[1]; }

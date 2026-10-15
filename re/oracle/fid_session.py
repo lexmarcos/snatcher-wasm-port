@@ -12,12 +12,13 @@ ap.add_argument('--every', type=int, default=400); ap.add_argument('--refine', t
 ap.add_argument('--choices', default=''); ap.add_argument('--skip-play', action='store_true')
 ap.add_argument('--settle', type=int, default=12)
 ap.add_argument('--stop-script', default='')
+ap.add_argument('--stall', type=int, default=12000)
 a = ap.parse_args()
 PY = [os.path.join(HERE, '.venv', 'bin', 'python'), '-I']
 os.makedirs(os.path.join(HERE, 'out', 'fid2'), exist_ok=True)
 js = os.path.join('out', 'fid2', a.name + '.json')
 if not a.skip_play:
-    cmd = PY + ['fid_play.py', '--jump', a.jump, '--rng', '--frames', str(a.frames), '--out', js, '--settle', str(a.settle)]
+    cmd = PY + ['fid_play.py', '--jump', a.jump, '--rng', '--frames', str(a.frames), '--out', js, '--settle', str(a.settle), '--stall', str(a.stall)]
     cmd += ['--choices', a.choices] if a.choices else ['--cycle']
     if a.stop_script: cmd += ['--stop-script', a.stop_script]
     r = subprocess.run(cmd, cwd=HERE, stdout=subprocess.PIPE, text=True)
