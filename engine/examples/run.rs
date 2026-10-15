@@ -96,7 +96,9 @@ fn main() {
                 e.ix.gun_present = true; e.ix.gun_x = p[0] as i32; e.ix.gun_y = p[1] as i32; e.ix.gun_buttons = b;
             }
         }
+        let top_before = format!("{:?}", e.top);
         e.tick(pad);
+        { let tn = format!("{:?}", e.top); if tn != top_before { println!("{f:6} top {top_before} -> {tn}"); } }
         if let Ok(v) = std::env::var("WATCH") { // "hexaddr,..." word registers printed every frame
             let mut l = format!("{f:6} watch");
             for w in v.split(',') { l += &format!(" {w}={:04x}", e.regs.get(u32::from_str_radix(w, 16).unwrap())); }
@@ -114,6 +116,9 @@ fn main() {
                 v.vscroll_a, v.vscroll_b, v.hscroll_a, v.hscroll_b, sc.pos, sc.delta, sc.mode, m.eb00, m.e700, m.e076, m.e078, v.plane_a, v.plane_b, v.plane_w, v.plane_h, v.display);
         }
         if let Ok(v) = std::env::var("VRAMDUMP") { if f == frames { std::fs::write(v, &e.disp.vdp.vram).unwrap(); } }
+        if let Ok(v) = std::env::var("OBJWATCH") { // "slot,slot": per-frame x/y (integer), flags, idx, delay, rep of animation objects
+            for s in v.split(',').filter_map(|x| x.parse::<usize>().ok()) { let o = &e.disp.sub.objs[s]; println!("{f:6} objw {s} act {} x {} y {} fl {:02x} idx {:04x} dly {} rep {} sc {:x}", o.active, o.x >> 16, o.y >> 16, o.flags, o.idx, o.delay, o.rep, o.script); }
+        }
         if std::env::var("RASTERDBG").is_ok() && (shot_at.contains(&f) || f == frames) { // per-line vscroll/hscroll/display runs
             if let Some(r) = &e.disp.vdp.raster {
                 let mut prev = None;

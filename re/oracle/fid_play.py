@@ -86,6 +86,9 @@ for rel in range(1, a.frames + 1):
                 if stage.get('want') is None:
                     stage['want'] = cyc.get(key, 0) % n; cyc[key] = stage['want'] + 1
                 want = stage['want']
+                # never FINISH (SETSTATE(2) = back to the title, which the oracle's HLE does not run)
+                its = [text(s.r16(0x9854 + 2 * i)) for i in range(n)]
+                if its[want] == 'FINISH': want = next((i for i, x in enumerate(its) if x != 'FINISH'), 0); stage['want'] = want
             else:
                 want = choices[ci] if ci < len(choices) else 0
             if want < 0: break

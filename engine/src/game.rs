@@ -31,7 +31,8 @@ pub const FILE_NAMES: [&str; 97] = [
 
 /// Engine registers addressed by their original sub-CPU addresses (SYS PEEK/POKE, snapshots).
 #[derive(Default)]
-pub struct Regs { pub w: HashMap<u32, u16> }
+pub struct Regs { pub w: HashMap<u32, u16>, /// object snapshot bytes for the save block (S:0x14FB4), refreshed before every VM pass
+    pub objsnap: Vec<u8> }
 
 impl Regs {
     pub fn get(&self, a: u32) -> u16 { self.w.get(&a).copied().unwrap_or(0) }
@@ -50,6 +51,7 @@ impl Host for Regs {
     fn peek(&mut self, addr: u32) -> u16 { self.get(addr) }
     fn poke(&mut self, addr: u32, val: u16) { self.set(addr, val) }
     fn poke_byte(&mut self, addr: u32, val: u8) { self.set_b(addr, val) }
+    fn snapshot_objects(&mut self, out: &mut [u8]) { for (i, b) in out.iter_mut().enumerate() { *b = self.objsnap.get(i).copied().unwrap_or(0); } }
 }
 
 /// A sub-CPU code module that lives inside a DATA file (title DATA_D2, intro DATA_D1/D0,
@@ -141,6 +143,8 @@ pub struct Engine {
     pub trace: bool,
     pub top: Top,
     pub module: Option<Box<dyn Module>>,
+    /// frames before the late-game module's first tick (mode 6 steps 0-2)
+    pub mod_delay: u8,
     /// intro part counter (DATA_D1 then DATA_D0, table S:0x14AA0)
     pub intro_part: u8,
     /// save blocks available to CONTINUE (slot 1..4 → 0x1C0 bytes), provided by the front end
@@ -161,7 +165,7 @@ impl Engine {
         Engine {
             files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None,
             vm, script: vec![], phase: VmPhase::Stopped, queue: vec![], qi: 0, seq_step: 0, seq_timer: 0, msg: None,
-            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
+            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, mod_delay: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
             top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(),
@@ -191,6 +195,15 @@ impl Engine {
 
     /// Map the module's DATA file at 0x28000 and create its module (if implemented).
     pub(crate) fn enter_module(&mut self, top: Top, file: u16) {
+        if top == Top::Ending {
+            // mode 6 step 0 (S:0xE242): palette black-out (S:0xF560), `subfn_03` (all 64 object slots cleared, S:0xEEB6),
+            // `$7891 = FF` (main palette split off), `$7896 = FFFF`; steps 1/2 wait for the CD to be stopped and load the file;
+            // oracle: mode 6 at 4200, module first runs at 4206 (`$7896` 0 at 4206, 1 at 4207)
+            self.black_out();
+            for o in self.disp.sub.objs.iter_mut() { *o = Default::default(); }
+            self.disp.sub.split_req = 0xFF;
+            self.mod_delay = 5;
+        }
         self.cmd_load(gfx::DATA_BASE, file);
         self.module = self.module_factory.and_then(|f| f(top, self.intro_part));
         if self.module.is_none() { self.module_done(1); }
@@ -236,6 +249,7 @@ impl Engine {
     /// VM thread state 0 → `sub_00EC5A`: palette flags, text window init, the two built-in
     /// tile tasks (menu cursor graphics) and the built-in objects (object 0 = menu cursor bar).
     fn vm_thread_init(&mut self) -> Vec<Action> {
+        self.regs.set(0x15120, 0xFFFF); // S:0x16656 (PCM init): last voice id = none
         if self.regs.get(0x785C) == 0 { self.disp.sub.f788a |= 2; } else { self.disp.sub.f7866 = 1; }
         let l = |cmd: u16, p: u32| Action { cmd, args: vec![(p >> 16) as u16, p as u16] };
         // The original runs this as its own batch and waits for it (S:0xECAC) before state 1
@@ -289,6 +303,27 @@ impl Engine {
         self.seq_timer = 0;
     }
 
+    /// S:0xD686: play time `$79EA..$79ED` = HH MM SS FF in BCD (FF counts 60 per second), counted every sub frame in mode 5;
+    /// saved in the save block ($9C02). The hours byte saturates at 0x9959 (word).
+    fn play_time_tick(&mut self) {
+        let bcd_inc = |v: u8| -> (u8, bool) { let (lo, hi) = ((v & 0xF) + 1, v >> 4); if lo > 9 { if hi + 1 > 9 { (0, true) } else { (((hi + 1) << 4), false) } } else { ((hi << 4) | lo, false) } };
+        let (f, _) = bcd_inc(self.regs.get_b(0x79ED));
+        self.regs.set_b(0x79ED, f);
+        if f != 0x60 { return; }
+        self.regs.set_b(0x79ED, 0);
+        let (s, _) = bcd_inc(self.regs.get_b(0x79EC));
+        self.regs.set_b(0x79EC, s);
+        if s != 0x60 { return; }
+        self.regs.set_b(0x79EC, 0);
+        let (m, _) = bcd_inc(self.regs.get_b(0x79EB));
+        self.regs.set_b(0x79EB, m);
+        if m != 0x60 { return; }
+        self.regs.set_b(0x79EB, 0);
+        let (h, carry) = bcd_inc(self.regs.get_b(0x79EA));
+        self.regs.set_b(0x79EA, h);
+        if carry { self.regs.set(0x79EA, 0x9959); }
+    }
+
     pub fn busy(&self) -> bool { self.qi < self.queue.len() }
 
     // ------------------------------------------------------------------ frame
@@ -316,6 +351,7 @@ impl Engine {
         // harness (re/oracle/shoot_rec.py): RNG state = f(handler run counter) before the step, like the oracle's S:0xD644 hook
         if let Some(n) = self.ix.rng_seq.as_mut() { *n = n.wrapping_add(1); self.disp.sub.rng = n.wrapping_mul(2654435761).to_be_bytes(); }
         self.disp.sub.rand();
+        if self.top == Top::Game { self.play_time_tick(); }
         self.menu_in = self.menu_in_cur;
         if let Some(inp) = self.input.as_mut() {
             inp.update(pad);
@@ -329,11 +365,14 @@ impl Engine {
             if !self.busy() { self.vm_thread(); }
             // S:0xD6EE: the sequencer is skipped while a scene VRAM list loads (`$7886`) or the screen reset runs (`$7887`)
             if self.busy() && self.disp.sub.vram_list.is_none() && self.disp.sub.f7887 == 0 { self.seq_run(); }
-            if self.vm.state == 3 && self.top == Top::Game {
+            // the VM thread leaves state 2 only after the pass's queue has been executed (oracle: queue done 4199, mode 6 at 4200)
+            if self.vm.state == 3 && self.top == Top::Game && !self.busy() {
                 // SYS SETSTATE(1): mode 6 – late-game module DATA_Y16 (file 0x34)
                 self.top = Top::Ending;
                 self.enter_module(Top::Ending, 0x34);
             }
+        } else if self.mod_delay > 0 {
+            self.mod_delay -= 1; // mode 6 steps 0-2 (S:0xE242..0xE28C): black-out, file load; the module runs from step 3
         } else if let Some(mut m) = self.module.take() {
             match m.tick(self) {
                 Some(v) => { self.module = None; self.module_done(v); }
@@ -437,6 +476,13 @@ impl Engine {
         // harness (fid_cmp --rng): the oracle's RNG state `$786A..D` is poked to 0 every frame, the VM thread sees
         // (a, c) = (0, 1) after the frame's step, so RANDOM nodes become deterministic and equal on both sides
         if self.fid_rng { self.vm.rng_a = 0; self.vm.rng_c = 1; }
+        // save-block object snapshot (S:0x14FB4): per slot bit7 = active, bit6 = f4e bit7, else flags bits 0-1, f4e bit0 -> bit4, fast -> bit5
+        self.regs.objsnap.resize(64, 0);
+        for (i, o) in self.disp.sub.objs.iter().enumerate().take(64) {
+            self.regs.objsnap[i] = if o.active == 0 { 0 } else if o.f4e & 0x80 != 0 { 0xC0 } else {
+                0x80 | (o.flags & 3) | if o.f4e & 1 != 0 { 0x10 } else { 0 } | if o.fast != 0 { 0x20 } else { 0 }
+            };
+        }
         let q = self.vm.run_pass(&script, &mut self.regs);
         self.script = script;
         if self.trace {
@@ -727,6 +773,8 @@ impl Engine {
                 match self.seq_step {
                     0 => {
                         self.regs.set_b(0x9717, 0xFF);
+                        // S:0x15502 `$15120 = voice id` (saved in the save block, replayed on CONTINUE); bank-select entries (type 0x82) reset it to FFFF (S:0x155EE)
+                        self.regs.set(0x15120, if (1..=35).contains(&n) { 0xFFFF } else { n });
                         if (1..=35).contains(&n) { self.pcm_bank = n; } else {
                             self.voice_left = *self.voice_len.get(&n).unwrap_or(&90) + 6; // +6: oracle voice intervals are 5-7 frames longer than the decoded length (fid_cmp, play4)
                             self.out.push(Out::Voice { id: n });
@@ -788,11 +836,18 @@ impl Engine {
             0x1C => { self.fm_cmd(w(0), false); true }  // FM sfx (S:0x1013E: $980F = n, 0x3D → 0)
             0x1D => { self.regs.set_b(0x7890, w(0) as u8); true }
             0x1E => {
+                // S:0x1040C: `$9C01 = $9C00`, `$9C00` = BCD(`$9C00` + 1) (99 saturates) - the save counter
+                let c = self.vm.save[0];
+                self.vm.save[1] = c;
+                let (lo, hi) = ((c & 0xF) + 1, c >> 4);
+                let mut n = if lo > 9 { ((hi + 1) << 4) | (lo - 10) } else { (hi << 4) | lo };
+                if hi + (lo > 9) as u8 > 9 { n = 0x99; }
+                self.vm.save[0] = n;
                 self.out.push(Out::Save { slot: w(0), data: self.vm.save.clone() });
                 self.regs.set_b(0x79E0, 0);
                 true
             }
-            0x1F => true,
+            0x1F => crate::shoot::cmd1f(self),
             0x20 => { self.disp.load_scene(&self.mem, w(0) as usize); self.apply_7893(); true }
             0x21 => { self.input.as_ref().map(|i| i.pressed & btn::START != 0).unwrap_or(true) }
             c => { self.out.push(Out::Log(format!("seq cmd {c:#x} ignored"))); true }

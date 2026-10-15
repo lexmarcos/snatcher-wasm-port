@@ -92,6 +92,32 @@ pub fn cmd18(e: &mut Engine) -> bool {
     done
 }
 
+/// Sequencer command 0x1F (S:0x13150, `sub_013150`): the score-counter tally that follows the minigame. Runs every other sub vint
+/// (`$7848` even) with `$78E8` as its step: 0 counts the idx of the two counter objects (slots 58/59, +0x28 = `$8C48`/`$8C98`) down,
+/// the second counter only while it is above the first, until the first reached 0 (or < 0); 1 resets both counter objects (flags 3, idx -1)
+/// and the READY/GO! label indices; 2 ends (returns true, `$78E8` = 0).
+pub fn cmd1f(e: &mut Engine) -> bool {
+    if e.frame & 1 != 0 { return false; }
+    match rw(e, 0x78E8) {
+        0 => {
+            let v = e.disp.sub.objs[O_CNT0].idx as i16;
+            if v <= 0 { inc(e, 0x78E8); return false; }
+            let v = v - 1;
+            e.disp.sub.objs[O_CNT0].idx = v as u16;
+            let d1 = e.disp.sub.objs[O_CNT1].idx as i16;
+            if v - d1 < 0 { e.disp.sub.objs[O_CNT1].idx = (d1 - 1) as u16; }
+            false
+        }
+        1 => {
+            for o in [O_CNT0, O_CNT1] { e.disp.sub.objs[o].flags = 3; e.disp.sub.objs[o].idx = 0xFFFF; }
+            e.disp.sub.objs[O_CD0].idx = 0; e.disp.sub.objs[O_CD1].idx = 0;
+            inc(e, 0x78E8);
+            false
+        }
+        _ => { ww(e, 0x78E8, 0); true }
+    }
+}
+
 /// `shoot_tick` S:0x1208E.
 fn tick(e: &mut Engine, s: &mut Shoot) {
     pcm_poll(e);
@@ -221,8 +247,9 @@ fn init_targets(e: &mut Engine, s: &mut Shoot) {
     for k in 0..9 {
         let o = &mut e.disp.sub.objs[O_T0 + k];
         o.idx = 2; o.delay = 0; s.f24[O_T0 + k] = 0;
-        if hide { o.active = 0; }
     }
+    // S:0x12248: `move.w d1,(a0)` ten times without advancing a0 (original quirk): only target 0's active word is cleared
+    if hide { e.disp.sub.objs[O_T0].active = 0; }
     for k in 0..18u32 { let v = e.mem.u16(T_CELL_XY + 2 * k); ww(e, 0x7920 + 2 * k, v); }
     let set = |e: &mut Engine, a: u32, v: u16| ww(e, a, v);
     match stage(e) {

@@ -663,10 +663,10 @@ impl Vm {
         self.put16(0x18, self.scene);
         let v = host.peek(0x15120);
         self.put16(0x1A, v);
-        self.save[0x1C] = host.peek(0x980E) as u8;
+        self.save[0x1C] = (host.peek(0x980E) >> 8) as u8; // `move.b cur_music` ($980E is the high byte of the word, S:0x14F82)
         let mut f = (host.peek(0x79EE) & 0xF) as u8 | (((host.peek(0x79FE) & 3) as u8) << 4);
-        if host.peek(0x1512A) != 0 { f |= 0x40 }
-        if host.peek(0x7890) != 0 { f |= 0x80 }
+        if host.peek(0x1512A) >> 8 != 0 { f |= 0x40 } // `tst.b` of the even byte
+        if host.peek(0x7890) >> 8 != 0 { f |= 0x80 }
         self.save[0x1D] = f;
         let mut objs = [0u8; 64];
         host.snapshot_objects(&mut objs);

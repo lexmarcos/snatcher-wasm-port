@@ -130,6 +130,7 @@ fn main() {
         let mut w = String::new();
         for &a in WORDS { w += &format!("\"{:04X}\":{},", a, e.regs.get(a)); }
         w += &format!("\"78AF\":{}", e.regs.get_b(0x78AF));
+        w += &format!(",\"q\":{}", e.queue.get(e.qi).map(|a| a.cmd as u32).unwrap_or(0));
         let mut o = String::new();
         let sh = e.ix.shoot.clone().unwrap_or_default();
         for &n in SLOTS {
