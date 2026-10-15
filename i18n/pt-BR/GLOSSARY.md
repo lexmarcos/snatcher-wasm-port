@@ -131,3 +131,9 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * Menu "SOBRE X" nunca leva artigo (SOBRE ISABELLA, SOBRE MIKA), exceto o rótulo fixo SOBRE OS CAÇA-RECOMPENSAS.
 * Quando um personagem cita uma fala anterior (SP13@407c cita @1f13 e @22ca), as falas originais devem ter exatamente a mesma redação.
 * O gerente do clube trata Gillian por "o senhor" em todas as falas.
+
+## Regras acrescentadas pela revisão de SP14 (4/5)
+* "neighborhood" = "bairro" (nunca "vizinhança"). "Alpha-One" é feminino ("a Alpha-One", é uma rede): "da/na/à Alpha-One" em todos os arquivos. "agency" sozinho = "agência" (minúsculo); "Agência Junker" com maiúscula.
+* "farto de" é livresco: usar "de saco cheio de", "enjoar de", "cansado de" para falantes informais. Freemen e moradores de rua: "você" com imperativos coloquiais ("Junta com a gente"), "o que você pensa que tá fazendo".
+* Rótulos "SOBRE X" com nome de pessoa não levam artigo (SOBRE IVAN, SOBRE FREDDY, SOBRE ISABELLA, SOBRE GIBSON).
+* Sujeito feminino concorda ("a banheira ... suja, desbotada"). "freemen" fica como termo estrangeiro (nome do falante: Freeman).

@@ -86,10 +86,10 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP11 | 333 | 333 |  | yes | 4 |
 | SP12 | 280 | 280 |  | yes | 4 |
 | SP13 | 534 | 534 |  | yes | 4 |
-| SP14 | 411 | 411 |  | no |  |
+| SP14 | 411 | 411 |  | yes | 4 |
 | SP15 | 382 | 382 |  | no |  |
-| SP16 | 34 | 14 | 9 | no |  |
-| SP17 | 28 | 0 | 18 | no |  |
+| SP16 | 34 | 26 | 9 | no |  |
+| SP17 | 28 | 19 | 18 | no |  |
 | SP18 | 472 | 38 | 42 | no |  |
 | SP19 | 122 | 0 |  | no |  |
 | SP20 | 150 | 0 |  | no |  |
@@ -111,5 +111,5 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP36 | 68 | 3 |  | no |  |
 | SP37 | 199 | 48 |  | no |  |
 | SP38 | 58 | 6 |  | no |  |
-| **total** | **10728** | **6320** | | | |
+| **total** | **10728** | **6351** | | | |
 <!-- i18n-table-end -->
