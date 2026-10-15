@@ -774,8 +774,8 @@ impl Engine {
                 // cleared when the first effect channel ends, see shoot.rs `pcm`); a following cmd 0A waits for it
                 if self.regs.get_b(0x7890) == 0 && self.voice_left == 0 {
                     self.out.push(Out::PcmSfx { id: w(0), bank: self.pcm_bank });
-                    if let Some(&(len, ch)) = self.ix.sfx_len.get(&(self.pcm_bank, w(0))) { self.ix.pcm_ch_until[(ch & 1) as usize] = self.frame + len as u64; }
-                    self.ix.pcm_busy = true;
+                    // unknown (bank, id) lengths (no manifest / effect not in the bank table): not tracked, the wait would never end
+                    if let Some(&(len, ch)) = self.ix.sfx_len.get(&(self.pcm_bank, w(0))) { self.ix.pcm_ch_until[(ch & 1) as usize] = self.frame + len as u64; self.ix.pcm_busy = true; }
                 }
                 true
             }
@@ -856,6 +856,11 @@ impl Engine {
                 if hi + (lo > 9) as u8 > 9 { n = 0x99; }
                 self.vm.save[0] = n;
                 self.out.push(Out::Save { slot: w(0), data: self.vm.save.clone() });
+                // S:0x104BA: slot bit in `$78B6` and the slot-present word `$79E2[slot-1] = 1` (the SAVE menu then asks before overwriting), `$79E0 = 0`
+                let sl = (w(0).max(1) - 1) as usize & 3;
+                self.regs.set_b(0x78B6, self.regs.get_b(0x78B6) | (1 << sl));
+                self.regs.set(0x79E2 + 2 * sl as u32, 1);
+                if let Some(s) = self.saves.get_mut(sl) { *s = Some(self.vm.save[..0x1C0.min(self.vm.save.len())].to_vec()); }
                 self.regs.set_b(0x79E0, 0);
                 true
             }

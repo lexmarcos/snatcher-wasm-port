@@ -99,7 +99,9 @@ fn main() {
             if w != ready_kind { ready_kind = w; ready_since = f; }
             if let Some(&(k, since, p)) = sync.front() {
                 let want = if k == 'm' { 1 } else if k == 'e' { 3 } else { 2 };
-                if w == want && f - ready_since >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press {k} {since} pad {p}"); }
+                // kind 'a': absolute engine frame (`since`), independent of readiness (e.g. START at the end of the staff roll)
+                if k == 'a' && f >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press a {since} pad {p}"); }
+                else if k != 'a' && w == want && f - ready_since >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press {k} {since} pad {p}"); }
             }
         }
         if let Ok(v) = std::env::var("POKE") { // "frame:hexaddr:value,..." word pokes of sub-CPU registers before the tick
