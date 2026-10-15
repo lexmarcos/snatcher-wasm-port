@@ -48,9 +48,10 @@ fn play(e: &mut Engine, want: &[&str], max: u64, mut stop: impl FnMut(&Engine) -
         let mut pad = 0u8;
         if held_gap > 0 { held_gap -= 1; } else if e.top != snengine::game::Top::Game {
             if f % 60 == 30 { pad = START; held_gap = 2; }
-        } else if e.phase == VmPhase::Menu {
+        } else if e.menu.is_some() && e.phase != VmPhase::MenuClose {
             if let Some((m, items)) = e.menu.as_ref() {
                 let names: Vec<String> = items.iter().map(|&o| item_text(e, o)).collect();
+                if std::env::var("PATHDBG").is_ok() { eprintln!("{f} menu {names:?} cursor {} want {:?}", m.cursor, want.get(wi)); }
                 let target = want.get(wi).and_then(|w| names.iter().position(|n| n.trim() == *w)).unwrap_or(0);
                 if (m.cursor as usize) < target { pad = DOWN; } else if m.cursor as usize == target {
                     pad = C;
@@ -60,6 +61,9 @@ fn play(e: &mut Engine, want: &[&str], max: u64, mut stop: impl FnMut(&Engine) -
             }
         } else if f % 40 == 0 { pad = C; held_gap = 2; }
         e.tick(pad);
+        if std::env::var("PATHDBG").is_ok() && f % 50 == 0 && f > 2300 && f < 3200 { eprintln!("{f} e036 {} busy {} {}", e.disp.main.e036, e.text.busy, e.debug_info()); }
+        if std::env::var("PATHDBG").is_ok() && f % 500 == 0 { eprintln!("{f} top {:?} phase {:?} menu {} dbg {}", e.top, e.phase, e.menu.is_some(), e.debug_info()); }
+        if let Ok(dir) = std::env::var("PATHSHOT") { if f % 100 == 0 { save_png(&format!("{dir}/f{f:05}.png"), &e.fb); } }
         if stop(e) { return Some(f); }
         e.out.clear(); // the front end drains events every frame
     }
@@ -82,20 +86,54 @@ fn text_pixels(fb: &[u8]) -> (usize, usize) {
     (other, if bright_bg { n } else { 0 })
 }
 
+/// Bright pixels (all channels > 200) in a screen rectangle.
+fn bright(fb: &[u8], x0: usize, x1: usize, y0: usize, y1: usize) -> usize {
+    let mut n = 0;
+    for y in y0..y1.min(H) { for x in x0..x1.min(W) {
+        let o = (y * W + x) * 4;
+        if fb[o] > 200 && fb[o + 1] > 200 && fb[o + 2] > 200 { n += 1; }
+    }}
+    n
+}
+
 #[test]
-fn portrait_dialogue_text_visible_from_title() {
+fn portrait_panel_dark_and_dialogue_text_visible_from_title() {
     let Some(mut e) = engine() else { return };
-    // TALK → MIKA at the reception: Mika's close-up with Gillian's portrait (voiced lines)
+    // TALK at the reception: voice-only exchange with Mika's close-up and Gillian's portrait
+    // (SP06 L_032e: CMD0D voice + CMD0A wait, no SAY – the original prints no text here; the
+    // oracle running the original code shows the same dark, empty panel).
     let mut seen = 0;
-    let r = play(&mut e, &["TALK", "MIKA"], 20000, |e| {
-        // a portrait dialogue: palette split active (main $E036) and a message being typed
-        if e.disp.main.e036 != 0 && e.text.busy { seen += 1; }
-        seen > 60
+    let r = play(&mut e, &["TALK"], 20000, |e| {
+        if e.disp.main.e036 != 0 { seen += 1; } else { seen = 0; }
+        seen > 120
     });
-    let f = r.expect("never reached a portrait dialogue from the title screen");
-    let (text, white_bg) = text_pixels(&e.fb);
-    assert!(text > 40, "frame {f}: message box has no text pixels ({text})");
-    assert_eq!(white_bg, 0, "frame {f}: message box background is a flat bright colour");
+    let f = r.expect("never reached the portrait scene from the title screen");
+    let b = bright(&e.fb, 100, 250, 150, 220);
+    assert!(b < 500, "frame {f}: portrait panel is bright/white ({b} bright px) – CRAM 0..3 overwritten");
+    // then the next spoken line with a message box must show light text on the dark box
+    let mut typed = 0;
+    let r = play_more(&mut e, 20000, |e| {
+        if e.msg.is_some() && !e.text.busy { typed += 1; } else { typed = 0; }
+        typed > 30
+    });
+    let f = r.expect("no message box after the portrait scene");
+    let t = bright(&e.fb, 16, 256, 150, 215);
+    assert!(t > 40, "frame {f}: message box shows no light text ({t} bright px)");
+    let all = (150..215).map(|y| (16..256).filter(|&x| { let o = (y * W + x) * 4; e.fb[o] < 60 && e.fb[o + 1] < 60 && e.fb[o + 2] < 60 }).count()).sum::<usize>();
+    assert!(all > 5000, "frame {f}: message box background is not dark ({all} dark px)");
+}
+
+/// Continue an already running game: advance messages with C, pick the first menu item.
+fn play_more(e: &mut Engine, max: u64, mut stop: impl FnMut(&Engine) -> bool) -> Option<u64> {
+    let mut gap = 0u32;
+    for f in 0..max {
+        let mut pad = 0u8;
+        if gap > 0 { gap -= 1; } else if f % 40 == 0 { pad = C; gap = 2; }
+        e.tick(pad);
+        if stop(e) { return Some(f); }
+        e.out.clear();
+    }
+    None
 }
 
 #[test]
@@ -119,4 +157,51 @@ fn skipping_intro_stops_cd_track() {
     // Engine::tick drains nothing itself; clear events between frames like the front end
     let _ = r.expect("game never started");
     assert!(leaked.is_none(), "CD-DA still playing when game music {:?} started: {log:?}", leaked);
+}
+
+/// Write the framebuffer as a PNG (debugging aid: PATHSHOT=<dir>).
+pub fn save_png(path: &str, fb: &[u8]) {
+    let w = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
+    let mut enc = png::Encoder::new(w, W as u32, H as u32);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    enc.write_header().unwrap().write_image_data(fb).unwrap();
+}
+
+/// Skip the intro at several moments (frames after the intro module started) and check that
+/// no CD-DA track is still playing when the game's own FM music starts.
+#[test]
+fn skipping_intro_at_several_points_stops_cd_track() {
+    for delay in [60u64, 400, 1200, 2400] {
+        let Some(mut e) = engine() else { return };
+        e.boot();
+        let (mut intro_at, mut cd_playing, mut leaked, mut log) = (None, false, None, vec![]);
+        let mut done = false;
+        for f in 0..12000u64 {
+            let mut pad = 0u8;
+            match e.top {
+                snengine::game::Top::Title => if f % 60 == 30 { pad = START },
+                snengine::game::Top::Intro => {
+                    let s = *intro_at.get_or_insert(f);
+                    if f >= s + delay && (f - s - delay) % 60 == 0 { pad = START }
+                }
+                _ => {}
+            }
+            e.tick(pad);
+            for o in e.out.drain(..) {
+                match o {
+                    Out::Music { track } => { cd_playing = true; log.push(format!("{f} cd {track}")); }
+                    Out::MusicStop => { cd_playing = false; log.push(format!("{f} stop")); }
+                    Out::Fm { id, music: true } if e.top == snengine::game::Top::Game => {
+                        log.push(format!("{f} fm {id:#x}")); if cd_playing { leaked = Some(id); } done = true;
+                    }
+                    _ => {}
+                }
+            }
+            if done { break; }
+        }
+        assert!(done, "skip at +{delay}: game music never started: {log:?}");
+        eprintln!("skip at +{delay}: {log:?}");
+        assert!(leaked.is_none(), "skip at +{delay}: CD-DA still playing: {log:?}");
+    }
 }
