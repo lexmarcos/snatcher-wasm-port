@@ -7,8 +7,12 @@
     "005b": {"h": "d37765d2", "t": "DINHEIRO"},
     "0060": {"h": "7c3474dd", "t": "PEÇA DE XADREZ"},
     "0107": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "0113": {"h": "40033d76", "t": "LITTLE JOHN"},
     "011f": {"h": "e4e08a96", "t": "OLHAR"},
     "012e": {"h": "3bb15d76", "t": "FÓSFORO"},
-    "01d6": {"h": "d9adb08f", "t": "FALAR"}
+    "0179": {"h": "ed5fe46f", "t": "FICHA DO PACIENTE"},
+    "01d6": {"h": "d9adb08f", "t": "FALAR"},
+    "01db": {"h": "f1d775fc", "t": "TEMPLO"},
+    "01f6": {"h": "7b8b9247", "t": "MEMÓRIA DE VÍDEO"}
   }
 }

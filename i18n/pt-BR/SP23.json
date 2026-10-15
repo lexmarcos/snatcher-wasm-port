@@ -11,17 +11,23 @@
     "00af": {"h": "18d52e24", "t": "PROVAS"},
     "00c9": {"h": "4100e254", "t": "INVESTIGAR"},
     "00d5": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "00e1": {"h": "40033d76", "t": "LITTLE JOHN"},
     "00ed": {"h": "e4e08a96", "t": "OLHAR"},
     "00f2": {"h": "1f8f3dee", "t": "FÓSFOROS"},
+    "00fa": {"h": "49a26683", "t": "BILHETE"},
+    "011b": {"h": "ed5fe46f", "t": "FICHA DO PACIENTE"},
     "012a": {"h": "5276cf08", "t": "PERTENCES"},
+    "0136": {"h": "ae9772d3", "t": "PRAÇA VERMELHA"},
     "014d": {"h": "ca52e188", "t": "SALVAR"},
     "0152": {"h": "ffd853eb", "t": "ARQUIVO 1"},
     "0159": {"h": "00d8557e", "t": "ARQUIVO 2"},
     "0160": {"h": "01d85711", "t": "ARQUIVO 3"},
     "0167": {"h": "02d858a4", "t": "ARQUIVO 4"},
     "0181": {"h": "a699b27c", "t": "MOSTRAR"},
+    "0193": {"h": "f1d775fc", "t": "TEMPLO"},
     "01a1": {"h": "9a6bdc14", "t": "USAR"},
     "01a5": {"h": "265620f6", "t": "USAR METAL GEAR"},
+    "01b4": {"h": "7b8b9247", "t": "MEMÓRIA DE VÍDEO"},
     "01c1": {"h": "ad2dba48", "t": "VIDEOFONE"}
   }
 }

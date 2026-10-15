@@ -395,6 +395,11 @@ fn import(lang: &str, dir: &str, patch: &str) -> Result<(), String> {
 
 /// Greedy line breaking of a message to the real box width (existing `{nl}` are treated as spaces, `{page}` is kept).
 pub fn reflow(text: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
+    // `|` is a forced line break: each part is filled on its own
+    if text.contains('|') {
+        let parts: Result<Vec<String>, String> = text.split('|').map(|p| reflow(p, spk, widths)).collect();
+        return Ok(parts?.join("{nl}"));
+    }
     let bytes = i::markup_to_bytes(text)?;
     let (x0, right) = if spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) };
     let limit = right - x0;

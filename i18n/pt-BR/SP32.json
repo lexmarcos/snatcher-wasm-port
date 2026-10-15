@@ -2,6 +2,7 @@
   "file": "SP32",
   "lang": "pt-BR",
   "entries": {
+    "0000": {"h": "c362e85d", "t": "AVANÇAR"},
     "0008": {"h": "a0905244", "t": "ÁREA"},
     "000d": {"h": "244923df", "t": "AO REDOR"},
     "0019": {"h": "5188f7eb", "t": "BANHEIRA"},
@@ -10,6 +11,7 @@
     "0031": {"h": "4f19cbe0", "t": "TETO"},
     "0039": {"h": "80a0ec3e", "t": "CONTINUAR INVESTIGAÇÃO"},
     "0064": {"h": "47894122", "t": "NÃO SALVAR"},
+    "0076": {"h": "6561fd5d", "t": "ENTRAR NO BANHEIRO"},
     "0085": {"h": "48124279", "t": "ENTRAR NA TURBOCYCLE"},
     "0096": {"h": "79836105", "t": "SAIR"},
     "009b": {"h": "c42eea38", "t": "FRENTE"},
@@ -20,6 +22,7 @@
     "00e2": {"h": "e4e08a96", "t": "OLHAR"},
     "00e7": {"h": "24599f11", "t": "MAPA"},
     "00eb": {"h": "dab5acc2", "t": "ESPELHO"},
+    "00f2": {"h": "9d10972f", "t": "DETECTOR DE MOVIMENTO"},
     "0102": {"h": "c2064154", "t": "IR"},
     "010e": {"h": "5aa56478", "t": "SAIR DA INVESTIGAÇÃO"},
     "0133": {"h": "ca52e188", "t": "SALVAR"},

@@ -77,3 +77,13 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * "head twisted off" = "torceram a cabeça dele até arrancá-la". "screen" (de SNOW-9) = "cortina de fumaça". Temporizador da bomba = "cronômetro" (termo fixo).
 * Metal Gear pode usar "Receio que..."; a proibição vale só para Harry e Gillian. Lembretes de salvar: "Convém SALVAR" / "você deve SALVAR".
 * O rótulo SAIR é compartilhado entre o verbo (IR > SAIR) e o objeto "saída" (INVESTIGAR): mantido SAIR.
+
+## Regras acrescentadas pela revisão de SP00, SP02 e SP03 (4/5 e 4/5)
+* Peça de xadrez "queen" = "rainha" (a pista do Hospital Queens depende disso). Mensagens de salvamento: só "salvar", nunca "gravar".
+* Gillian usa imperativos coloquiais ("Peraí", "Espera aí"), nunca "Espere". Metal Gear usa "o/lhe" com verbos formais e evita "te"; depois de "se" usa o subjuntivo.
+* Konami (SP02): títulos de jogos e plataformas ficam em inglês (Genesis, SNES); "R&D" = "P&D"; "Loveline" = "Linha do Amor"; "prank call" = "passar trote".
+* Adaptações de SP02 (piadas): medidas convertidas ao sistema métrico (1,78 m, 97-61-91); "shwinggg" = "bóiiing"; "Pussy SNATCHERS" = "SNATCHERS gatinhas" (gatinha = bichano e mulher bonita);
+  "bait your own hook" = "se virar com as próprias mãos"; "toenail surgery" = "cirurgia de unha encravada"; "Out, vile jelly" (Rei Lear) = "vil geleia";
+  Gilligan's Island ("aquela ilha", "Mary Ann") mantido; a fala meta sobre a tradução diz "traduzido para o inglês e legendado em português".
+* Letras de música (Buddy Guy), o cumprimento em japonês e as reticências de silêncio de SP02 ficam sem tradução (8 textos).
+* "Face to face" (memória de Harry, SP03@38b4 e @390f) fica em inglês: o jogador pode ter de digitar a frase.

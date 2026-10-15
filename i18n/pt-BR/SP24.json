@@ -16,9 +16,11 @@
     "0077": {"h": "d67b36c1", "t": "ENTRAR"},
     "00af": {"h": "4100e254", "t": "INVESTIGAR"},
     "00bb": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "00c7": {"h": "40033d76", "t": "LITTLE JOHN"},
     "00d3": {"h": "e4e08a96", "t": "OLHAR"},
     "00d8": {"h": "c2064154", "t": "IR"},
     "0104": {"h": "5276cf08", "t": "PERTENCES"},
+    "011f": {"h": "ae9772d3", "t": "PRAÇA VERMELHA"},
     "012a": {"h": "ca52e188", "t": "SALVAR"},
     "012f": {"h": "ffd853eb", "t": "ARQUIVO 1"},
     "0136": {"h": "00d8557e", "t": "ARQUIVO 2"},
@@ -26,7 +28,9 @@
     "0144": {"h": "02d858a4", "t": "ARQUIVO 4"},
     "014b": {"h": "a699b27c", "t": "MOSTRAR"},
     "015e": {"h": "d12cbba0", "t": "CHEIRAR"},
+    "0164": {"h": "f1d775fc", "t": "TEMPLO"},
     "016b": {"h": "265620f6", "t": "USAR METAL GEAR"},
+    "017a": {"h": "7b8b9247", "t": "MEMÓRIA DE VÍDEO"},
     "0187": {"h": "ad2dba48", "t": "VIDEOFONE"},
     "0192": {"h": "714851dd", "t": "JANELA"}
   }
