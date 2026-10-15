@@ -763,7 +763,7 @@ fn preview(lang: &str, dir: &str, out: &str, spn: &str, picks: &[String]) -> Res
     }
     if sel.is_empty() { sel = e.keys().copied().collect(); }
     // layout of the sheet: one row per page / menu item, 256 wide + a label column
-    let scale = 2usize;
+    let scale = std::env::var("I18N_PREVIEW_SCALE").ok().and_then(|v| v.parse().ok()).unwrap_or(2usize); // 1, 2 (default), 4 ...
     struct Row { label: String, win: sncore::actions::TextWindow, h: usize, menu: bool }
     let mut rows: Vec<Row> = vec![];
     for off in sel {
