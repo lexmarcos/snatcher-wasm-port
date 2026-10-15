@@ -92,3 +92,14 @@ Full list with LBAs: `assets/raw/filelist.tsv` (generated).
 - Anim ops 0x90–0x93 all pause the object and its children (obj 17 of DATA_H00 = door sign uses 0x93).
 - Sequencer audio commands (audio.md): 07 = FM music ($980E), 1C = FM sfx ($980F), 0D = voice
   (ids 1–35 select a PCM bank), 0C = PCM sfx, 0E = CD-DA, 0A = wait PCM idle.
+- **No white panel (2026-10-15 bug fix).** The palette-split H-INT handler M:0xFF0C4A writes
+  exactly 12 groups (exit test `cmpi.l #$FFFFEC80,$E03C` after each 8-byte group) and ends
+  with `move.w $FFEF00,ctrl` = reg 0 with IE1 off. The oracle kept the H-INT latched after IE1
+  was cleared, re-entered the handler once more and wrote the 0x0EEE buffer $FFEC80 to CRAM 0..3
+  (address wrap) – a white panel that the engine had copied. Fixed in the oracle (IE1 clear
+  withdraws the pending level-4 request) and removed from the renderer; the portrait panel is dark.
+- **Voice-only lines have no text.** SP06 L_032e etc. use CMD0D (voice) + CMD0A (wait) without SAY;
+  the only text-stream starters in SUBCODE are cmd 05 (S:0x100FC), the message box (S:0x136CE,
+  S:0x13A8C) and a debug display (S:0x106C0). The oracle shows the same empty dark panel.
+- **CD-DA stops on every disc read**: sequencer cmd 11 step 0 is `bra cd_pause` (S:0x102D2); the
+  engine stops the CD track on every file load (fixes the intro music leaking into Junker HQ).

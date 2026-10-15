@@ -34,6 +34,10 @@ All workstreams finished (2026-10-15). Build, tests (sncore 33, snengine 21), `s
 and `scripts/test-web.sh` (0 console errors) are green. Fidelity vs the original (oracle):
 Act 1 158/159, Acts 2–3 + endings 2984/2986 action queues identical; staff roll pixel-identical;
 CONTINUE round trip equal; all 15 shooting stages frame-exact with pad; FM driver write-exact.
+User bug fixes (2026-10-15): white message panel without text in portrait scenes (oracle
+artefact copied into the renderer – fixed in both) and intro CD-DA leaking into the game (CD now
+stops on every disc load like cmd 11's cd_pause). Regression tests from the title screen:
+`cargo test --release -p snengine --test player_path` (fail without the fixes).
 Open items (each with evidence in the named doc), in suggested order:
 1. Timing drift 0.3–0.7% (scene/sub-CPU load time and the 3–7 frame voice-start stall not modelled) – docs/re/fidelity.md.
 2. Turbocycle chase loop (SP29) ~18 frames/iteration fast; GAME OVER after a failed shooting stage
