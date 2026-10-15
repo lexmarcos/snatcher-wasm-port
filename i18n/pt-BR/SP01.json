@@ -8,6 +8,10 @@
     "0530": {"h": "d6475888", "t": "Boa sorte!"},
     "053b": {"h": "9cdc53eb", "t": "{c4}Insectors!{c1} Use a blaster, Gillian!{auto}"},
     "0564": {"h": "9cdc53eb", "t": "{c4}Insectors!{c1} Use a blaster, Gillian!{auto}"},
-    "058d": {"h": "b2776499", "t": "Gillian! Cuidado!!{auto}"}
+    "058d": {"h": "b2776499", "t": "Gillian! Cuidado!!{auto}"},
+    "05a3": {"h": "0683e08d", "t": "Este é o banheiro do Freddy."},
+    "05be": {"h": "def66ed3", "t": "Gillian! Mire no Freddy usando o{nl}reflexo no espelho!!{auto}"},
+    "05fb": {"h": "5126334c", "t": "Cansei...{auto}"},
+    "060b": {"h": "4443d97d", "t": "Gillian...?!{auto}"}
   }
 }

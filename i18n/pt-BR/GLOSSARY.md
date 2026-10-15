@@ -137,3 +137,8 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * "farto de" é livresco: usar "de saco cheio de", "enjoar de", "cansado de" para falantes informais. Freemen e moradores de rua: "você" com imperativos coloquiais ("Junta com a gente"), "o que você pensa que tá fazendo".
 * Rótulos "SOBRE X" com nome de pessoa não levam artigo (SOBRE IVAN, SOBRE FREDDY, SOBRE ISABELLA, SOBRE GIBSON).
 * Sujeito feminino concorda ("a banheira ... suja, desbotada"). "freemen" fica como termo estrangeiro (nome do falante: Freeman).
+
+## Regras acrescentadas pelas revisões de SP15, SP16 e SP17 (4/5, 4/5, 4/5)
+* "Turbocycle" sempre com maiúscula e feminino ("a Turbocycle", "as Turbocycles"). "system bath" = "banheira/unidade de banho modular". "GO OUT FRONT" = "SAIR DO PRÉDIO". INVESTIGATE X é sempre INVESTIGAR X (nunca EXAMINAR). "desde cedo" (nunca "desde de manhã").
+* Civis (Lisa) tratam Gillian e Metal Gear por "o senhor/os senhores"; Gillian responde "a senhora" durante toda a cena de SP15. "Dormitory Okamoto" = "Dormitório Okamoto" na fala dublada (SP05 mantém o texto da ficha).
+* Mensagens de salvamento: "salvamento anterior", "dados salvos"; "sobrescrevê-lo" com o pronome. "sistemas de prevenção ao crime" (não "antiassalto"). "Que tal...?" termina com interrogação.
