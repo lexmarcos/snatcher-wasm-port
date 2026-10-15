@@ -278,8 +278,8 @@
     "3379": {"h": "b1e62361", "t": "Aconteça o que acontecer,{nl}entendeu? Não pode ser tão{nl}imprudente."},
     "33b6": {"h": "27e40469", "t": "Certo, vou salvar tudo o que{nl}aconteceu até agora."},
     "33f6": {"h": "02041057", "t": "Em qual número de arquivo quer{nl}salvar?"},
-    "3426": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
-    "3454": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "3426": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}salvamento anterior."},
+    "3454": {"h": "3b76ada6", "t": "Posso {c3}sobrescrevê-lo{c1} com os novos{nl}dados?"},
     "348b": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
     "34bb": {"h": "f9945824", "t": "Não há ninguém a quem mostrar."}
   }

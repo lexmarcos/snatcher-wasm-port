@@ -148,3 +148,10 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * Napoleon (rude, informal): "tem" em vez de "há", "a gente" em vez de -mos, "pra". Jamie (informal): pronome depois do verbo ("atacar ele"), sem "o/lhe".
 * "tissues" = "lenços de papel". "mumbling" = "murmurar/resmungar". "trigger happy" = "dedo nervoso". "human-type SNATCHERS" = "SNATCHERS de tipo humano". "put the machine back on intermediate" = "colocar a máquina de volta no nível intermediário". "rapid fire" = "tiro rápido". "wasted shots" = "tiros desperdiçados". "no cigar" = "não foi dessa vez".
 * Senhas digitadas do Napoleon ("The hundred days reign", "The revolution is ended") ficam em inglês entre aspas; as respostas do menu ficam em inglês; as reações dele traduzem o sentido (ortografia, tempo verbal).
+
+## Regras acrescentadas pela revisão de SP21 (4/5 e 4/5)
+* "snatched" (pessoa substituída por SNATCHER) = "raptado/a" (nunca "capturado"). "Fool" (Chefe) = "Tolo", "Idiot" = "Idiota". Menu "OWN PAST" = "MEU PASSADO".
+* Harry, Gillian e Napoleon não usam "Receio que"/"Infelizmente" formal: "Acho que", "Não posso". Gritos de Gillian: "Responde", "Anda, sai daí".
+* Metal Gear: "Não há como ..." (nunca "Não tem como"). Salas: "Sala do Chefe", "Sala dos Detetives", "sala do computador" (igual aos rótulos do menu).
+* "Outer Heaven" é masculino: "do Outer Heaven", "o Outer Heaven" (após "para/a" fica sem artigo). Mensagem de arquivo: "salvamento anterior"; "Posso sobrescrevê-lo com os novos dados?" em todos os arquivos.
+* "SOB A MESA PRÓXIMA / SOB A MESA AO FUNDO" (rótulos de esconderijo); "patient record" = "ficha do paciente" sempre.

@@ -531,8 +531,8 @@
     "62d9": {"h": "b1e62361", "t": "Aconteça o que acontecer,{nl}entendeu? Não pode ser tão{nl}imprudente."},
     "6316": {"h": "27e40469", "t": "Certo, vou salvar tudo o que{nl}aconteceu até agora."},
     "6356": {"h": "02041057", "t": "Em qual número de arquivo quer{nl}salvar?"},
-    "6386": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
-    "63b4": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "6386": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}salvamento anterior."},
+    "63b4": {"h": "3b76ada6", "t": "Posso {c3}sobrescrevê-lo{c1} com os novos{nl}dados?"},
     "63eb": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
     "641b": {"h": "a15a3ebc", "t": "Você já está usando."},
     "6436": {"h": "3b8fa2df", "t": "Opa! Você tem razão!"}
