@@ -17,6 +17,7 @@
     "00fb": {"h": "82f98de8", "t": "FORMATO DO ROSTO"},
     "012b": {"h": "8ecd5bb1", "t": "FOTO DO GIBSON"},
     "014d": {"h": "4100e254", "t": "INVESTIGAR"},
+    "0159": {"h": "4f8768a4", "t": "ISABELLA"},
     "0162": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
     "016e": {"h": "accae4cc", "t": "CHAVE"},
     "0172": {"h": "e4e08a96", "t": "OLHAR"},
@@ -35,6 +36,7 @@
     "0281": {"h": "265620f6", "t": "USAR METAL GEAR"},
     "0290": {"h": "ad2dba48", "t": "VIDEOFONE"},
     "1493": {"h": "4749792d", "t": ".........."},
+    "15bc": {"h": "1dd013c0", "t": "Ah, é você."},
     "1790": {"h": "fad50cec", "t": "O que houve?"},
     "1996": {"h": "28fc8e7b", "t": "Gillian! Você está em serviço!"},
     "473c": {"h": "4749792d", "t": ".........."},
@@ -82,10 +84,20 @@
     "5f89": {"h": "4d0af927", "t": "A casa? Pensando bem, não tenho{nl}uma casa para onde voltar."},
     "5fcf": {"h": "d73ccd51", "t": "Não fique tão deprimido, Gillian.{nl}Você poderá viver com a Jamie de{nl}novo algum dia."},
     "6023": {"h": "b86a76bf", "t": "Lar e família, é? Isso talvez não{nl}combine muito com ser Junker."},
+    "60c5": {"h": "0b975e8b", "t": "Comi tanto assim? Não foi você?"},
+    "60ea": {"h": "6ab69086", "t": "O que você está dizendo! Eu não{nl}como em excesso!"},
+    "6117": {"h": "99b29b8d", "t": "Qual é, você precisa aprender a{nl}acobertar o seu parceiro."},
+    "6150": {"h": "8873ec38", "t": "Você precisa aprender que o meu{nl}trabalho é reportar sobre o meu{nl}parceiro."},
+    "618c": {"h": "c88449fa", "t": "Peraí? Você está transmitindo{nl}esta conversa para o Chefe?"},
+    "61d0": {"h": "d5ce956b", "t": "Hmmm. Talvez sim, talvez não..."},
+    "6268": {"h": "365fe466", "t": "Gillian, nunca mais mostre isso{nl}por aqui, tá?"},
+    "62a4": {"h": "72875fc4", "t": "Eu sei, eu sei... É uma{nl}investigação disfarçada."},
+    "62d9": {"h": "b1e62361", "t": "Aconteça o que acontecer,{nl}entendeu? Não pode ser tão{nl}imprudente."},
     "6316": {"h": "27e40469", "t": "Certo, vou salvar tudo o que{nl}aconteceu até agora."},
     "6356": {"h": "02041057", "t": "Em qual número de arquivo quer{nl}salvar?"},
     "6386": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
     "63b4": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
-    "63eb": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."}
+    "63eb": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "641b": {"h": "a15a3ebc", "t": "Você já está usando."}
   }
 }

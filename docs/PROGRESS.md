@@ -50,7 +50,7 @@ Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style,
 Workflow per batch: `snt i18n-ctx` (dump, work/ only) -> write a patch `SPnn@off | ~text` (`~` = auto line breaks, `|` = forced break) -> `snt i18n-import` + `snt i18n-check` (0 failures) ->
 `snt i18n-preview` screenshots -> review subagent (sonnet, prompt in work/i18n/review_prompt.txt, not committed) -> apply fixes -> commit `i18n: SPxx translated + reviewed (score n/5)` -> add the file to `i18n/pt-BR/reviews.tsv`.
 Shared menu labels: `i18n/pt-BR/menu.json` (`snt i18n-learn-menu`, `snt i18n-apply-menu`).
-NEXT: SP08 (first half translated, second half from offset 5e20 on missing), then SP09 ... in file order; SP01 (developer debug menu) last.
+NEXT: SP13 (translating), then SP14 ... in file order; SP01 (developer debug menu) last.
 Warning: never re-import an old whole patch file after fixes were applied (it overwrites the fixes); edit the patch source or import a small fix patch.
 
 ## Controllers (Xbox / PlayStation / Switch, button icons) – status 2026-10-15
@@ -84,22 +84,22 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP09 | 522 | 487 | 46 | yes | 4 |
 | SP10 | 430 | 430 |  | yes | 4 |
 | SP11 | 333 | 333 |  | yes | 4 |
-| SP12 | 280 | 280 |  | no |  |
-| SP13 | 534 | 85 |  | no |  |
-| SP14 | 411 | 106 |  | no |  |
+| SP12 | 280 | 280 |  | yes | 4 |
+| SP13 | 534 | 97 |  | no |  |
+| SP14 | 411 | 107 |  | no |  |
 | SP15 | 382 | 104 |  | no |  |
 | SP16 | 34 | 12 | 9 | no |  |
 | SP17 | 28 | 0 | 18 | no |  |
-| SP18 | 472 | 30 | 42 | no |  |
+| SP18 | 472 | 32 | 42 | no |  |
 | SP19 | 122 | 0 |  | no |  |
 | SP20 | 150 | 0 |  | no |  |
-| SP21 | 645 | 77 |  | no |  |
+| SP21 | 645 | 78 |  | no |  |
 | SP22 | 165 | 43 |  | no |  |
 | SP23 | 270 | 56 |  | no |  |
 | SP24 | 190 | 53 |  | no |  |
 | SP25 | 212 | 69 |  | no |  |
 | SP26 | 426 | 74 |  | no |  |
-| SP27 | 220 | 49 | 9 | no |  |
+| SP27 | 220 | 51 | 9 | no |  |
 | SP28 | 321 | 62 | 11 | no |  |
 | SP29 | 68 | 2 |  | no |  |
 | SP30 | 278 | 38 |  | no |  |
@@ -107,9 +107,9 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP32 | 275 | 64 |  | no |  |
 | SP33 | 221 | 53 | 9 | no |  |
 | SP34 | 53 | 3 |  | no |  |
-| SP35 | 404 | 23 | 42 | no |  |
+| SP35 | 404 | 25 | 42 | no |  |
 | SP36 | 68 | 3 |  | no |  |
 | SP37 | 199 | 47 |  | no |  |
 | SP38 | 58 | 6 |  | no |  |
-| **total** | **10728** | **5258** | | | |
+| **total** | **10728** | **5278** | | | |
 <!-- i18n-table-end -->

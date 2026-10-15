@@ -119,3 +119,8 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * "you know" final = "sabe" (nunca "sabia"). PICK UP WOMAN = PAQUERAR. GET FORTUNE TOLD = CONSULTAR A VIDENTE. LEAVE ON (máscara) = MANTER. "transvestite" (homem de maquiagem) = "homem vestido de mulher".
   "Loveline" (impresso na propaganda) = "Linha do Amor".
 * A varredura mecânica: `work/i18n/sweep.py` (não versionado) trocou imperativos formais por coloquiais nas falas de personagens informais; `snt i18n-rewrap` refaz quebras que ficaram largas.
+
+## Regras acrescentadas pela revisão de SP12 (4/5)
+* Porteiro: trata por "você" (usa "senhor" só onde o inglês diz "sir"); porteiro hostil ou irritado usa imperativos coloquiais ("Some", "Desiste", "Põe").
+* "looks great on you" (objeto) = "caiu muito bem em você". "special effects shop" = "estúdio de efeitos especiais". "every hour" = "a cada hora" ("toda hora" significa sempre). "report on" = "fazer relatórios sobre".
+* Metal Gear nunca diz "tá?" nem "tá bom": fecha com "está bem?" (varredura feita em SP00-SP12).
