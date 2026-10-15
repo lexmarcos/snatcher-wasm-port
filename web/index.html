@@ -40,6 +40,7 @@
   table.keys { border-collapse: collapse; width: 100%; }
   table.keys td { padding: 2px 6px 2px 0; vertical-align: top; }
   table.keys td:first-child { color: var(--fg); white-space: nowrap; }
+  .icon { display: inline-flex; vertical-align: middle; margin-right: 4px; } .icon svg { display: block; } .iconlabel { margin-right: 2px; }
   kbd { background: #1b2029; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: inherit; }
   details > summary { cursor: pointer; color: var(--accent); }
   .check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
@@ -101,6 +102,13 @@
     <label class="check"><input type="checkbox" id="smooth"> Smooth scaling</label>
     <label class="check"><input type="checkbox" id="dbg"> Debug overlay (F1)</label>
     <div class="row"><button id="pnFull" type="button">Fullscreen (F)</button></div>
+    <h2>Gamepad</h2>
+    <p class="dim" id="padInfo"></p>
+    <div class="row"><label for="padFamily">Buttons for</label><select id="padFamily"></select><button id="padReset" type="button">Reset to defaults</button></div>
+    <table class="keys" id="padMapTable"></table>
+    <p class="dim" id="padHint"></p>
+    <div class="row"><label for="promptMode">Button names in game text</label>
+      <select id="promptMode"><option value="auto">Icons of the last used device</option><option value="letters">Original letters (A B C)</option></select></div>
     <h2>Saves</h2>
     <div class="row">
       <button id="pnExport" type="button">Export saves</button>

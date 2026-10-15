@@ -1,6 +1,10 @@
 // Keyboard + Gamepad API → Genesis 3-button pad bits (must match engine::pad).
 // The mouse acts as the light gun (Konami Justifier) for the shooting sections.
-export const PAD = { UP: 1, DOWN: 2, LEFT: 4, RIGHT: 8, B: 16, C: 32, A: 64, START: 128 } as const;
+// Gamepads: family detection, layouts and per-family button maps live in gamepads.ts (docs/re/web.md "Controllers").
+import {
+  assign, cloneMaps, Control, DEFAULT_MAPS, detectFamily, Device, Family, GenesisButton, padBits, PadLike, PadMaps, PAD, readPad, sanitizeMaps, CONTROLS,
+} from "./gamepads";
+export { PAD };
 
 const KEYMAP: Record<string, number> = {
   ArrowUp: PAD.UP, ArrowDown: PAD.DOWN, ArrowLeft: PAD.LEFT, ArrowRight: PAD.RIGHT,
@@ -35,6 +39,22 @@ export class Input {
   set enabled(v: boolean) { this._enabled = v; if (!v) { this.keys = 0; this.mouseButtons = 0; } }
   /** Scripted inputs for headless tests: window.snatcher.input.script = [[frames, bits], ...] */
   script: [number, number][] = [];
+  /** The device the player used last (keyboard, or a specific pad): decides which button icons the game shows. The mouse never changes it. */
+  device: Device = { kind: "keyboard" };
+  /** Called when `device` changes (also when the pad of the current device changes family). */
+  onDevice: ((d: Device) => void) | null = null;
+  /** Called when the set of connected pads changes (connect / disconnect). */
+  onPads: (() => void) | null = null;
+  /** The pad's View / Share / - button: opens the web menu. */
+  onSelect: (() => void) | null = null;
+  /** Per-family Genesis-button -> physical-control maps (saved by main.ts). */
+  maps: PadMaps = cloneMaps(DEFAULT_MAPS);
+  /** Genesis bits from the gamepads, refreshed by `scan()` once per animation frame. */
+  private padState = 0;
+  private selectHeld = new Set<number>();
+  private prevDown = new Map<number, Set<string>>();
+  /** While set, the next newly pressed assignable control on any pad is passed here instead of being used as game input. */
+  private captureCb: ((c: Control, family: Family) => void) | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     addEventListener("keydown", (e) => {
@@ -42,10 +62,17 @@ export class Input {
       // Enter/Space on a focused page control (toolbar button) must activate it, not drive the game
       const t = e.target as HTMLElement | null;
       if ((e.code === "Enter" || e.code === "Space") && t?.matches?.("button, input, select, textarea, a, summary")) return;
-      if (b && this._enabled && !e.ctrlKey && !e.metaKey && !e.altKey) { this.keys |= b; this.gunMode = false; e.preventDefault(); }
+      if (b && this._enabled && !e.ctrlKey && !e.metaKey && !e.altKey) { this.keys |= b; this.gunMode = false; this.setDevice({ kind: "keyboard" }); e.preventDefault(); }
     });
     addEventListener("keyup", (e) => { const b = KEYMAP[e.code]; if (b) { this.keys &= ~b; if (this._enabled) e.preventDefault(); } });
     addEventListener("blur", () => { this.keys = 0; this.mouseButtons = 0; });
+    addEventListener("gamepadconnected", () => this.onPads?.());
+    addEventListener("gamepaddisconnected", (e) => {
+      const gp = (e as GamepadEvent).gamepad;
+      this.selectHeld.delete(gp.index); this.prevDown.delete(gp.index);
+      if (this.device.kind === "pad" && this.device.index === gp.index) this.setDevice({ kind: "keyboard" });
+      this.onPads?.();
+    });
     canvas.addEventListener("mousemove", (e) => this.track(e));
     canvas.addEventListener("mousedown", (e) => {
       if (!this._enabled) return;
@@ -83,19 +110,62 @@ export class Input {
       if (--s[0] <= 0) this.script.shift();
       return bits;
     }
-    let bits = this.keys;
-    for (const gp of navigator.getGamepads?.() ?? []) {
-      if (!gp) continue;
-      const btn = (i: number) => !!gp.buttons[i]?.pressed;
-      if (btn(12) || gp.axes[1] < -0.5) bits |= PAD.UP;
-      if (btn(13) || gp.axes[1] > 0.5) bits |= PAD.DOWN;
-      if (btn(14) || gp.axes[0] < -0.5) bits |= PAD.LEFT;
-      if (btn(15) || gp.axes[0] > 0.5) bits |= PAD.RIGHT;
-      if (btn(2)) bits |= PAD.A;
-      if (btn(0)) bits |= PAD.B;
-      if (btn(1)) bits |= PAD.C;
-      if (btn(9)) bits |= PAD.START;
-    }
-    return bits;
+    return this.keys | this.padState;
   }
+
+  private setDevice(d: Device) {
+    const a = this.device;
+    if (a.kind === d.kind && (a.kind === "keyboard" || (d.kind === "pad" && a.kind === "pad" && a.index === d.index && a.family === d.family && a.id === d.id))) return;
+    this.device = d;
+    this.onDevice?.(d);
+  }
+
+  /** Connected pads with their detected family (for the menu). */
+  pads(): { index: number; id: string; family: Family; mapping: string }[] {
+    const out = [];
+    for (const gp of (navigator.getGamepads?.() ?? []) as (Gamepad | null)[]) if (gp?.connected) out.push({ index: gp.index, id: gp.id, family: detectFamily(gp.id, gp.mapping), mapping: gp.mapping });
+    return out;
+  }
+
+  /** Ask for the next pressed assignable control (remap screen); `null` cancels. */
+  capture(cb: ((c: Control, family: Family) => void) | null) {
+    this.captureCb = cb;
+    // controls that are already held do not count: wait for a fresh press
+  }
+  get capturing() { return this.captureCb !== null; }
+
+  /**
+   * Read all gamepads once (call every animation frame, also while a menu is open): updates the pad bits, the last-used device, the
+   * View/Share/- button and the remap capture. Radial dead zone, D-pad, hat axes: see gamepads.ts.
+   */
+  scan() {
+    let bits = 0;
+    const list = (navigator.getGamepads?.() ?? []) as (Gamepad | null)[];
+    for (const gp of list) {
+      if (!gp || !gp.connected) continue;
+      const family = detectFamily(gp.id, gp.mapping);
+      const st = readPad(gp as PadLike, family);
+      const prev = this.prevDown.get(gp.index) ?? new Set<string>();
+      // View / Share / - → web menu (edge)
+      if (st.down.has("select") && !this.selectHeld.has(gp.index)) { this.selectHeld.add(gp.index); this.onSelect?.(); }
+      else if (!st.down.has("select")) this.selectHeld.delete(gp.index);
+      if (this.captureCb) {
+        const fresh = CONTROLS.find((c) => st.down.has(c) && !prev.has(c));
+        if (fresh) { const cb = this.captureCb; this.captureCb = null; cb(fresh, family); }
+      } else {
+        bits |= padBits(st, this.maps[family]);
+      }
+      if (st.active) this.setDevice({ kind: "pad", index: gp.index, family, id: gp.id });
+      this.prevDown.set(gp.index, new Set(st.down));
+    }
+    this.padState = bits;
+  }
+
+  /** Set one mapping entry (swapping with the Genesis button that had the control). */
+  assign(family: Family, g: GenesisButton, c: Control) {
+    this.maps[family] = assign(this.maps[family], g, c);
+    this.onDevice?.(this.device);
+  }
+  setMaps(m: unknown) { this.maps = sanitizeMaps(m); }
+  resetMap(family: Family) { this.maps[family] = { ...DEFAULT_MAPS[family] }; this.onDevice?.(this.device); }
 }

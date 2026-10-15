@@ -4,6 +4,11 @@
 // input, audio and saves. See docs/re/web.md.
 import { AudioOut } from "./audio";
 import { Input } from "./input";
+import {
+  assign, CONTROL_NAMES, Control, DEFAULT_MAPS, Device, Family, FAMILIES, FAMILY_LABEL, GENESIS_ORDER, GenesisButton, promptFor, resolveIcon,
+  SELECT_NAMES, sanitizeMaps, setOf, STYLE,
+} from "./gamepads";
+import { controlIcon, dpadIcon, mouseIcon, stickIcon } from "./icons";
 import { Pacer } from "./pacer";
 import { SaveStore, SLOTS } from "./saves";
 import { pickedSource, probeServed, type Source } from "./sources";
@@ -68,25 +73,116 @@ for (const m of [overlay, panel]) m.addEventListener("keydown", (e) => trap(m, e
 
 const isPaused = () => overlayOpen || panelOpen || document.hidden;
 
-// ---------- controls help ----------
-const CONTROLS: [string, string][] = [
-  ["D-pad", "Arrow keys / gamepad D-pad or left stick"],
-  ["A / B / C", "Z / X / C (or A / S / D); Space = B; gamepad X / A / B buttons"],
-  ["Start", "Enter / gamepad Start"],
-  ["Light gun", "Mouse: move to aim, left button = trigger, right button = second button (holster); pressing any pad key switches back to the pad"],
-  ["Menu", "Esc (pauses the game)"],
-  ["Fullscreen / mute", "F / M"],
-  ["Debug overlay", "F1"],
-];
-for (const el of Array.from(document.querySelectorAll(".controls"))) {
-  const t = document.createElement("table"); t.className = "keys";
-  for (const [k, v] of CONTROLS) { const r = t.insertRow(); r.insertCell().textContent = k; r.insertCell().textContent = v; }
-  el.append(t);
+// ---------- input device, button maps, prompts ----------
+const input = new Input(canvas);
+input.enabled = false; // the start overlay is open
+try { input.setMaps(JSON.parse(ls.get("snatcher.padmaps") ?? "null")); } catch { input.setMaps(null); }
+const saveMaps = () => ls.set("snatcher.padmaps", JSON.stringify(input.maps));
+type PromptMode = "auto" | "letters";
+let promptMode: PromptMode = ls.get("snatcher.prompts") === "letters" ? "letters" : "auto";
+let lastPrompt = { style: 0, ids: [0, 0, 0, 0] as number[] };
+
+/** Tell the engine which icons to print (the last used device + its Genesis-button map), then refresh the help text. */
+function applyPrompt() {
+  const p = promptMode === "letters" ? { style: STYLE.genesis, ids: promptFor(input.device, input.maps).ids as number[] } : promptFor(input.device, input.maps);
+  lastPrompt = { style: p.style, ids: [...p.ids] };
+  game?.set_prompt(p.style, p.ids[0], p.ids[1], p.ids[2], p.ids[3]);
+  renderControls(); renderPadMap();
 }
+
+// ---------- controls help (shows the controls of the active device) ----------
+const GEN_ROWS: [GenesisButton, string][] = [["C", "Confirm / fire"], ["B", "Cancel / light"], ["A", "Draw blaster"], ["START", "Start"]];
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e;
+}
+function iconCell(html: string, label: string, td: HTMLElement) {
+  const s = el("span", "icon"); s.innerHTML = html; td.append(s, el("span", "iconlabel", label));
+}
+function renderControls() {
+  const dev = input.device;
+  const rows: [string, (td: HTMLElement) => void][] = [];
+  const set = dev.kind === "keyboard" ? "keyboard" : setOf(dev.family);
+  rows.push([dev.kind === "keyboard" ? "Keyboard" : "Gamepad", (td) => {
+    td.textContent = dev.kind === "keyboard" ? "Last used. Press a gamepad button to show its controls here." : `${FAMILY_LABEL[dev.family]} (the last device used)${dev.family === "generic" ? ", shown with Xbox-style icons" : ""}.`;
+  }]);
+  rows.push(["Move", (td) => {
+    if (dev.kind === "keyboard") td.textContent = "Arrow keys";
+    else { iconCell(dpadIcon(), "D-pad", td); td.append(" / "); iconCell(stickIcon(), "left stick", td); }
+  }]);
+  for (const [g, what] of GEN_ROWS) {
+    rows.push([`${what} (${g === "START" ? "Start" : g})`, (td) => {
+      if (dev.kind === "keyboard") {
+        const k = ({ A: "Z", B: "X", C: "C", START: "Enter" } as const)[g];
+        iconCell(controlIcon("keyboard", k), k, td);
+        td.append(el("span", "dim", g === "START" ? "" : ` (also ${({ A: "A", B: "S or Space", C: "D" } as const)[g]})`));
+      } else {
+        const c = input.maps[dev.family][g];
+        iconCell(controlIcon(setOf(dev.family), c), CONTROL_NAMES[setOf(dev.family)][c], td);
+      }
+    }]);
+  }
+  rows.push(["Web menu", (td) => {
+    if (dev.kind === "pad") { iconCell(controlIcon(setOf(dev.family), "select"), SELECT_NAMES[setOf(dev.family)], td); td.append(" or Esc"); } else td.textContent = "Esc";
+  }]);
+  rows.push(["Light gun", (td) => { iconCell(mouseIcon(), "mouse", td); td.append(" Move to aim, left button = trigger, right button = second button (holster). Pressing any pad key switches back to the pad."); }]);
+  rows.push(["Fullscreen / mute / debug", (td) => { td.textContent = "F / M / F1"; }]);
+  void set;
+  for (const host of Array.from(document.querySelectorAll(".controls"))) {
+    const t = el("table", "keys");
+    for (const [k, fill] of rows) { const r = t.insertRow(); r.insertCell().textContent = k; fill(r.insertCell()); }
+    host.replaceChildren(t);
+  }
+}
+
+// ---------- gamepad panel: connected pads, per-family remap, prompt mode ----------
+const padFamily = $<HTMLSelectElement>("padFamily"), padMapTable = $<HTMLTableElement>("padMapTable"), padInfo = $("padInfo"), padHint = $("padHint");
+const promptSel = $<HTMLSelectElement>("promptMode");
+for (const f of FAMILIES) { const o = el("option", undefined, FAMILY_LABEL[f]); o.value = f; padFamily.append(o); }
+promptSel.value = promptMode;
+promptSel.onchange = () => { promptMode = promptSel.value === "letters" ? "letters" : "auto"; ls.set("snatcher.prompts", promptMode); applyPrompt(); };
+let capturing: GenesisButton | null = null;
+const shownFamily = (): Family => padFamily.value as Family;
+function renderPadMap() {
+  const f = shownFamily(), set = setOf(f), m = input.maps[f];
+  padMapTable.replaceChildren();
+  for (const [g, what] of GEN_ROWS) {
+    const r = padMapTable.insertRow();
+    r.insertCell().textContent = `${what} (${g === "START" ? "Start" : "Genesis " + g})`;
+    iconCell(controlIcon(set, m[g]), CONTROL_NAMES[set][m[g]], r.insertCell());
+    const b = el("button", undefined, capturing === g ? "Press a button… (Esc cancels)" : "Assign…"); b.type = "button";
+    b.onclick = () => startCapture(g);
+    r.insertCell().append(b);
+  }
+  const pads = input.pads();
+  padInfo.textContent = pads.length ? `Connected: ${pads.map((p) => `${FAMILY_LABEL[p.family]}${p.mapping === "standard" ? "" : " (non-standard mapping)"} "${p.id.slice(0, 60)}"`).join("; ")}.` : "No gamepad detected. Press a button on it (browsers only show a pad after its first input).";
+  padHint.textContent = f === "generic" ? "Unknown controllers use Xbox-style icons. " : "";
+}
+function startCapture(g: GenesisButton) {
+  if (!input.pads().length) { padHint.textContent = "Connect a gamepad and press a button on it first."; return; }
+  capturing = g; renderPadMap();
+  input.capture((c: Control) => {
+    capturing = null;
+    input.assign(shownFamily(), g, c);
+    saveMaps(); renderPadMap();
+  });
+}
+function cancelCapture() { if (capturing) { capturing = null; input.capture(null); renderPadMap(); } }
+padFamily.onchange = () => { cancelCapture(); renderPadMap(); };
+$("padReset").onclick = () => { cancelCapture(); input.resetMap(shownFamily()); saveMaps(); renderPadMap(); };
+
+input.onDevice = () => applyPrompt();
+input.onPads = () => {
+  const p = input.pads();
+  msg.textContent = p.length ? `gamepad: ${FAMILY_LABEL[p[p.length - 1].family]}` : "no gamepad";
+  const cur = input.device;
+  if (cur.kind === "pad") padFamily.value = cur.family;
+  renderPadMap();
+};
+renderControls();
 
 // ---------- state shared with the running game ----------
 const store = new SaveStore();
-let game: any = null, audio: AudioOut | null = null, input: Input | null = null;
+let game: any = null, audio: AudioOut | null = null;
 let crashed = false;
 
 function savesLabel(): string {
@@ -150,13 +246,13 @@ for (const id of ["btnFull", "pnFull"]) { const b = $(id); if (!canFull) b.hidde
 // ---------- menu panel ----------
 function openPanel() {
   if (overlayOpen || panelOpen || !game) return;
-  panelOpen = true; panel.hidden = false; if (input) input.enabled = false;
-  refreshSaves(); updateSoundMode();
+  panelOpen = true; panel.hidden = false; input.enabled = false;
+  refreshSaves(); updateSoundMode(); renderPadMap();
   $("pnResume").focus();
 }
 function closePanel() {
   if (!panelOpen) return;
-  panelOpen = false; panel.hidden = true; if (input) input.enabled = true;
+  cancelCapture(); panelOpen = false; panel.hidden = true; input.enabled = true;
   canvas.focus();
 }
 function updateSoundMode() {
@@ -169,12 +265,14 @@ panel.addEventListener("mousedown", (e) => { if (e.target === panel) closePanel(
 addEventListener("keydown", (e) => {
   if (e.key === "F1") { dbgBox.checked = !dbgBox.checked; applyDbg(); e.preventDefault(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === "Escape") { if (panelOpen) { closePanel(); e.preventDefault(); } else if (!overlayOpen && game) { openPanel(); e.preventDefault(); } return; }
+  if (e.key === "Escape") { if (capturing) { cancelCapture(); e.preventDefault(); return; } if (panelOpen) { closePanel(); e.preventDefault(); } else if (!overlayOpen && game) { openPanel(); e.preventDefault(); } return; }
   if (overlayOpen || panelOpen) return;
   if (e.code === "KeyF") { toggleFullscreen(); e.preventDefault(); }
   else if (e.code === "KeyM") { toggleMute(); e.preventDefault(); }
 });
 document.addEventListener("visibilitychange", () => { if (document.hidden) audio?.suspend(); });
+
+input.onSelect = () => { if (panelOpen && !capturing) closePanel(); else openPanel(); };
 
 // ---------- start overlay ----------
 const btnPlay = $<HTMLButtonElement>("btnPlay"), btnPick = $<HTMLButtonElement>("btnPick"), pick = $<HTMLInputElement>("pick");
@@ -264,8 +362,9 @@ async function start(src: Source) {
     else if (params.has("newgame")) g.new_game();
     else g.boot();
 
-    memory = wasm.memory; game = g; audio = out; input = new Input(canvas); input.game = g;
-    (window as any).snatcher = { game, audio, input, store, notes, handleEvent };
+    memory = wasm.memory; game = g; audio = out; input.game = g; input.enabled = true;
+    (window as any).snatcher = { game, audio, input, store, notes, handleEvent, applyPrompt, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
+    applyPrompt();
     overlayOpen = false; overlay.hidden = true;
     note("wasm", "ok", null);
     canvas.focus();
@@ -285,6 +384,7 @@ let wasPaused = true, memory: WebAssembly.Memory | null = null;
 
 function frame(now: number) {
   requestAnimationFrame(frame);
+  input.scan(); // gamepads: bits, last used device, View/Share/- button, remap capture (also while a menu is open)
   const p = isPaused();
   if (p !== wasPaused) { wasPaused = p; pacer.reset(); if (p) audio?.suspend(); else audio?.resume(); }
   if (p || crashed) return;
@@ -292,7 +392,7 @@ function frame(now: number) {
   if (!n) return;
   try {
     for (let i = 0; i < n; i++) {
-      game.tick(input!.poll());
+      game.tick(input.poll());
       for (const e of JSON.parse(game.take_events())) handleEvent(e);
     }
   } catch (e) {
