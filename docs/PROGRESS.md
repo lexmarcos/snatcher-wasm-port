@@ -73,7 +73,7 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | file | strings | translated | not translatable (typed entries / kept) | reviewed | score |
 |---|---|---|---|---|---|
 | SP00 | 8 | 8 |  | yes | 4 |
-| SP01 | 126 | 11 |  | no |  |
+| SP01 | 126 | 17 |  | yes | n/a (English kept) |
 | SP02 | 259 | 251 |  | yes | 4 |
 | SP03 | 316 | 316 |  | yes | 4 |
 | SP04 | 289 | 289 |  | yes | 4 |
@@ -102,14 +102,14 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP27 | 220 | 211 | 9 | yes | 4 |
 | SP28 | 321 | 310 | 11 | yes | 4 |
 | SP29 | 68 | 68 |  | yes | 4 |
-| SP30 | 278 | 278 |  | no |  |
+| SP30 | 278 | 278 |  | yes | 4 |
 | SP31 | 0 | 0 |  | no |  |
-| SP32 | 275 | 275 |  | no |  |
-| SP33 | 221 | 62 | 9 | no |  |
-| SP34 | 53 | 7 |  | no |  |
-| SP35 | 404 | 104 | 42 | no |  |
-| SP36 | 68 | 3 |  | no |  |
-| SP37 | 199 | 49 |  | no |  |
-| SP38 | 58 | 9 |  | no |  |
-| **total** | **10728** | **9564** | | | |
+| SP32 | 275 | 275 |  | yes | 4 |
+| SP33 | 221 | 217 | 9 | yes | 4 |
+| SP34 | 53 | 53 |  | yes | 4 |
+| SP35 | 404 | 365 | 42 | yes | 4 |
+| SP36 | 68 | 68 |  | no |  |
+| SP37 | 199 | 199 |  | no |  |
+| SP38 | 58 | 58 |  | no |  |
+| **total** | **10728** | **10296** | | | |
 <!-- i18n-table-end -->
