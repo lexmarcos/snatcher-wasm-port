@@ -595,6 +595,13 @@ class Machine:
             self.vdp.data_write(v)
         elif o < 8:
             self.vdp.ctrl_write(v)
+            # The VDP drives the 68000 IPL for H-INT only while reg 0 IE1 (bit 4) is set: clearing
+            # IE1 withdraws a latched H-INT request (Sega VDP manual, reg 0). Without this, the
+            # palette-split handler M:0xFF0C4A (ends with `move.w $FFEF00,ctrl` = IE1 off) was
+            # re-entered once more and wrote the white buffer $FFEC80 to CRAM 0..3 (address wrap).
+            if not (self.vdp.reg[0] & 0x10) and 4 in self.main_pending:
+                self.main_pending.discard(4)
+                self.lib.core_set_irq(MAIN, max(self.main_pending) if self.main_pending else 0)
 
     # ------------------------------------------------------------ boot / BIOS HLE
     def _load_boot(self):

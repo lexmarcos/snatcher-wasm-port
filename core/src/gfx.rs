@@ -298,10 +298,6 @@ impl Vdp {
                 if y16 >= sl && y16 < sl + 12 {
                     let k = (y16 - sl) as usize;
                     for i in 0..4 { cram[16 + 4 * k + i] = self.cram_b[16 + 4 * k + i]; }
-                } else if y16 == sl + 12 {
-                    // the HINT handler M:0xFF0C8E runs one pass more (oracle: line 148 writes at CRAM address 0x80 = wrap to 0)
-                    // and copies 4 words from the constant white buffer $EC80 (filled with 0x0EEE at M:0xFF1396) to colours 0..3
-                    for i in 0..4 { cram[i] = 0x0EEE; }
                 }
             }
             let row = &mut fb[y * SCREEN_W * 4..(y + 1) * SCREEN_W * 4];

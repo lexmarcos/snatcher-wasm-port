@@ -924,6 +924,13 @@ impl Engine {
     }
 
     fn cmd_load(&mut self, addr: u32, file: u16) {
+        // Every disc read stops CD-DA: sequencer cmd 11 step 0 is `bra cd_pause` (S:0x102D2) and
+        // the drive cannot play audio while it reads data. Without this, a CD track started by the
+        // intro (DATA_D1/D0) kept playing into the game when the intro was skipped.
+        if self.cd_start.is_some() {
+            self.cd_start = None;
+            self.out.push(Out::MusicStop);
+        }
         let Some(data) = self.file_by_index(file).cloned() else {
             self.out.push(Out::Log(format!("missing file {file:#x}")));
             return;
