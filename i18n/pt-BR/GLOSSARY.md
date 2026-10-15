@@ -87,3 +87,8 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
   Gilligan's Island ("aquela ilha", "Mary Ann") mantido; a fala meta sobre a tradução diz "traduzido para o inglês e legendado em português".
 * Letras de música (Buddy Guy), o cumprimento em japonês e as reticências de silêncio de SP02 ficam sem tradução (8 textos).
 * "Face to face" (memória de Harry, SP03@38b4 e @390f) fica em inglês: o jogador pode ter de digitar a frase.
+
+## Regras acrescentadas pela revisão de SP04 (4/5)
+* "alamid" = "aramida". "The Catastrophe" no meio da frase = "a Catástrofe" (artigo minúsculo; maiúscula só entre aspas/títulos). Anos escritos '47 ficam "'47".
+* Rótulos "QUIT X" = "SAIR DO/DA X" com o objeto (SAIR DO JORDAN, SAIR DO RETRATO, SAIR DO ARQUIVO). "POSSIBLE MATCH" = "POSSÍVEL CORRESPONDÊNCIA". "Half-Year War" = "Guerra dos Seis Meses".
+* "bylaws" = "estatutos" (menu e título no plural). "Immigrant problem" = "problema imigratório". "lymph nodes" = "linfonodos". "cut-rate prices" = "preços baixíssimos".

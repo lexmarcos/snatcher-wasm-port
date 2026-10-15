@@ -263,8 +263,13 @@ pub fn load_file(dir: &str, spn: u8) -> Result<FileData, String> {
     // entry menus: 9 or more CHOICE siblings (same path and root) whose labels are single characters / digits / words typed by the player
     let mut groups: HashMap<(Vec<u16>, String), usize> = HashMap::new();
     for it in items.iter().filter(|x| x.kind == Kind::Choice) { *groups.entry((it.path.clone(), it.label.clone())).or_default() += 1; }
+    // SP05 (name search): typed names are keyboard entries even when split over sub-menus (groups of fewer than 9)
+    let mut by_root: HashMap<String, usize> = HashMap::new();
+    let word = |raw: &[u8]| !raw.is_empty() && raw.iter().all(|&c| c.is_ascii_uppercase() || c == b'.' || c == b'\'' || c == b'-');
+    let rawmap: HashMap<u16, &[u8]> = s.strings.iter().map(|(o, r)| (*o, r.as_slice())).collect();
+    for it in items.iter().filter(|x| x.kind == Kind::Choice) { if word(rawmap[&it.off]) { *by_root.entry(it.label.clone()).or_default() += 1; } }
     for it in items.iter_mut().filter(|x| x.kind == Kind::Choice) {
-        if groups[&(it.path.clone(), it.label.clone())] >= 9 { it.entry = true; }
+        if groups[&(it.path.clone(), it.label.clone())] >= 9 || (spn == 5 && word(rawmap[&it.off]) && by_root[&it.label] >= 9) { it.entry = true; }
     }
     Ok(FileData { sp: spn, strings: s.strings, items })
 }
