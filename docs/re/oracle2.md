@@ -61,7 +61,7 @@ Method: `scenario2.py scenarios/intro_real.json --match ../oracle/out/refs` (eve
      drive latency per read); title ready (`$7896` = 9) 1140 vs 1342. The copyright + Konami logo phase (`$7842` = 0) is *shorter* on the real BIOS (837 vs 967 frames, -13 %): CPU-bound
      work (LZ decompression) runs faster there; GPGX's s68k/m68k cycle tables vs Musashi's, not investigated further.
   2. **Real BIOS behaviour the HLE gets wrong**: after a game over / QUIT INVESTIGATION (VM state 4) the SP reloads SUBCODE and the game restarts at copyright -> Konami logo -> title
-     (the HLE stays black, see "GAME OVER" below). The HLE also zeroes PRG-RAM; the real console keeps BIOS leftovers in `$9DC0..` (boot-screen text), harmless for the game flow tested.
+     (the HLE restarts as far as the logo, then stays black in the title phase, see "GAME OVER" below). The HLE also zeroes PRG-RAM; the real console keeps BIOS leftovers in `$9DC0..` (boot-screen text), harmless for the game flow tested.
   3. **Colour scale**: the core outputs the DAC levels 0,34,..,238 (pure white = #EEEEEE), the HLE renderer 0..252; not a game difference (normalised on compare).
   4. **Gun**: GPGX latches the HV counter at exactly the aimed pixel (`raw X = x`, `raw Y = y`, no jitter), the HLE model reports (x - 66, y + 1) with jitter; the game's calibration cancels
      the offsets, see "Shooting" below.
@@ -78,7 +78,7 @@ Run: `ORACLE=2 fid_session.py o2_a2_taxi SP01:250 36000` (jump = "TIKADO TO TAXI
 Evidence (oracle2 absolute frames; `out/replay_o2taxi/r23100..r24300.png`): the failed stage shows the GAME OVER picture (gold title background) with the menu CONTINUE / QUIT INVESTIGATION; after QUIT the queue
 `07[FF] 10[56] 0D[30] 0A` runs (trace `seq_start` at rel 23285), the GAME OVER picture stays until the queue ends (rel 23944), then the screen goes black, `$9808` = 4 (VM state 4, S:0x1670C) and the SP
 reloads SUBCODE (`$7840` 4 at +36 frames, 5 at +44, 6 at +124), `$7842` = 0 and the game **restarts**: Konami laser line, Konami logo, title with NEW GAME / CONTINUE (CD track 2 at abs frame 30532).
-Verdict: **the engine is right to show the GAME OVER module; the HLE oracle is wrong** (it never re-runs the SP reload and stays black). The engine had a second defect found here: it stayed on the GAME OVER
+Verdict: **the engine is right to show the GAME OVER module; the HLE oracle is wrong after it**: it also reloads the SP (`$7840` 4 -> 6 at rel 23610..23623) and shows the Konami laser / logo, but then its title phase never advances (`$7896` stays 0, the sub sits in the Word RAM hand-back loop S:0x6138 with the main CPU requesting DMNA every ~3 frames, no CD-DA track 2) and the screen stays black; on the real BIOS `$7896` reaches 9 (title ready) 800 frames later and CD track 2 starts. Cause not found in the HLE (a Word RAM ownership livelock is the suspect; its "DMNA = immediate" rule is a HYPOTHESIS); not fixed, oracle2 is the reference for anything that restarts the game. The engine had a second defect found here: it stayed on the GAME OVER
 picture forever (VM state 4 stopped the VM thread) - the original returns to the title. **Fixed** (`Engine::reset_to_title`, `VmPhase::ExitSp`, test `state4_restarts_at_the_title` in
 `engine/tests/player_path.rs`, fails without the fix): queue [02] (black-out), `SP_RELOAD_FRAMES` = 90, soft reset keeping files/saves/audio manifests, then the title chain restarts.
 (The 36-frame black-out and 88-frame SP reload are real-BIOS numbers; HLE cannot give them.)

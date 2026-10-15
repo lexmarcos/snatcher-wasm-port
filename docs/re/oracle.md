@@ -1,5 +1,7 @@
 # Test oracle (dev-only, BIOS-free) – runs the original 68000 code
 
+See also `docs/re/oracle2.md`: the same game on the real Sega CD BIOS (reference for anything the HLE only guesses). Known HLE limitation found with it: after VM state 4 (game over / QUIT INVESTIGATION) the SP restarts but the title phase stays black (Word RAM hand-back loop S:0x6138).
+
 Status: WORKING from power-on through the title, options, intro and the first playable scene
 (Junker HQ, ACT 1) with dialogue, command menu and raster-split text window (see "Verified").
 Never shipped in the web port.
