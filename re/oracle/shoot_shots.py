@@ -18,7 +18,7 @@ env = dict(os.environ, SCHED=base + '.o.jsonl.sched', SFXLEN=os.path.join(HERE, 
 subprocess.run([ENG, a.group, a.item, '@' + base + '.o.jsonl.script.json', str(a.frames), base + '.e.jsonl', a.shots], check=True, env=env, stderr=subprocess.DEVNULL)
 for f in [int(x) for x in a.shots.split(',')]:
     o = Image.open(os.path.join(d, 'o%05d.png' % f)).convert('RGB')
-    e = Image.open(base + '.e%05d.png' % f).convert('RGB')
+    e = Image.open(base + '.e.e%05d.png' % f).convert('RGB')
     df = ImageChops.difference(o, e)
     n = sum(1 for p in df.getdata() if p != (0, 0, 0))
     sheet = Image.new('RGB', (o.width * 3, o.height))

@@ -16,7 +16,7 @@ Code: `engine/src/shoot.rs` (port of `shoot_tick` S:0x1208E–0x1314E, seq cmd 0
   gun session of stage 0 is identical (86 shots, 8 hits, 62 misses, 16 kills, all state words). Without forcing, the engine's own mapping
   mouse pixel -> `$798A/$798B` agrees with the oracle's: X within +-4 (the oracle's HV-counter model is 2 px / 6-cycle granular), Y within 1.
 - Oracle bug fixed: held buttons arrived every other frame (see "Oracle pad model").
-- Oracle: Justifier (port 2, device ID 1, TH interrupt, HV counter) is emulated, see "Light gun".
+- Oracle: Justifier (port 2, device ID 1, TH interrupt, HV counter) is emulated, see "Light gun" (`re/oracle/shoot_gunscan.py raw|cells|cal` reproduces the scans quoted there).
 - Tests: `cargo test --release -p snengine --lib` (shoot::tests: gun cell thresholds, hit/miss/innocent/trap resolution, life meter, target timers,
   results phases, PCM channel busy; menus::tests: raw gun values, default calibration, calibration on the bullseye).
 
@@ -119,4 +119,14 @@ until the player calibrated (`Ix::gun_cal_done`, set by the calibration screen o
 - `$1511E` bit 3 outside phase 4 is only approximated (the engine reports it for the trace); the results wait is within <= 6 frames of the original.
 - Calibration absolute raw values (-66 / +1) come from the oracle's HV model (timing of the handler vs a line model), the 31-line bias is derived from the oracle
   scan above; neither could be checked against real hardware.
-- Screens: see "Screens" below.
+
+## Screens (`re/oracle/shoot_shots.py`)
+Same session replayed in both, screenshots at the same frames, pixel diff (`out/shoot/shots_gG_iI/sheetNNNNN.png` = oracle | engine | diff):
+| stage / frames | differing pixels of 57344 |
+|---|---|
+| 0 (Junker) 3 / 60 / 140 / 200 / 300 / 420 / 600 | 856 / 216 / 216 / 533 / 482 / 260 / 533 (frame 134 = READY->GO switch, 1717: the oracle changes one frame later) |
+| 1 (0:2, enemy attacks, life meter) 60 / 150 / 300 / 500 / 800 / 1100 | 0 / 175 / 161 / 553 / 235 / 328 |
+| 0x0A (1:5) 30 / 150 / 300 / 400 | 1344 / 1669 / 504 / 1358 |
+The differences are animation phases: blinking lights, target sprite frames (1-2 frames, stalls), and the flashing silhouette of stage 0x0A (a palette
+fade whose steps are 1-2 frames out of phase: levels 72/108, 252/252, 72/36 at frames 100/120/160); layout, targets, crosshair, life bar, READY/GO!
+labels and counters are identical. Not ported: the white trigger flash (M:0xFF1A44, CRAM 0/1 for one frame) - only meant for the physical gun's sensor.
