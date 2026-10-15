@@ -86,3 +86,72 @@ fn a_bad_pack_is_rejected_and_changes_nothing() {
     assert!(e.load_translation(b"nope").is_err());
     assert!(e.load_translation(&pack()[..10]).is_err());
 }
+
+fn glyph_rows(f: &sncore::actions::Font, ch: char) -> ([u8; 8], u8) {
+    let idx = (if (' '..='~').contains(&ch) { ch as u8 } else { i::pt_code(ch).unwrap() } - 0x20) as usize;
+    (f.glyphs[idx], f.widths[idx])
+}
+fn ink_rows(g: &[u8; 8]) -> Vec<usize> { (0..8).filter(|&r| g[r] != 0).collect() }
+
+/// The accented capitals sit on the baseline of the original capitals (row 6), keep the width of the base letter, carry the accent in
+/// rows 0..1 only and leave row 7 (descender row) and the inter-line row free. Ç is the original C plus a cedilla in row 7.
+#[test]
+fn accented_capitals_share_the_baseline_of_the_original_capitals() {
+    let Some(e) = engine() else { return };
+    let f = e.font.as_ref().unwrap();
+    for (base, accented) in [('A', "ÁÀÂÃ"), ('E', "ÉÊ"), ('I', "Í"), ('O', "ÓÔÕ"), ('U', "ÚÜ")] {
+        let (b, bw) = glyph_rows(f, base);
+        assert_eq!(*ink_rows(&b).last().unwrap(), 6, "original {base} baseline");
+        for ch in accented.chars() {
+            let (g, w) = glyph_rows(f, ch);
+            let rows = ink_rows(&g);
+            assert_eq!(*rows.last().unwrap(), 6, "{ch}: baseline must be row 6 like {base}");
+            assert_eq!(w, bw, "{ch}: advance of {base}");
+            assert!(g[0] != 0, "{ch}: accent reaches row 0 (same top as an original capital)");
+            assert_eq!(g[7], 0, "{ch}: row 7 is the descender row");
+            assert!(g[2] != 0, "{ch}: body starts in row 2");
+            // the body (rows 2..6) is the same height for every accented capital, so they match each other
+            assert!(rows.iter().all(|&r| r <= 6));
+        }
+    }
+    let (c, cw) = glyph_rows(f, 'C');
+    let (cc, ccw) = glyph_rows(f, 'Ç');
+    assert_eq!(cc[..7], c[..7], "Ç = original C rows 0..6");
+    assert_eq!(ccw, cw);
+    assert!(cc[7] != 0 && cc[7].count_ones() <= 2, "cedilla in row 7");
+    // every pt-BR capital is different from the others and from the base letter
+    let caps: Vec<[u8; 8]> = "ÁÀÂÃÉÊÍÓÔÕÚÜÇ".chars().map(|c| glyph_rows(f, c).0).collect();
+    for a in 0..caps.len() { for b in a + 1..caps.len() { assert_ne!(caps[a], caps[b]); } }
+}
+
+/// No text window clips a pt-BR glyph and none leaks into the inter-line row: every glyph is drawn at every line position of the
+/// 256x64 window (message box lines y = 0, 9 .. 54, menu lines y = 9 * i) and all its pixels stay inside rows y..y+7.
+#[test]
+fn pt_glyphs_stay_inside_their_line_cell_in_every_window_position() {
+    use sncore::actions::{TextWindow, WIN_W, WIN_H};
+    let Some(e) = engine() else { return };
+    let f = e.font.as_ref().unwrap();
+    for (k, g) in i::PT_GLYPHS.iter().enumerate() {
+        let code = i::PT_BASE + k as u8;
+        let ink: u32 = f.glyphs[(code - 0x20) as usize].iter().map(|r| r.count_ones()).sum();
+        for y in (0..=54u8).step_by(9) {
+            for x in [0x10u8, 0x18, 0x28, 0xE0] {
+                let mut w = TextWindow::new();
+                w.clear();
+                w.start(&[0xFC, 0x00, 0xF9, 0x01, 0xFB, x, y, 0xFE, 0x01, code, 0xFF]);
+                for _ in 0..4 { w.tick(f); }
+                let (mut n, mut outside) = (0u32, 0u32);
+                for py in 0..WIN_H { for px in 0..WIN_W {
+                    // the clear fills the last tile (248.., 56..) with colour 7; ignore it
+                    if px >= 248 && py >= 56 { continue; }
+                    if w.pix[py * WIN_W + px] == 1 {
+                        n += 1;
+                        if py < y as usize || py > y as usize + 7 { outside += 1; }
+                    }
+                } }
+                assert_eq!(n, ink, "{} clipped at x={x} y={y}", g.ch);
+                assert_eq!(outside, 0, "{} leaks outside rows {y}..{} (x={x})", g.ch, y + 7);
+            }
+        }
+    }
+}
