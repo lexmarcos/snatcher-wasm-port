@@ -126,6 +126,7 @@ def run_engine(shot_abs):
     pads = ','.join(([a.eprelude] if a.eprelude and not a.engine_jump else []) + ([] if a.sync else ['%d:%d' % (f + a.ebase, b) for f, b in inputs]))
     env = dict(os.environ, SHOTAT=','.join(str(f) for f in sorted(shot_abs)) or '0', **sy)
     if a.rng: env['FIDRNG'] = '1'
+    env.setdefault('SYNCU', '2')     # menu readiness calibration, see docs/re/fidelity.md (Acts 2-3, harness)
     cmd = [os.path.join(ROOT, 'target', 'release', 'examples', 'run'), str(a.ebase + frames + (0 if not a.sync else 0)), '1000', os.path.join(out, 'engine'), pads]
     if a.engine_jump: cmd.append(a.engine_jump)
     r = subprocess.run(cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, text=True)

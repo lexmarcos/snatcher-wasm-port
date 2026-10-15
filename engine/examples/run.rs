@@ -88,9 +88,12 @@ fn main() {
         v
     }).unwrap_or_default();
     let (mut ready_kind, mut ready_since, mut last_press) = (0u8, 0u64, 0u64);
+    // SYNCU=n: calibration of the menu readiness (frames added to the engine's `since` counter of 'u' presses)
+    let sync_u: u64 = std::env::var("SYNCU").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
     let shot_at: Vec<u64> = std::env::var("SHOTAT").map(|v| v.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_default();
     let mut last = String::new();
     let mut last_fx = String::new();
+    let mut last_msg = -2i32;
     let mut sheet: Vec<Vec<u8>> = vec![];
     for f in 1..=frames {
         let mut pad = if inputs == "auto" { if f % 40 == 0 { 0x20 } else { 0 } } else { *presses.get(&f).unwrap_or(&0) };
@@ -101,7 +104,7 @@ fn main() {
                 let want = if k == 'm' { 1 } else if k == 'e' { 3 } else { 2 };
                 // kind 'a': absolute engine frame (`since`), independent of readiness (e.g. START at the end of the staff roll)
                 if k == 'a' && f >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press a {since} pad {p}"); }
-                else if k != 'a' && w == want && f - ready_since >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press {k} {since} pad {p}"); }
+                else if k != 'a' && w == want && f - ready_since + if k == 'u' { sync_u } else { 0 } >= since && f - last_press > 8 { pad = p; sync.pop_front(); last_press = f; println!("{f:6} sync press {k} {since} pad {p}"); }
             }
         }
         if let Ok(v) = std::env::var("POKE") { // "frame:hexaddr:value,..." word pokes of sub-CPU registers before the tick
@@ -136,6 +139,10 @@ fn main() {
         if let Ok(v) = std::env::var("VRAMDUMP") { if f == frames { std::fs::write(v, &e.disp.vdp.vram).unwrap(); } }
         if let Ok(v) = std::env::var("OBJWATCH") { // "slot,slot": per-frame x/y (integer), flags, idx, delay, rep of animation objects
             for s in v.split(',').filter_map(|x| x.parse::<usize>().ok()) { let o = &e.disp.sub.objs[s]; println!("{f:6} objw {s} act {} x {} y {} fl {:02x} idx {:04x} dly {} rep {} sc {:x}", o.active, o.x >> 16, o.y >> 16, o.flags, o.idx, o.delay, o.rep, o.script); }
+        }
+        if std::env::var("MSGDBG").is_ok() { // message box state changes (original `$9740`)
+            let s = e.msg.as_ref().map(|m| m.state as i32).unwrap_or(-1);
+            if s != last_msg { println!("{f:6} msgstate {s}"); last_msg = s; }
         }
         if std::env::var("RASTERDBG").is_ok() && (shot_at.contains(&f) || f == frames) { // per-line vscroll/hscroll/display runs
             if let Some(r) = &e.disp.vdp.raster {
