@@ -59,7 +59,9 @@ dedication shutters, docs/re/modules.md §3.2; the oracle's missing CD time `$78
    scene chunk 8 screen mode, ending start (mode 6), save block fields, FM done-flag lengths,
    PCM effect busy for 0C/0A, CONTINUE round-trip tools. Not yet: Acts 2–3 comparison results,
    docs/re/fidelity.md "Acts 2–3" section. Build/tests/web build green after resume.
-   Running now: FIDELITY2 (resumed same agent) and WEB polish (docs/re/web.md: UI, folder picker, save export, mono/stereo).
+   WEB polish – DONE (docs/re/web.md): start overlay + folder picker, volume/fullscreen/pause menu,
+   save export/import, mono/stereo, graceful missing assets, 60 Hz pacer; `scripts/test-web.sh`.
+   Running now: FIDELITY2 (resumed same agent).
 5. Ghidra DB: done once after resume (sub_prg: 406 functions, 303 named; main_ip: 180) via
    `re/analyze.sh` with the concatenated label files; re-run after new labels.
 
