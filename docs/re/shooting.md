@@ -113,6 +113,9 @@ until the player calibrated (`Ix::gun_cal_done`, set by the calibration screen o
 6. Sequencer **command 0x1F** (S:0x13150) was a no-op: it is the counter tally (every other vint, counter objects 58/59 count down, then reset).
 7. Gun: `$798A/B = raw - calib` with byte wrap (the port clamped), raw hardware values, calibration screen semantics (see above).
 
+## Checked on the real Sega CD BIOS (docs/re/oracle2.md section 2)
+- Trigger flash: one fully white frame per shot while the blaster is drawn (confirmed). Sound-start stalls: 2.62 handler-less frames per PCM effect start (HLE 2.68, same patterns). Gun: GPGX gives raw (x, y); the game's calibration still yields value = y + 27 and the cell rows switch at y 21/61 exactly as with the HLE gun model, so `GUN_CAL_BIAS_Y` remains a HYPOTHESIS not explained by the oracle's gun model.
+
 ## Known differences / not verified
 - Sub-CPU load: sample copies (1-2 frames per effect) and the other PCM driver work stall the original's frame handler; the engine is not slowed by sound.
   Visible only as lost presses while a sound plays in the original.

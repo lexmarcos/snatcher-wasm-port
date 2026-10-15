@@ -16,8 +16,9 @@
      (varies per voice; the port has 2). Not modelled beyond that; the turbocycle chase loop (SP29) is therefore ~18 frames per iteration faster in the engine.
   3. PCM effect busy bit: oracle bit 3 lasted 478 frames for bank 11 effect 0x1B (= manifest) but only 4 frames for bank 18 effect 0x22 (manifest 111 frames) in KYOUKAI; the engine uses the manifest lengths
      (probably the oracle's RF5C164 address read-back, S:0x15912..0x15998, in that case).
-  4. After a failed shooting stage the engine shows the GAME OVER module (vm state 4); the oracle's HLE stays black (a2_taxi after 24000).
+  4. After a failed shooting stage the engine shows the GAME OVER module (vm state 4); the oracle's HLE stays black (a2_taxi after 24000). **Settled with the real BIOS (docs/re/oracle2.md section 1):** the original shows GAME OVER, then restarts at the title (the HLE cannot); the engine's module was right, its missing restart is fixed (`Engine::reset_to_title`).
   5. Debug entries out of context (SP29 L_04a3, SP38 L_0010, ...) wait forever for CD time / object animations in both (the port's old 7200/36000 frame timeouts were removed, the original has none).
+- **Real-BIOS numbers (docs/re/oracle2.md section 3):** loads take 12 + sectors/1.25 + 7 frames, a voice start 38 frames (21..61), the same Act 1 session is 8.2 % longer than on the HLE; the engine is ~8 % faster than the console model.
 - Next: model the voice-start stalls and sub-CPU load times to remove the remaining drift; verify the GAME OVER module against hardware knowledge instead of the oracle.
 
 ## Acts 2–3 (FIDELITY2)
