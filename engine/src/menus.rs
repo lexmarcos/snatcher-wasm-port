@@ -71,7 +71,7 @@ fn y_lo(e: &Engine, slot: usize) -> u8 { (e.disp.sub.objs[slot & 63].y >> 16) as
 pub fn sfx_1c(e: &mut Engine, n: u16) {
     e.regs.set_b(0x980F, if n == 0x3D { 0 } else { n as u8 });
     e.sfx_left = if n == 0x3D { 0 } else { e.fm_done_len(n, false).unwrap_or(u32::MAX) }; // oracle: sfx 0x1D done flag 19-20 frames
-    e.out.push(Out::Pcm { id: n, kind: 0 });
+    e.out.push(Out::Fm { id: n, music: false }); // queue cmd 1C = FM sfx (docs/re/audio.md §5)
 }
 
 /// Draw a render stream into the text window at once (cmd 05 with `FC 00`).
