@@ -29,39 +29,18 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
   Web front end: canvas, input, WebAudio (CD/FM/voice/PCM), saves in localStorage.
   Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
-## Resume here (order)
-State after resume (commit after cfc038a): build is green (`cargo build --release`,
-`cargo test --release -p snengine -p sncore --lib`, `scripts/build-web.sh`).
-`Top::Title` runs the boot screens + DATA_D2 title module (engine/src/modules/title.rs, docs/re/modules.md). `boot()` → intro
-DATA_D1/D0 intro and the DATA_Y16 staff roll play completely (the old "stall" was the display bit left off after the
-dedication shutters, docs/re/modules.md §3.2; the oracle's missing CD time `$787A` §1). MODULES: done, see its Status.
-1. **MODULES – DONE** (docs/re/modules.md): boot screens + DATA_D2 title/options/continue,
-   intro D1/D0 and ending Y16 (staff roll) verified frame-by-frame vs the oracle (D1 70/80
-   samples exact). No H40 needed (VDP reg 12 = 0 in all oracle frames). HYPOTHESIS: display
-   re-enabled when no H-INT mode is active (the oracle stays black after the dedication).
-   Remaining: Y16 tail (START at the end), gun calibration with a gun model, mono/stereo option in web audio.
-2. **INTERACT – DONE (except shooting details)**: menu bar pixel-identical to the oracle,
-   keyboard/keypad/pointer verified vs oracle (docs/re/interact.md). Remaining: steady held-pad
-   input in the oracle, then compare ACT2/ACT3 shooting stages and results phases; gun calibration.
-3. **AUDIO-VERIFY – DONE**: FM driver translation equal to the original write-for-write on
-   all oracle logs (~3M YM writes, all 122 ids), drum key-ons equal; YM2612 LFO period fixed.
-   Remaining: YM2612 output vs hardware (no chip reference), mix levels.
-4. **FIDELITY Act 1 – DONE** (docs/re/fidelity.md): 58,000-frame session (Junker HQ → tour →
-   factory interior, SP06→SP07) replays with 158/159 action queues identical vs the oracle,
-   screens differ only by animation phase/drift. Harness: re/oracle/fid_cmp.py (--rng --sync).
-   Next: Acts 2 and 3 (start both sides via SP01 debug jumps), shooting stages after fixing the
-   oracle's held-pad model, the ending path end-to-end.
-   SHOOTING – DONE (docs/re/shooting.md): all 15 stages frame-exact vs the oracle with pad
-   (45/45 runs identical final counters); light gun emulated in the oracle and mapped from the
-   mouse (HYPOTHESIS: Y calibration bias GUN_CAL_BIAS_Y=31 in menus.rs). Oracle pad bug fixed.
-   FIDELITY2 (Acts 2–3, ending, save/continue) – DONE (docs/re/fidelity.md "Acts 2–3"): 32 oracle sessions from
-   SP01 debug entries (Acts 2/3, CD-DA entries, both endings + staff roll), 2984/2986 action queues identical,
-   staff roll pixel-identical, save block and CONTINUE round trip equal. Remaining: engine ~0.5 % faster over
-   long sessions (sub-CPU load / voice-start stalls), PCM-effect busy lengths in one case (see Open list).
-   WEB polish – DONE (docs/re/web.md): start overlay + folder picker, volume/fullscreen/pause menu,
-   save export/import, mono/stereo, graceful missing assets, 60 Hz pacer; `scripts/test-web.sh`.
-5. Ghidra DB: done once after resume (sub_prg: 406 functions, 303 named; main_ip: 180) via
-   `re/analyze.sh` with the concatenated label files; re-run after new labels.
+## Resume here
+All workstreams finished (2026-10-15). Build, tests (sncore 33, snengine 21), `scripts/build-web.sh`
+and `scripts/test-web.sh` (0 console errors) are green. Fidelity vs the original (oracle):
+Act 1 158/159, Acts 2–3 + endings 2984/2986 action queues identical; staff roll pixel-identical;
+CONTINUE round trip equal; all 15 shooting stages frame-exact with pad; FM driver write-exact.
+Open items (each with evidence in the named doc), in suggested order:
+1. Timing drift 0.3–0.7% (scene/sub-CPU load time and the 3–7 frame voice-start stall not modelled) – docs/re/fidelity.md.
+2. Turbocycle chase loop (SP29) ~18 frames/iteration fast; GAME OVER after a failed shooting stage
+   shows the module while the oracle stays black (a2_taxi) – docs/re/fidelity.md.
+3. Shooting: trigger white flash (M:0xFF1A44), sound-start stalls, gun Y bias HYPOTHESIS – docs/re/shooting.md.
+4. Front end: touch controls, voice pan / music ducking – docs/re/web.md, docs/re/audio.md.
+5. YM2612 output vs real hardware (no chip reference available) – docs/re/audio.md.
 
 ## Blockers
 - No Sega CD BIOS (not downloaded by rule) → HLE oracle instead; YM2612/mix levels unverified by ear.
