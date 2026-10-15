@@ -112,3 +112,10 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * Gillian e Katrina usam imperativos coloquiais mesmo em gritos e cantadas ("Abre aí!", "Cala a boca!", "Anima aí", "Toma, deixa eu..."), e pronomes depois do verbo ("conhece ele", "receber você"). "o/lhe" só para Metal Gear.
 * Alice é "cachorra" (feminino em todas as falas); a garrafa de protetor solar é "garrafa" (não "frasco"); "Jean-Jack Gibson" com hífen nos diálogos (as fichas de SP05 mantêm "Jean Jack"). "<<sob>>" = "<<choro>>".
 * SP09: nos enigmas digitados o aviso é "(em inglês)"; os rótulos de teclado (números, WRONG, MOLE, ...) ficam em inglês.
+
+## Regras acrescentadas pelas revisões de SP10 e SP11 (4/5 e 4/5)
+* Todos os falantes informais (Gillian, Harry, Katrina, Napoleon, porteiros, funcionários, transeuntes, clientes) usam imperativos coloquiais ("Para", "Cala a boca", "Toma", "Vai", "Sai", "Anda", "Peraí", "Dá uma olhada", "Desculpa").
+  "Pare/Espere/Tome/Saia" formais só para Metal Gear, Chefe e Mika. Metal Gear não usa "tá?": fecha com "está bem?". "Nah" = "Não" / "Que nada", nunca "Nada".
+* "you know" final = "sabe" (nunca "sabia"). PICK UP WOMAN = PAQUERAR. GET FORTUNE TOLD = CONSULTAR A VIDENTE. LEAVE ON (máscara) = MANTER. "transvestite" (homem de maquiagem) = "homem vestido de mulher".
+  "Loveline" (impresso na propaganda) = "Linha do Amor".
+* A varredura mecânica: `work/i18n/sweep.py` (não versionado) trocou imperativos formais por coloquiais nas falas de personagens informais; `snt i18n-rewrap` refaz quebras que ficaram largas.

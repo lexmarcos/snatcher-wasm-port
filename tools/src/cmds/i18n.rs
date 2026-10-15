@@ -10,6 +10,7 @@
 //!   snt i18n-preview <lang-dir> <files-dir> <out.png> <SPnn> [off|longest:N|sample:N ...]   draw translated messages / menu items with the real text renderer
 //!   snt i18n-apply-menu <lang-dir> <files-dir> [--force]       fill common menu labels from <lang-dir>/menu.json (keyed by hash)
 //!   snt i18n-fill-dups <lang-dir> <files-dir>                  reuse a translation for identical English strings in other files (same speaker class)
+//!   snt i18n-rewrap <lang-dir> <files-dir> [all|SPnn..]        re-flow messages whose lines became too wide after mechanical edits
 //!   snt i18n-status <lang-dir> <files-dir>                     translated / total per file
 use sncore::i18n as i;
 use sncore::script::{self as sc, Node, Operand};
@@ -33,6 +34,7 @@ pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
         "i18n-apply-menu" if args.len() >= 3 => Some(apply_menu(&args[1], &args[2], args.get(3).map(|s| s == "--force").unwrap_or(false))),
         "i18n-learn-menu" if args.len() == 3 => Some(learn_menu(&args[1], &args[2])),
         "i18n-fill-dups" if args.len() == 3 => Some(fill_dups(&args[1], &args[2])),
+        "i18n-rewrap" if args.len() >= 3 => Some(rewrap(&args[1], &args[2], &args[3..])),
         "i18n-kinds" if args.len() == 2 => Some(kind_counts(&args[1])),
         _ => None,
     }
@@ -1006,5 +1008,32 @@ pub fn fill_dups(lang: &str, dir: &str) -> Result<(), String> {
         if changed { write_entries(&path, &format!("SP{n:02}"), &e)?; }
     }
     println!("fill-dups: {added} entries added, {skipped} skipped");
+    Ok(())
+}
+
+/// `snt i18n-rewrap <lang-dir> <files-dir> [all|SPnn..]`: re-flow every message whose lines are too wide (greedy fill of the real box width), so that
+/// mechanical text edits (search/replace in the JSON) never leave an overflowing line. Entries that already fit are untouched.
+pub fn rewrap(lang: &str, dir: &str, which: &[String]) -> Result<(), String> {
+    let widths = font_widths(dir)?;
+    let list: Vec<u8> = if which.is_empty() || which[0] == "all" { (0..=38).collect() } else { which.iter().map(|s| sp_arg(s)).collect::<Result<_, _>>()? };
+    let mut fixed = 0;
+    for n in list {
+        if !Path::new(&format!("{dir}/SP{n:02}.BIN")).exists() { continue; }
+        let fd = load_file(dir, n)?;
+        let by: HashMap<u16, &Item> = fd.items.iter().map(|x| (x.off, x)).collect();
+        let path = lang_path(lang, &format!("SP{n:02}"));
+        let mut e = read_entries(&path)?;
+        let mut changed = false;
+        for (off, en) in e.iter_mut() {
+            let Some(it) = by.get(off) else { continue };
+            if it.kind != Kind::Say { continue; }
+            let Ok(b) = i::markup_to_bytes(&en.text) else { continue };
+            let right = if it.spk == 1 { i::RIGHT_NARRATION } else { i::RIGHT_SPEECH };
+            if i::layout_message(&b, it.spk, &widths).lines.iter().all(|l| l.x_end <= right) { continue; }
+            if let Ok(t) = reflow(&en.text, it.spk, &widths) { en.text = t; fixed += 1; changed = true; }
+        }
+        if changed { write_entries(&path, &format!("SP{n:02}"), &e)?; }
+    }
+    println!("rewrap: {fixed} entries re-flowed");
     Ok(())
 }
