@@ -37,7 +37,15 @@ impl Font {
             a.copy_from_slice(&sc[f + g * 8..f + g * 8 + 8]);
             a
         }).collect();
-        Font { glyphs, widths: sc[w..w + GLYPH_COUNT].to_vec() }
+        let mut f = Font { glyphs, widths: sc[w..w + GLYPH_COUNT].to_vec() };
+        f.add_icons();
+        f
+    }
+    /// Append the button-prompt icons (codes 0x86.., `prompt.rs`) after the original glyphs; the originals stay as they are.
+    pub fn add_icons(&mut self) {
+        self.glyphs.truncate(GLYPH_COUNT);
+        self.widths.truncate(GLYPH_COUNT);
+        for (g, w) in crate::prompt::icon_glyphs() { self.glyphs.push(g); self.widths.push(w); }
     }
 }
 

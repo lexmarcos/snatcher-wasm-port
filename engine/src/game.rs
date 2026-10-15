@@ -93,6 +93,8 @@ pub struct Engine {
     pub font: Option<Font>,
     pub names: Vec<(u8, Vec<u8>)>,
     pub input: Option<Input>,
+    /// Button-prompt style set by the front end (`set_prompt`); `Genesis` = the original letters (default, fidelity runs).
+    pub prompt: sncore::prompt::Prompt,
     pub vm: Vm,
     pub script: Vec<u8>,
     pub phase: VmPhase,
@@ -165,7 +167,7 @@ impl Engine {
     pub fn new() -> Self {
         let (vm, _) = Vm::new_game();
         Engine {
-            files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None,
+            files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None, prompt: Default::default(),
             vm, script: vec![], phase: VmPhase::Stopped, queue: vec![], qi: 0, seq_step: 0, seq_timer: 0, msg: None,
             text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, mod_delay: 0, voice_age: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
@@ -660,8 +662,17 @@ impl Engine {
         crate::menus::list_cursor(self, cursor);
     }
 
+    /// The script text area as the message box prints it: button placeholders EC/EE/F0 resolved (letter, or icon when a
+    /// prompt style is set) and the word START replaced by its icon. Same length as the script text: offsets stay valid.
+    pub fn message_text(&self) -> Vec<u8> {
+        let t = self.script.get(0x3800..).unwrap_or(&[]);
+        let mut v: Vec<u8> = t.iter().map(|&c| self.letter(c)).collect();
+        self.prompt.subst_start(&mut v);
+        v
+    }
+
     fn letter(&self, c: u8) -> u8 {
-        match (c, self.input.as_ref()) { (0xEC | 0xEE | 0xF0, Some(i)) => i.button_letter(c), _ => c }
+        match (c, self.input.as_ref()) { (0xEC | 0xEE | 0xF0, Some(i)) => self.prompt.button(i.button_letter(c)), _ => c }
     }
 
     fn menu_frame(&mut self) {
@@ -1014,10 +1025,7 @@ impl Engine {
         let confirm = self.input.as_ref().map(|i| i.pressed & btn::L_CONFIRM != 0).unwrap_or(false);
         let fast = self.input.as_ref().map(|i| i.held & btn::L_CONFIRM != 0).unwrap_or(false) || self.regs.get_b(0x9727) != 0;
         if fast && self.text.busy { self.text.set_fast(); }
-        let text: Vec<u8> = {
-            let t = self.script.get(0x3800..).unwrap_or(&[]);
-            t.iter().map(|&c| self.letter(c)).collect()
-        };
+        let text = self.message_text();
         let mut m = self.msg.take().unwrap();
         let st0 = if self.text.busy { 99 } else { m.state };
         let ev = m.tick(&mut self.text, &text, &self.names, confirm);

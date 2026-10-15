@@ -65,6 +65,12 @@ impl Game {
     pub fn set_sfx_len(&mut self, bank: u16, id: u16, frames: u32, chan: u8) { self.e.ix.sfx_len.insert((bank, id), (frames, chan)); }
     /// FM sound duration in frames; `loops` = true for sounds with a loop (never "done").
     pub fn set_fm_len(&mut self, id: u16, frames: u32, loops: bool) { self.e.fm_len.insert(id, if loops { None } else { Some(frames) }); }
+    /// Button prompts (docs/re/web.md): `style` 0 = original letters (default), 1 Xbox, 2 PlayStation, 3 Switch, 4 keyboard icons.
+    /// `a`/`b`/`c`/`start` = id of the physical control that produces Genesis A/B/C/START (`sncore::prompt::CTL_*` / `KEY_*`).
+    /// The text placeholders EC/EE/F0 (via the pad configuration `$78BA`) and the word START then print that control's icon.
+    pub fn set_prompt(&mut self, style: u8, a: u8, b: u8, c: u8, start: u8) { self.e.prompt.set(style, a, b, c, start); }
+    /// Change only the style (keeps the control ids).
+    pub fn set_prompt_style(&mut self, style: u8) { self.e.prompt.style = sncore::prompt::Style::from_u8(style); }
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).
     pub fn tick(&mut self, pad: u16) {
         self.e.tick(pad as u8);
