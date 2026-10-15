@@ -50,7 +50,7 @@ Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style,
 Workflow per batch: `snt i18n-ctx` (dump, work/ only) -> write a patch `SPnn@off | ~text` (`~` = auto line breaks, `|` = forced break) -> `snt i18n-import` + `snt i18n-check` (0 failures) ->
 `snt i18n-preview` screenshots -> review subagent (sonnet, prompt in work/i18n/review_prompt.txt, not committed) -> apply fixes -> commit `i18n: SPxx translated + reviewed (score n/5)` -> add the file to `i18n/pt-BR/reviews.tsv`.
 Shared menu labels: `i18n/pt-BR/menu.json` (`snt i18n-learn-menu`, `snt i18n-apply-menu`).
-NEXT: SP28 SP29 (translated, review pending), SP30 (translating), then SP32 ... in file order; SP01 (developer debug menu) last.
+STATUS (2026-10-15): every script file SP00-SP38 is translated and reviewed (all 4/5; SP01 debug menu intentionally English, SP31 has no text). Next: (1) text drawn in graphics, see docs/i18n-graphics.md; (2) pt-BR voice dubbing (ElevenLabs project); (3) play-test in pt-BR and collect wording fixes (small patch + `snt i18n-check`); (4) optional: an accented-capital glyph redraw (accent now sits one pixel low).
 Warning: never re-import an old whole patch file after fixes were applied (it overwrites the fixes); edit the patch source or import a small fix patch.
 
 ## Controllers (Xbox / PlayStation / Switch, button icons) – status 2026-10-15
