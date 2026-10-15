@@ -112,7 +112,7 @@ Non-standard pads (`RAW` in `gamepads.ts`, e.g. Firefox/Linux for a pad it does 
 hat axes 6/7 and analog triggers from axes when the layout has no trigger buttons (rest value -1 or 0, "pressed" above 0.5).
 | browser / OS / pad | status |
 |---|---|
-| standard layout logic, D-pad, dead zone, remap, all UI | **tested** with a stubbed `navigator.getGamepads` in headless Chrome 1xx/Linux (`web/test/pads.ts`) |
+| standard layout logic, D-pad, dead zone, remap, all UI | **tested** with a stubbed `navigator.getGamepads` in headless Chrome 154 (chrome-headless-shell)/Linux (`web/test/pads.ts`) |
 | real Xbox / DualShock / DualSense / Pro Controller in Chrome or Edge | **HYPOTHESIS** (no hardware): standard mapping assumed from Chrome's behaviour (positional) |
 | Firefox/Linux raw order for Xbox (xpad: A B X Y LB RB Back Start Guide L3 R3, hat axes 6/7, triggers axes 2/5) | HYPOTHESIS from the kernel driver and the SDL controller database |
 | Firefox/Linux raw order for DualShock 4 / DualSense (cross circle triangle square L1 R1 L2 R2 Share Options PS L3 R3) | HYPOTHESIS (SDL database line `a:b0,b:b1,x:b3,y:b2,start:b9`) |
@@ -157,7 +157,7 @@ Where the game names a button (strings dump `snt script-strings assets/raw/files
 | SP06 @4532 @5584 @57c2 @5a8d @5ace @5b03, SP07 @03ca @1257 | "GUN'S START BUTTON" / "JUSTIFIER'S START BUTTON" (gun owners) | no: names the light gun's own button (the mouse); text stays |
 | SP06 @703c, SP19 @1a31 @1b3d @1c34, SP20 @2159 | "rapid fire button" of the control pad | no: a switch on the original pad, not a game button |
 | SP29 @007d/@0794/@080b/@08a1, SP30 @0809/@0ad3 | "PRESS BUTTON", "this button" | no: buttons of in-game machines |
-| title screen "PUSH START" and options/pad-configuration rows (A,B,C) | baked into tile graphics/sprites (`title.rs`, objects 32-36) | **later**: would need new tile art or text drawn over it |
+| title screen "PUSH START" and options/pad-configuration rows (A,B,C) | no such string in SUBCODE.BIN, IP.BIN or any SP file (`grep -a -i "push start\|press start\|button"` only hits SP*.BIN); the options window ("OPTIONS", "DEVICE", the A/B/C configuration rows) is drawn from tile graphics and sprites (`title.rs`, objects 32-36; seen in the player_path frames) | **later**: would need new tile art or text drawn over it |
 | light-gun calibration screen, other module screens | graphics | later |
 Help panel (`web/src/main.ts` `renderControls`): table of the active device with inline SVG icons (own shapes, no icon packs).
 
