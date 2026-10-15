@@ -1,0 +1,28 @@
+{
+  "file": "SP30",
+  "lang": "pt-BR",
+  "entries": {
+    "0015": {"h": "a0905244", "t": "ÁREA"},
+    "001a": {"h": "244923df", "t": "AO REDOR"},
+    "0035": {"h": "4f19cbe0", "t": "TETO"},
+    "0048": {"h": "d0c3b4c7", "t": "CONTINUAR INVESTIGAÇÃO"},
+    "0066": {"h": "47894122", "t": "NÃO SALVAR"},
+    "0086": {"h": "a6ad858e", "t": "PORTAS"},
+    "00a8": {"h": "79836105", "t": "SAIR"},
+    "00ad": {"h": "9c3b7e3d", "t": "CHÃO"},
+    "00bc": {"h": "4100e254", "t": "INVESTIGAR"},
+    "00c8": {"h": "e4e08a96", "t": "OLHAR"},
+    "00f0": {"h": "c2064154", "t": "IR"},
+    "0105": {"h": "58c38c29", "t": "SAIR DA INVESTIGAÇÃO"},
+    "0140": {"h": "ca52e188", "t": "SALVAR"},
+    "0145": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "014c": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "0153": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "015a": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "0161": {"h": "b22825e3", "t": "PRATELEIRA"},
+    "0170": {"h": "d12cbba0", "t": "CHEIRAR"},
+    "019a": {"h": "d9adb08f", "t": "FALAR"},
+    "019f": {"h": "265620f6", "t": "USAR METAL GEAR"},
+    "01bb": {"h": "aca75e15", "t": "PAREDE"}
+  }
+}

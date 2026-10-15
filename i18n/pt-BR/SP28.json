@@ -1,0 +1,33 @@
+{
+  "file": "SP28",
+  "lang": "pt-BR",
+  "entries": {
+    "0036": {"h": "a0905244", "t": "ÁREA"},
+    "003b": {"h": "244923df", "t": "AO REDOR"},
+    "0047": {"h": "5cad7d72", "t": "PERGUNTAR"},
+    "005d": {"h": "d37765d2", "t": "DINHEIRO"},
+    "0062": {"h": "7c3474dd", "t": "PEÇA DE XADREZ"},
+    "006e": {"h": "47894122", "t": "NÃO SALVAR"},
+    "0079": {"h": "cb1194a9", "t": "PORTA"},
+    "008d": {"h": "48124279", "t": "ENTRAR NA TURBOCYCLE"},
+    "009e": {"h": "18d52e24", "t": "PROVAS"},
+    "00a7": {"h": "79836105", "t": "SAIR"},
+    "00ac": {"h": "9c3b7e3d", "t": "CHÃO"},
+    "00cc": {"h": "d67b36c1", "t": "ENTRAR"},
+    "00f7": {"h": "4100e254", "t": "INVESTIGAR"},
+    "0114": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "0155": {"h": "84af5ca6", "t": "OUVIR"},
+    "0176": {"h": "e4e08a96", "t": "OLHAR"},
+    "0189": {"h": "1f8f3dee", "t": "FÓSFOROS"},
+    "0196": {"h": "c2064154", "t": "IR"},
+    "01da": {"h": "5276cf08", "t": "PERTENCES"},
+    "0216": {"h": "ca52e188", "t": "SALVAR"},
+    "021b": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "0222": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "0229": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "0230": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "0244": {"h": "d12cbba0", "t": "CHEIRAR"},
+    "024a": {"h": "d9adb08f", "t": "FALAR"},
+    "0256": {"h": "265620f6", "t": "USAR METAL GEAR"}
+  }
+}

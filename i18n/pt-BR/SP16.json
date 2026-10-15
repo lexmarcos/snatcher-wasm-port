@@ -1,0 +1,12 @@
+{
+  "file": "SP16",
+  "lang": "pt-BR",
+  "entries": {
+    "0000": {"h": "d0c3b4c7", "t": "CONTINUAR INVESTIGAÇÃO"},
+    "0015": {"h": "80a0ec3e", "t": "CONTINUAR INVESTIGAÇÃO"},
+    "002c": {"h": "47894122", "t": "NÃO SALVAR"},
+    "007b": {"h": "58c38c29", "t": "SAIR DA INVESTIGAÇÃO"},
+    "008c": {"h": "5aa56478", "t": "SAIR DA INVESTIGAÇÃO"},
+    "009f": {"h": "ca52e188", "t": "SALVAR"}
+  }
+}

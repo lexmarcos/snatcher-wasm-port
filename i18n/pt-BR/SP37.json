@@ -1,0 +1,29 @@
+{
+  "file": "SP37",
+  "lang": "pt-BR",
+  "entries": {
+    "0000": {"h": "a0905244", "t": "ÁREA"},
+    "0005": {"h": "926812b5", "t": "PRÉDIO"},
+    "000e": {"h": "4f19cbe0", "t": "TETO"},
+    "0016": {"h": "06fad72a", "t": "CADEIRA"},
+    "001c": {"h": "75e1337b", "t": "CADEIRAS"},
+    "004d": {"h": "d0c3b4c7", "t": "CONTINUAR INVESTIGAÇÃO"},
+    "006b": {"h": "47894122", "t": "NÃO SALVAR"},
+    "0076": {"h": "cb1194a9", "t": "PORTA"},
+    "007b": {"h": "48124279", "t": "ENTRAR NA TURBOCYCLE"},
+    "008c": {"h": "13a90091", "t": "SAIR DA TURBOCYCLE"},
+    "009c": {"h": "d67b36c1", "t": "ENTRAR"},
+    "00a6": {"h": "4100e254", "t": "INVESTIGAR"},
+    "00bc": {"h": "84af5ca6", "t": "OUVIR"},
+    "00c3": {"h": "e4e08a96", "t": "OLHAR"},
+    "00e1": {"h": "58c38c29", "t": "SAIR DA INVESTIGAÇÃO"},
+    "00f2": {"h": "ca52e188", "t": "SALVAR"},
+    "00f7": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "00fe": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "0105": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "010c": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "0139": {"h": "c89b0059", "t": "CARROCERIA"},
+    "0149": {"h": "265620f6", "t": "USAR METAL GEAR"},
+    "0158": {"h": "ad2dba48", "t": "VIDEOFONE"}
+  }
+}

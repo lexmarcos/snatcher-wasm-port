@@ -1,0 +1,33 @@
+{
+  "file": "SP24",
+  "lang": "pt-BR",
+  "entries": {
+    "0000": {"h": "a74c86f3", "t": "SOBRE OS SNATCHERS"},
+    "0010": {"h": "a0905244", "t": "ÁREA"},
+    "0015": {"h": "244923df", "t": "AO REDOR"},
+    "0021": {"h": "5cad7d72", "t": "PERGUNTAR"},
+    "002f": {"h": "d37765d2", "t": "DINHEIRO"},
+    "0038": {"h": "7c3474dd", "t": "PEÇA DE XADREZ"},
+    "0048": {"h": "47894122", "t": "NÃO SALVAR"},
+    "0053": {"h": "cb1194a9", "t": "PORTA"},
+    "0058": {"h": "48124279", "t": "ENTRAR NA TURBOCYCLE"},
+    "0069": {"h": "18d52e24", "t": "PROVAS"},
+    "0072": {"h": "79836105", "t": "SAIR"},
+    "0077": {"h": "d67b36c1", "t": "ENTRAR"},
+    "00af": {"h": "4100e254", "t": "INVESTIGAR"},
+    "00bb": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "00d3": {"h": "e4e08a96", "t": "OLHAR"},
+    "00d8": {"h": "c2064154", "t": "IR"},
+    "0104": {"h": "5276cf08", "t": "PERTENCES"},
+    "012a": {"h": "ca52e188", "t": "SALVAR"},
+    "012f": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "0136": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "013d": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "0144": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "014b": {"h": "a699b27c", "t": "MOSTRAR"},
+    "015e": {"h": "d12cbba0", "t": "CHEIRAR"},
+    "016b": {"h": "265620f6", "t": "USAR METAL GEAR"},
+    "0187": {"h": "ad2dba48", "t": "VIDEOFONE"},
+    "0192": {"h": "714851dd", "t": "JANELA"}
+  }
+}

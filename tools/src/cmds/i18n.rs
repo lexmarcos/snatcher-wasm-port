@@ -8,6 +8,7 @@
 //!   snt i18n-stats  <files-dir>                                widths of the original text (measuring aid)
 //!   snt i18n-sheet  <files-dir> <out.png> [text ...]           render the font + pt-BR glyphs and sample strings
 //!   snt i18n-preview <lang-dir> <files-dir> <out.png> <SPnn> [off|longest:N|sample:N ...]   draw translated messages / menu items with the real text renderer
+//!   snt i18n-apply-menu <lang-dir> <files-dir> [--force]       fill common menu labels from <lang-dir>/menu.json (keyed by hash)
 //!   snt i18n-status <lang-dir> <files-dir>                     translated / total per file
 use sncore::i18n as i;
 use sncore::script::{self as sc, Node, Operand};
@@ -27,6 +28,9 @@ pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
         "i18n-status" if args.len() == 3 => Some(status(&args[1], &args[2])),
         "i18n-names" if args.len() == 2 => Some(names_dump(&args[1])),
         "i18n-preview" if args.len() >= 5 => Some(preview(&args[1], &args[2], &args[3], &args[4], &args[5..])),
+        "i18n-labels" if args.len() == 2 => Some(labels(&args[1])),
+        "i18n-apply-menu" if args.len() >= 3 => Some(apply_menu(&args[1], &args[2], args.get(3).map(|s| s == "--force").unwrap_or(false))),
+        "i18n-learn-menu" if args.len() == 3 => Some(learn_menu(&args[1], &args[2])),
         "i18n-kinds" if args.len() == 2 => Some(kind_counts(&args[1])),
         _ => None,
     }
@@ -299,10 +303,13 @@ fn ctx(dir: &str, spn: &str, from: Option<&str>, to: Option<&str>) -> Result<(),
     let to = to.map(|s| u16::from_str_radix(s, 16)).transpose().map_err(|e| e.to_string())?.unwrap_or(0xFFFF);
     let widths = font_widths(dir)?;
     let pt = match std::env::var("I18N_LANG") { Ok(l) => Some(read_entries(&lang_path(&l, &format!("SP{n:02}")))?), Err(_) => None };
+    let hide_done = std::env::var("I18N_HIDE_DONE").is_ok();
     let mut lastlabel = String::new();
     let mut lastscene = String::new();
+    let mut printed: HashSet<u16> = HashSet::new();
     for it in &fd.items {
         if it.off < from || it.off > to { continue; }
+        if hide_done && pt.as_ref().map_or(false, |p| p.contains_key(&it.off)) { continue; }
         if it.label != lastlabel || it.scene != lastscene {
             println!("\n-- {} scene {}", it.label, if it.scene.is_empty() { "?" } else { &it.scene });
             lastlabel = it.label.clone(); lastscene = it.scene.clone();
@@ -312,6 +319,7 @@ fn ctx(dir: &str, spn: &str, from: Option<&str>, to: Option<&str>) -> Result<(),
         let m = i::bytes_to_markup(r);
         match it.kind {
             Kind::Choice => {
+                if hide_done && !printed.insert(it.off) { continue; }
                 let (w, bytes) = i::menu_width(r, &widths);
                 println!("{ind}@{:04x} ? {m}   [menu {w}px {bytes}b]{}", it.off, if it.entry { "  [ENTRY MENU: keep]" } else { "" });
             }
@@ -859,4 +867,91 @@ mod tests {
         assert_eq!(tokens(&a).0, tokens(&b).0);
         assert_eq!(tokens(&i::markup_to_bytes("{btn:F0}{btn:EC}").unwrap()).1, tokens(&i::markup_to_bytes("{btn:EC}{btn:F0}").unwrap()).1);
     }
+}
+
+/// `snt i18n-labels <files>`: unique menu labels with their use counts (work aid for the menu dictionary).
+pub fn labels(dir: &str) -> Result<(), String> {
+    let mut m: BTreeMap<Vec<u8>, (usize, BTreeSet<u8>, bool)> = BTreeMap::new();
+    for n in 0..=38u8 {
+        if !Path::new(&format!("{dir}/SP{n:02}.BIN")).exists() { continue; }
+        let fd = load_file(dir, n)?;
+        let raw = raw_of(&fd);
+        let mut seen = HashSet::new();
+        for it in fd.items.iter().filter(|x| x.kind == Kind::Choice) {
+            if !seen.insert(it.off) { continue; }
+            let e = m.entry(raw[&it.off].to_vec()).or_default();
+            e.0 += 1; e.1.insert(n); e.2 |= it.entry;
+        }
+    }
+    let widths = font_widths(dir)?;
+    let mut v: Vec<_> = m.into_iter().collect();
+    v.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(&b.0)));
+    for (raw, (c, files, entry)) in v {
+        let (w, _) = i::menu_width(&raw, &widths);
+        println!("{c:3} {w:3} {:08x} {}{}  [{}]", i::hash32(&raw), i::bytes_to_markup(&raw), if entry { "  ENTRY" } else { "" }, files.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+    }
+    Ok(())
+}
+
+/// `snt i18n-apply-menu <lang-dir> <files-dir>`: fill every menu label (not text-entry) that has no entry yet from the dictionary
+/// `<lang-dir>/menu.json` ({"labels": {"<hash of the English label>": "<translation>"}}), so common labels (LOOK, TALK, ...) are the same everywhere.
+pub fn apply_menu(lang: &str, dir: &str, force: bool) -> Result<(), String> {
+    let txt = fs::read_to_string(lang_path(lang, "menu")).map_err(|e| format!("menu.json: {e}"))?;
+    let J::Obj(top) = json_parse(&txt)? else { return Err("menu.json: not an object".into()) };
+    let mut dict: HashMap<u32, String> = HashMap::new();
+    for (k, v) in top { if k == "labels" { if let J::Obj(es) = v { for (h, t) in es { if let J::Str(t) = t { dict.insert(u32::from_str_radix(&h, 16).map_err(|e| e.to_string())?, t); } } } } }
+    let mut added = 0;
+    for n in 0..=38u8 {
+        if !Path::new(&format!("{dir}/SP{n:02}.BIN")).exists() { continue; }
+        let fd = load_file(dir, n)?;
+        let raw = raw_of(&fd);
+        let path = lang_path(lang, &format!("SP{n:02}"));
+        let mut e = read_entries(&path)?;
+        let mut changed = false;
+        for it in fd.items.iter().filter(|x| x.kind == Kind::Choice && !x.entry) {
+            let h = i::hash32(raw[&it.off]);
+            if e.contains_key(&it.off) && !(force && dict.contains_key(&h)) { continue; }
+            if let Some(t) = dict.get(&h) { e.insert(it.off, Entry { hash: h, text: t.clone() }); added += 1; changed = true; }
+        }
+        if changed { write_entries(&path, &format!("SP{n:02}"), &e)?; }
+    }
+    println!("apply-menu: {added} entries added");
+    Ok(())
+}
+
+/// `snt i18n-learn-menu <lang-dir> <files-dir>`: add to `menu.json` every translated menu label whose English text is used in two or
+/// more script files (hash -> translation, first translation wins, conflicts are listed), then run `i18n-apply-menu` to spread it.
+pub fn learn_menu(lang: &str, dir: &str) -> Result<(), String> {
+    let path = lang_path(lang, "menu");
+    let mut dict: BTreeMap<u32, String> = BTreeMap::new();
+    if let Ok(txt) = fs::read_to_string(&path) {
+        if let J::Obj(top) = json_parse(&txt)? { for (k, v) in top { if k == "labels" { if let J::Obj(es) = v { for (h, t) in es { if let J::Str(t) = t { dict.insert(u32::from_str_radix(&h, 16).map_err(|e| e.to_string())?, t); } } } } } }
+    }
+    let mut uses: HashMap<u32, BTreeSet<u8>> = HashMap::new();
+    let mut tr: HashMap<u32, Vec<(u8, String)>> = HashMap::new();
+    for n in 0..=38u8 {
+        if !Path::new(&format!("{dir}/SP{n:02}.BIN")).exists() { continue; }
+        let fd = load_file(dir, n)?;
+        let raw = raw_of(&fd);
+        let e = read_entries(&lang_path(lang, &format!("SP{n:02}")))?;
+        for it in fd.items.iter().filter(|x| x.kind == Kind::Choice && !x.entry) {
+            let h = i::hash32(raw[&it.off]);
+            uses.entry(h).or_default().insert(n);
+            if let Some(en) = e.get(&it.off) { let v = tr.entry(h).or_default(); if !v.iter().any(|(f, t)| *f == n && *t == en.text) { v.push((n, en.text.clone())); } }
+        }
+    }
+    let (mut added, mut conflicts) = (0, 0);
+    for (h, v) in &tr {
+        if uses[h].len() < 2 { continue; }
+        let first = &v[0].1;
+        if v.iter().any(|(_, t)| t != first) { conflicts += 1; println!("conflict {h:08x}: {:?}", v); }
+        if !dict.contains_key(h) { dict.insert(*h, first.clone()); added += 1; }
+    }
+    let mut s = String::from("{\n  \"lang\": \"pt-BR\",\n  \"labels\": {\n");
+    let n = dict.len();
+    for (k, (h, t)) in dict.iter().enumerate() { s += &format!("    \"{h:08x}\": {}{}\n", jstr(t), if k + 1 < n { "," } else { "" }); }
+    s += "  }\n}\n";
+    fs::write(&path, s).map_err(|e| e.to_string())?;
+    println!("learn-menu: {added} labels added ({n} in the dictionary), {conflicts} conflicts");
+    Ok(())
 }

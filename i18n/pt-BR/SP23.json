@@ -1,0 +1,27 @@
+{
+  "file": "SP23",
+  "lang": "pt-BR",
+  "entries": {
+    "0068": {"h": "a0905244", "t": "ÁREA"},
+    "006d": {"h": "5cad7d72", "t": "PERGUNTAR"},
+    "0071": {"h": "d37765d2", "t": "DINHEIRO"},
+    "0076": {"h": "7c3474dd", "t": "PEÇA DE XADREZ"},
+    "008a": {"h": "47894122", "t": "NÃO SALVAR"},
+    "009e": {"h": "48124279", "t": "ENTRAR NA TURBOCYCLE"},
+    "00af": {"h": "18d52e24", "t": "PROVAS"},
+    "00c9": {"h": "4100e254", "t": "INVESTIGAR"},
+    "00d5": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "00ed": {"h": "e4e08a96", "t": "OLHAR"},
+    "00f2": {"h": "1f8f3dee", "t": "FÓSFOROS"},
+    "012a": {"h": "5276cf08", "t": "PERTENCES"},
+    "014d": {"h": "ca52e188", "t": "SALVAR"},
+    "0152": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "0159": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "0160": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "0167": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "0181": {"h": "a699b27c", "t": "MOSTRAR"},
+    "01a1": {"h": "9a6bdc14", "t": "USAR"},
+    "01a5": {"h": "265620f6", "t": "USAR METAL GEAR"},
+    "01c1": {"h": "ad2dba48", "t": "VIDEOFONE"}
+  }
+}

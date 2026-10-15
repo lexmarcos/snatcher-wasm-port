@@ -1,0 +1,28 @@
+{
+  "file": "SP27",
+  "lang": "pt-BR",
+  "entries": {
+    "0009": {"h": "a0905244", "t": "ÁREA"},
+    "000e": {"h": "5cad7d72", "t": "PERGUNTAR"},
+    "002a": {"h": "d37765d2", "t": "DINHEIRO"},
+    "002f": {"h": "7c3474dd", "t": "PEÇA DE XADREZ"},
+    "003b": {"h": "47894122", "t": "NÃO SALVAR"},
+    "0087": {"h": "18d52e24", "t": "PROVAS"},
+    "00ad": {"h": "4100e254", "t": "INVESTIGAR"},
+    "00b9": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "00d1": {"h": "e4e08a96", "t": "OLHAR"},
+    "00d6": {"h": "930d8be9", "t": "MÁSCARA"},
+    "00db": {"h": "1f8f3dee", "t": "FÓSFOROS"},
+    "0156": {"h": "5276cf08", "t": "PERTENCES"},
+    "016d": {"h": "ca52e188", "t": "SALVAR"},
+    "0172": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "0179": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "0180": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "0187": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "018e": {"h": "a699b27c", "t": "MOSTRAR"},
+    "0193": {"h": "d12cbba0", "t": "CHEIRAR"},
+    "0199": {"h": "3f70cfd7", "t": "ESPIRRAR"},
+    "01a6": {"h": "d9adb08f", "t": "FALAR"},
+    "01b2": {"h": "265620f6", "t": "USAR METAL GEAR"}
+  }
+}

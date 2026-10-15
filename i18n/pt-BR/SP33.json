@@ -1,0 +1,31 @@
+{
+  "file": "SP33",
+  "lang": "pt-BR",
+  "entries": {
+    "000c": {"h": "a0905244", "t": "ÁREA"},
+    "0044": {"h": "4f19cbe0", "t": "TETO"},
+    "004c": {"h": "90a5bf2c", "t": "SALA DO CHEFE"},
+    "005b": {"h": "53deaedb", "t": "SALA DO COMPUTADOR"},
+    "0069": {"h": "80a0ec3e", "t": "CONTINUAR INVESTIGAÇÃO"},
+    "0080": {"h": "74bd1fb8", "t": "MESA"},
+    "0085": {"h": "71137b9d", "t": "SALA DOS DETETIVES"},
+    "0096": {"h": "47894122", "t": "NÃO SALVAR"},
+    "00a1": {"h": "cb1194a9", "t": "PORTA"},
+    "00a6": {"h": "e28764d3", "t": "SALA DE ENGENHARIA"},
+    "00b7": {"h": "c42eea38", "t": "FRENTE"},
+    "00bd": {"h": "d67b36c1", "t": "ENTRAR"},
+    "00ea": {"h": "4100e254", "t": "INVESTIGAR"},
+    "00f6": {"h": "e4e08a96", "t": "OLHAR"},
+    "010b": {"h": "c2064154", "t": "IR"},
+    "0170": {"h": "615b40b0", "t": "TREINO"},
+    "0179": {"h": "5aa56478", "t": "SAIR DA INVESTIGAÇÃO"},
+    "018c": {"h": "ca52e188", "t": "SALVAR"},
+    "0191": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "0198": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "019f": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "01a6": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "01b4": {"h": "4671ac7d", "t": "ESTANDE DE TIRO"},
+    "0231": {"h": "590c8fca", "t": "USAR JORDAN"},
+    "023c": {"h": "265620f6", "t": "USAR METAL GEAR"}
+  }
+}

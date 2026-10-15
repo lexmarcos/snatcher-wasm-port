@@ -1,0 +1,29 @@
+{
+  "file": "SP22",
+  "lang": "pt-BR",
+  "entries": {
+    "0000": {"h": "d37765d2", "t": "DINHEIRO"},
+    "0005": {"h": "06fad72a", "t": "CADEIRA"},
+    "000b": {"h": "7c3474dd", "t": "PEÇA DE XADREZ"},
+    "0020": {"h": "47894122", "t": "NÃO SALVAR"},
+    "002b": {"h": "18d52e24", "t": "PROVAS"},
+    "0034": {"h": "4100e254", "t": "INVESTIGAR"},
+    "0040": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "0058": {"h": "e4e08a96", "t": "OLHAR"},
+    "005d": {"h": "3bb15d76", "t": "FÓSFORO"},
+    "0063": {"h": "1f8f3dee", "t": "FÓSFOROS"},
+    "0070": {"h": "9a301739", "t": "MONITOR"},
+    "0078": {"h": "c2064154", "t": "IR"},
+    "008c": {"h": "18a265c3", "t": "FOTO"},
+    "0092": {"h": "c17edae9", "t": "QUADRO"},
+    "009a": {"h": "5276cf08", "t": "PERTENCES"},
+    "00a6": {"h": "5e81c5dc", "t": "PÔSTER"},
+    "00b8": {"h": "ca52e188", "t": "SALVAR"},
+    "00bd": {"h": "ffd853eb", "t": "ARQUIVO 1"},
+    "00c4": {"h": "00d8557e", "t": "ARQUIVO 2"},
+    "00cb": {"h": "01d85711", "t": "ARQUIVO 3"},
+    "00d2": {"h": "02d858a4", "t": "ARQUIVO 4"},
+    "00e0": {"h": "265620f6", "t": "USAR METAL GEAR"},
+    "00fc": {"h": "ad2dba48", "t": "VIDEOFONE"}
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "file": "SP35",
+  "lang": "pt-BR",
+  "entries": {
+    "0031": {"h": "5cad7d72", "t": "PERGUNTAR"},
+    "0056": {"h": "b14354e9", "t": "LIGAR"},
+    "005b": {"h": "d37765d2", "t": "DINHEIRO"},
+    "0060": {"h": "7c3474dd", "t": "PEÇA DE XADREZ"},
+    "0107": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
+    "011f": {"h": "e4e08a96", "t": "OLHAR"},
+    "012e": {"h": "3bb15d76", "t": "FÓSFORO"},
+    "01d6": {"h": "d9adb08f", "t": "FALAR"}
+  }
+}
