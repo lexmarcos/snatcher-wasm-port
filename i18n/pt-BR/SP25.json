@@ -37,6 +37,27 @@
     "016b": {"h": "f1d775fc", "t": "TEMPLO"},
     "017e": {"h": "265620f6", "t": "USAR METAL GEAR"},
     "018d": {"h": "7b8b9247", "t": "MEMÓRIA DE VÍDEO"},
-    "019a": {"h": "714851dd", "t": "JANELA"}
+    "019a": {"h": "714851dd", "t": "JANELA"},
+    "0b86": {"h": "9938b2cc", "t": "O que é isto?"},
+    "1bd8": {"h": "3e1e3a55", "t": "Esta é a sua carteira Junker. Ela{nl}lhe dá todos os seus privilégios{nl}especiais. Cuide bem dela."},
+    "1c30": {"h": "8c0413d6", "t": "Esse é o dinheiro para despesas{nl}que a agência lhe deu."},
+    "1cc1": {"h": "75d82c19", "t": "Essa é a peça de xadrez que o{nl}Gibson tinha."},
+    "1eba": {"h": "f3df227a", "t": "Tem um chip de circuito integrado{nl}embutido com todos os seus dados{nl}pessoais."},
+    "1eff": {"h": "e07bb31f", "t": "Em princípio, você pode cobrar da{nl}Agência todo o dinheiro necessário{nl}para a sua investigação."},
+    "1fb3": {"h": "6825e171", "t": "Essa é uma peça de xadrez de{nl}madeira. Creio que seja a rainha,{nl}que fica ao lado do Rei."},
+    "22fc": {"h": "27e40469", "t": "Certo, vou salvar tudo o que{nl}aconteceu até agora."},
+    "233c": {"h": "02041057", "t": "Em qual número de arquivo quer{nl}salvar?"},
+    "236c": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "239a": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "23d1": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "2401": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "242f": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "2466": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "2496": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "24c4": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "24fb": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "252b": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "2559": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "2590": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."}
   }
 }

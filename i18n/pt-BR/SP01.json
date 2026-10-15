@@ -2,6 +2,11 @@
   "file": "SP01",
   "lang": "pt-BR",
   "entries": {
-    "00f2": {"h": "471453f6", "t": "RUÍNAS DA FÁBRICA"}
+    "00f2": {"h": "471453f6", "t": "RUÍNAS DA FÁBRICA"},
+    "04fe": {"h": "abc1103e", "t": "Vou começar no {c2}nível introdutório{c1}."},
+    "0525": {"h": "d6475888", "t": "Boa sorte!"},
+    "0530": {"h": "d6475888", "t": "Boa sorte!"},
+    "053b": {"h": "9cdc53eb", "t": "{c4}Insectors!{c1} Use a blaster, Gillian!{auto}"},
+    "0564": {"h": "9cdc53eb", "t": "{c4}Insectors!{c1} Use a blaster, Gillian!{auto}"}
   }
 }

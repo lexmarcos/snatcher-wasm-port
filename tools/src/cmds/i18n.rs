@@ -9,6 +9,7 @@
 //!   snt i18n-sheet  <files-dir> <out.png> [text ...]           render the font + pt-BR glyphs and sample strings
 //!   snt i18n-preview <lang-dir> <files-dir> <out.png> <SPnn> [off|longest:N|sample:N ...]   draw translated messages / menu items with the real text renderer
 //!   snt i18n-apply-menu <lang-dir> <files-dir> [--force]       fill common menu labels from <lang-dir>/menu.json (keyed by hash)
+//!   snt i18n-fill-dups <lang-dir> <files-dir>                  reuse a translation for identical English strings in other files (same speaker class)
 //!   snt i18n-status <lang-dir> <files-dir>                     translated / total per file
 use sncore::i18n as i;
 use sncore::script::{self as sc, Node, Operand};
@@ -31,6 +32,7 @@ pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
         "i18n-labels" if args.len() == 2 => Some(labels(&args[1])),
         "i18n-apply-menu" if args.len() >= 3 => Some(apply_menu(&args[1], &args[2], args.get(3).map(|s| s == "--force").unwrap_or(false))),
         "i18n-learn-menu" if args.len() == 3 => Some(learn_menu(&args[1], &args[2])),
+        "i18n-fill-dups" if args.len() == 3 => Some(fill_dups(&args[1], &args[2])),
         "i18n-kinds" if args.len() == 2 => Some(kind_counts(&args[1])),
         _ => None,
     }
@@ -963,5 +965,46 @@ pub fn learn_menu(lang: &str, dir: &str) -> Result<(), String> {
     s += "  }\n}\n";
     fs::write(&path, s).map_err(|e| e.to_string())?;
     println!("learn-menu: {added} labels added ({n} in the dictionary), {conflicts} conflicts");
+    Ok(())
+}
+
+/// `snt i18n-fill-dups <lang-dir> <files-dir>`: strings (SAY and CHOICE, not text-entry) without an entry whose English text equals an already translated
+/// string (same hash and the same speaker kind) get the same translation; entries that would fail the geometry check are skipped and listed.
+pub fn fill_dups(lang: &str, dir: &str) -> Result<(), String> {
+    let widths = font_widths(dir)?;
+    let mut known: HashMap<(u32, u8), String> = HashMap::new(); // (hash, speaker class) -> text
+    let class = |it: &Item| -> u8 { match it.kind { Kind::Choice => 9, Kind::Say => it.spk.min(2) } };
+    let mut files = vec![];
+    for n in 0..=38u8 {
+        if !Path::new(&format!("{dir}/SP{n:02}.BIN")).exists() { continue; }
+        let fd = load_file(dir, n)?;
+        let e = read_entries(&lang_path(lang, &format!("SP{n:02}")))?;
+        let raw = raw_of(&fd);
+        for it in &fd.items { if let Some(en) = e.get(&it.off) { known.entry((i::hash32(raw[&it.off]), class(it))).or_insert(en.text.clone()); } }
+        files.push(n);
+    }
+    let (mut added, mut skipped) = (0, 0);
+    for n in files {
+        let fd = load_file(dir, n)?;
+        let raw = raw_of(&fd);
+        let path = lang_path(lang, &format!("SP{n:02}"));
+        let mut e = read_entries(&path)?;
+        let mut changed = false;
+        for it in fd.items.iter().filter(|x| !x.entry) {
+            if e.contains_key(&it.off) { continue; }
+            let h = i::hash32(raw[&it.off]);
+            let Some(t) = known.get(&(h, class(it))) else { continue };
+            let Ok(b) = i::markup_to_bytes(t) else { continue };
+            let ok = match it.kind {
+                Kind::Choice => i::menu_width(&b, &widths).0 <= i::RIGHT_MENU,
+                Kind::Say => { let (x0, right) = if it.spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) }; let _ = x0; i::layout_message(&b, it.spk, &widths).lines.iter().all(|l| l.x_end <= right) && i::layout_message(&b, it.spk, &widths).pages <= i::layout_message(raw[&it.off], it.spk, &widths).pages }
+            };
+            if !ok { skipped += 1; println!("skipped SP{n:02}@{:04x} (does not fit as is)", it.off); continue; }
+            e.insert(it.off, Entry { hash: h, text: t.clone() });
+            added += 1; changed = true;
+        }
+        if changed { write_entries(&path, &format!("SP{n:02}"), &e)?; }
+    }
+    println!("fill-dups: {added} entries added, {skipped} skipped");
     Ok(())
 }

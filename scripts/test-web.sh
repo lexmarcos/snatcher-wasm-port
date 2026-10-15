@@ -13,6 +13,7 @@ if ! (exec 3<>/dev/tcp/127.0.0.1/"$PORT") 2>/dev/null; then
   sleep 1
 fi
 bun test/ui.ts "$out"
+bun test/lang.ts "$out"
 bun test/pads.ts "$out"
 bun test/shot.ts newgame "$out/shot-newgame.png" 180
 bun test/shot.ts "scene=SP01:0" "$out/shot-sp01.png" 200

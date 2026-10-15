@@ -6,6 +6,7 @@
     "001a": {"h": "244923df", "t": "AO REDOR"},
     "0035": {"h": "4f19cbe0", "t": "TETO"},
     "0048": {"h": "d0c3b4c7", "t": "CONTINUAR INVESTIGAÇÃO"},
+    "005d": {"h": "c47e57c3", "t": "TAMPO DA MESA"},
     "0066": {"h": "47894122", "t": "NÃO SALVAR"},
     "0086": {"h": "a6ad858e", "t": "PORTAS"},
     "00a8": {"h": "79836105", "t": "SAIR"},
@@ -24,6 +25,20 @@
     "0170": {"h": "d12cbba0", "t": "CHEIRAR"},
     "019a": {"h": "d9adb08f", "t": "FALAR"},
     "019f": {"h": "265620f6", "t": "USAR METAL GEAR"},
-    "01bb": {"h": "aca75e15", "t": "PAREDE"}
+    "01bb": {"h": "aca75e15", "t": "PAREDE"},
+    "383b": {"h": "27e40469", "t": "Certo, vou salvar tudo o que{nl}aconteceu até agora."},
+    "387b": {"h": "02041057", "t": "Em qual número de arquivo quer{nl}salvar?"},
+    "38ab": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "38d9": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "3910": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "3940": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "396e": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "39a5": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "39d5": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "3a03": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "3a3a": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "3a6a": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
+    "3a98": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
+    "3acf": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."}
   }
 }
