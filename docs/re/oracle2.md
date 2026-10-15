@@ -47,3 +47,23 @@ Colours: the core outputs the VDP levels 0,34,68,...,238 (3-bit DAC), the HLE re
 - ~730-790 emulated frames/s for the bare core with Nuked YM2612 on this machine, ~500 frames/s with trace + audio capture (12 core PC).
 - Determinism: the same scenario run twice gives byte-identical `trace.jsonl`, `a.wav` and PNGs (checked on `scenarios/intro_real.json`, 2500 frames).
   Save states are the core's serialize blob; load + continue is exact (menu ready at the same frame as in the original run).
+
+## Verified against the HLE oracle (phase 2)
+Method: `scenario2.py scenarios/intro_real.json --match ../oracle/out/refs` (event-aligned intro; every 3rd frame is compared with the HLE reference PNGs after
+`normalize_levels`, which maps the core's colour levels 0..238 to the HLE renderer's `L*36`).
+| reference | differing pixels (of 57344) | game frame in oracle2 |
+|---|---|---|
+| copyright, konami_laser, konami_logo, title, options, disclaimer, omni_building, omni_caption, act1, junker_hq_mika, junker_menu, mika_reply | **0** (all 12 identical to the HLE PNGs) | e.g. title 1346, options 1394, act1 3971, junker_hq_mika 4457 |
+- Message box palette split (H-INT / IE1, M:0xFF0C4A, `scenarios/hint_check.json`): on the real BIOS the Mika dialogue panel is dark (black background, white text),
+  VDP reg 0 at the end of the frame = 0x04 (IE1 off, the handler's last write), CRAM 0..3 = 000/1FF/03F/11F in the core's internal format (no 0x0EEE white). The 2026-10-15 bug fix is confirmed on real code.
+- Differences found and their class:
+  1. **Load time** (CD access, core model): boot to SUBCODE running (`$7840` = 6) HLE frame 25, real BIOS 234 (+209: BIOS boot-to-game load of FMWR_1, SUBCODE, PCM data with a 12-frame
+     drive latency per read); title ready (`$7896` = 9) 1140 vs 1342. The copyright + Konami logo phase (`$7842` = 0) is *shorter* on the real BIOS (837 vs 967 frames, -13 %): CPU-bound
+     work (LZ decompression) runs faster there; GPGX's s68k/m68k cycle tables vs Musashi's, not investigated further.
+  2. **Real BIOS behaviour the HLE gets wrong**: after a game over / QUIT INVESTIGATION (VM state 4) the SP reloads SUBCODE and the game restarts at copyright -> Konami logo -> title
+     (the HLE stays black, see "GAME OVER" below). The HLE also zeroes PRG-RAM; the real console keeps BIOS leftovers in `$9DC0..` (boot-screen text), harmless for the game flow tested.
+  3. **Colour scale**: the core outputs the DAC levels 0,34,..,238 (pure white = #EEEEEE), the HLE renderer 0..252; not a game difference (normalised on compare).
+  4. **Gun**: GPGX latches the HV counter at exactly the aimed pixel (`raw X = x`, `raw Y = y`, no jitter), the HLE model reports (x - 66, y + 1) with jitter; the game's calibration cancels
+     the offsets, see "Shooting" below.
+- Gotcha: a libretro option that is not set reads as NULL; `genesis_plus_gx_gun_input` NULL selects *touchscreen*. `build.sh` therefore generates `build/o2_defaults.h` from the core's own option table
+  (declared defaults). Declared defaults include a 4 Mbit RAM cartridge; `Machine2` sets `cart_size = disabled`.

@@ -14,7 +14,9 @@ os.environ['ORACLE'] = '2' if kind == '2' else 'hle'
 from fid_common import oracle_jump, patch_cdtime
 patch_cdtime()
 m = new_machine(kind)
-oracle_jump(m, jump, 300)
+if jump: oracle_jump(m, jump, 300)
+else:
+    for _ in range(300): m.step_frame(capture=False)   # Junker HQ anchor (fid_play default)
 m.add_hook('sub', 0xFFC4)
 press = {e[0]: e[1] for e in json.load(open(padf))}
 s = m.sub
