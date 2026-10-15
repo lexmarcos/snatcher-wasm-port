@@ -29,6 +29,7 @@ pub enum Ev {
     Voice { id: u16, pc: usize },
     Say { spk: u8, text: u16, pc: usize },
     WaitVoice,
+    #[allow(dead_code)]
     Wait(u16),
     Scene(u16),
     Goto(u16),
@@ -593,7 +594,7 @@ fn inventory(dir: &str, opts: &[String]) -> Result<(), String> {
 
     // ---- per clip (unique voice id)
     #[derive(Default)]
-    struct Clip { secs: f64, kind: u8, n: usize, vo: usize, unk: usize, wt: usize, pa: usize, reach: usize, dbg_only: bool, files: BTreeSet<u8>, first: (u8, usize), scenes: BTreeSet<String> }
+    struct Clip { secs: f64, kind: u8, n: usize, vo: usize, unk: usize, wt: usize, pa: usize, reach: usize, dbg_only: bool, files: BTreeSet<u8>, first: (u8, usize) }
     let mut clips: BTreeMap<u16, Clip> = BTreeMap::new();
     for r in rows.iter().filter(|r| r.class != "bank") {
         let c = clips.entry(r.t.id).or_default();
