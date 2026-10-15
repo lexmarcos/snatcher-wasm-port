@@ -145,6 +145,8 @@ pub struct Engine {
     pub module: Option<Box<dyn Module>>,
     /// frames before the late-game module's first tick (mode 6 steps 0-2)
     pub mod_delay: u8,
+    /// frames since the current PCM voice started (periodic stream refill stalls)
+    pub voice_age: u32,
     /// intro part counter (DATA_D1 then DATA_D0, table S:0x14AA0)
     pub intro_part: u8,
     /// save blocks available to CONTINUE (slot 1..4 → 0x1C0 bytes), provided by the front end
@@ -165,7 +167,7 @@ impl Engine {
         Engine {
             files: HashMap::new(), mem: SubMem::new(), disp: Display::new(), font: None, names: vec![], input: None,
             vm, script: vec![], phase: VmPhase::Stopped, queue: vec![], qi: 0, seq_step: 0, seq_timer: 0, msg: None,
-            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, mod_delay: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
+            text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, mod_delay: 0, voice_age: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
             top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(),
@@ -332,7 +334,17 @@ impl Engine {
     pub fn tick(&mut self, pad: u8) {
         self.frame += 1;
         if self.fid_rng { self.disp.sub.rng = [0; 4]; } // harness: the oracle pokes $786A..D = 0 before every frame
-        if self.voice_left > 0 { self.voice_left -= 1; }
+        if self.voice_left > 0 {
+            self.voice_left -= 1;
+            // PCM voice stream refill (S:0x1573C, pcm_frame S:0x15140) occupies the sub CPU: the frame handler does not run for 1-2 frames at
+            // +35, then every 30.33 frames (oracle, SP29 chase, looping voice 61: handler-less frames +35 (1), +65 (2), +95 (2), +126 (1), +156 (2), +186 (2);
+            // lengths cycle 1,2,2). The stalls at the start of a voice (prime) vary per voice (3-7 frames) and are not modelled beyond `sub_stall = 2`.
+            self.voice_age += 1;
+            if self.voice_age >= 35 {
+                let k = ((self.voice_age as f64 - 35.0) / 30.3333).floor() as u32;
+                if self.voice_age == (35.0 + 30.3333 * k as f64).floor() as u32 { self.sub_stall = self.sub_stall.max([1, 2, 2][(k % 3) as usize]); }
+            }
+        }
         if self.voice_music_left > 0 && self.voice_music_left != u32::MAX { self.voice_music_left -= 1; if self.voice_music_left == 0 { self.regs.set_b(0x980E, 0); } }
         if self.sfx_left > 0 && self.sfx_left != u32::MAX { self.sfx_left -= 1; if self.sfx_left == 0 { self.regs.set_b(0x980F, 0); } }
         if let Some(s) = self.cd_start { self.disp.sub.cd_time = cd_time_bcd(self.frame - s); }
@@ -789,6 +801,7 @@ impl Engine {
                 match self.seq_step {
                     0 => {
                         self.regs.set_b(0x9717, 0xFF);
+                        self.voice_age = 0;
                         // S:0x15502 `$15120 = n` (saved in the save block, replayed on CONTINUE: `0D[d6] 0A`, S:0x15024); table entries of type 0x82
                         // (real voices, ids >= 36) reset it to FFFF at S:0x155EE, bank-load entries (ids 1..35, type 1) keep it (oracle: 0D[0x10] -> $15120 = 0x10)
                         self.regs.set(0x15120, if (1..=35).contains(&n) { n } else { 0xFFFF });
@@ -848,7 +861,7 @@ impl Engine {
                 // S:0x103D2: target = a<<24 | b<<16 | c<<8, compared with $787A (MM SS FF 00)
                 let want = ((w(0) as u32) << 24) | ((w(1) as u32) << 16) | ((w(2) as u32) << 8);
                 self.seq_timer += 1;
-                self.disp.sub.cd_time >= want || self.seq_timer > 60 * 600
+                self.disp.sub.cd_time >= want // S:0x103D2: no timeout in the original
             }
             0x1C => { self.fm_cmd(w(0), false); true }  // FM sfx (S:0x1013E: $980F = n, 0x3D → 0)
             0x1D => { self.regs.set_b(0x7890, w(0) as u8); true }
@@ -975,8 +988,8 @@ impl Engine {
                 let o = &mut self.disp.sub.objs[slot & 63];
                 if o.active != 1 { return true; }
                 if o.f4e & 2 != 0 { o.f4e &= !2; return true; }
-                self.seq_timer += 1;
-                return self.seq_timer > 60 * 120;
+                // S:0xFE36: no timeout in the original (it waits for `+$4E` bit 1 forever; oracle SP38:2af stalls for 12000 frames, the port gave up after 7200)
+                return false;
             }
             4 => for &i in &list { self.disp.sub.objs[i].f4e = 0xFF; },
             5 => for &i in &list { let o = &mut self.disp.sub.objs[i]; o.f4e = 0; o.flags = 0; o.idx = 0xFFFF; o.delay = -1; },
