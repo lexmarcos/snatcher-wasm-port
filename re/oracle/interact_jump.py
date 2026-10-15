@@ -9,7 +9,7 @@ thread leaves the menu and takes the jump (S:0x16892).  Disc data is read as dat
 import argparse, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from machine import Machine
+from oracle_sel import Machine
 from PIL import Image
 
 ap = argparse.ArgumentParser()

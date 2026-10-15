@@ -107,10 +107,9 @@ class Machine2:
         for k, v in (opts or {}).items(): L.o2_set_option(k.encode(), v.encode())
         r = L.o2_init(self.sysdir.encode(), self.savedir.encode(), content.encode(), 1 if verbose else 0)
         if r != 0: raise RuntimeError('o2_init failed (BIOS in re/oracle2/sys/bios_CD_U.bin?)')
-        self.gunmode = gun
-        if gun:
-            L.o2_set_port_device(0, RETRO_DEVICE_JOYPAD)
-            L.o2_set_port_device(1, RETRO_DEVICE_JUSTIFIERS)
+        # The core detects "SNATCHER" in the disc header and forces a Konami Justifier in port 2 (core/loadrom.c, input.system[1]), so the
+        # game sees a gun at power-up (A12013 = 1) without any option; `gun` is kept for compatibility. Aiming = m.gun = {'x','y','trig','aux'}.
+        self.gunmode = True
         self.srate = L.o2_sample_rate()
         self._last_script = None
         self._music_track = 0
@@ -166,7 +165,7 @@ class Machine2:
         # core: analog = ((v + 0x7fff) * viewport.w) / 0xfffe  -> v = x * 0xfffe / w - 0x7fff (+ half step)
         vx = int((g['x'] + 0.5) * 0xfffe / w) - 0x7fff
         vy = int((g['y'] + 0.5) * 0xfffe / h) - 0x7fff
-        self.L.o2_set_gun(1, vx, vy, 0, int(bool(g.get('trig'))), int(bool(g.get('aux'))), 0, 0)
+        self.L.o2_set_gun(1, vx, vy, 0, int(bool(g.get('trig'))), 0, 0, int(bool(g.get('aux'))))   # Justifier: D0 = trigger (INPUT_A), D1 = second button (START)
 
     def step_frame(self, capture=False):
         while self.inputs and self.inputs[0][0] <= 0:

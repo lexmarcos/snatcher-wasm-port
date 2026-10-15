@@ -19,7 +19,8 @@ def oracle_jump(m, spec, wait=300, zero_save=True):
     s.write(0x79EA, bytes(4))      # play time (the engine starts at 0)
     s.w16(0x15120, 0xFFFF)         # last PCM voice id (S:0x16656 init)
     s.w16(0x1511E, 0)              # PCM busy bits: the Junker HQ conversation's voice may still play (a following cmd 0A would wait for it)
-    m.music_status = 0; m.music = None   # no CD track playing (the Junker HQ scene may play one; a cmd 0B would wait for it; the engine starts with none)
+    if hasattr(m, 'music_status'): m.music_status = 0; m.music = None   # (HLE oracle only; on oracle2 the game's own cd_pause on every disc load stops the CD)
+    # no CD track playing (the Junker HQ scene may play one; a cmd 0B would wait for it; the engine starts with none)
     s.w8(0x980E, 0); s.w8(0x980F, 0)   # FM done flags / current music (the engine starts with none)
     s.w16(0x980C, 57 + n)
     s.w16(0x9800, pc); s.w16(0x9802, 0xFFFF)
@@ -33,6 +34,8 @@ def patch_cdtime():
     CDBSTAT+0x0C = relative track time BCD `MM SS FF 00`, FF in 1/75 s = frames since MSCPLAY * 75/60 (HYPOTHESIS for the 75/60
     conversion, docs/re/modules.md). Idempotent."""
     import struct
+    from oracle_sel import is2
+    if is2(): return          # the real BIOS reports the CD time itself
     from machine import Machine, bcd
     if getattr(Machine._cdbios, '_fid_patched', False): return
     orig = Machine._cdbios

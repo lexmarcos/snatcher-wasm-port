@@ -5,7 +5,7 @@ writes DIR/vram.bin cram.txt sprites.txt (sprite attribute table decoded) and pr
 import argparse, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from machine import Machine
+from oracle_sel import Machine
 ap = argparse.ArgumentParser()
 ap.add_argument('--inputs', default='[]'); ap.add_argument('--frame', type=int, required=True)
 ap.add_argument('--wait', type=int, default=300); ap.add_argument('--load', default='junker_hq'); ap.add_argument('--out', required=True)

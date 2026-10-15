@@ -5,7 +5,7 @@ inputs: [[frames, padbits], ...] with pad bits UP=1 DOWN=2 LEFT=4 RIGHT=8 B=16 C
 """
 import argparse, json, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from machine import Machine
+from oracle_sel import Machine
 from PIL import Image
 
 ap = argparse.ArgumentParser()

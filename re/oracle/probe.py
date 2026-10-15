@@ -4,7 +4,7 @@ usage: .venv/bin/python -I probe.py <scenario.json> <frame> [--load state]
 Prints line ranges where display/VSRAM/regs/CRAM change, plus plane bases."""
 import json, os, sys, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from machine import Machine
+from oracle_sel import Machine
 HERE = os.path.dirname(os.path.abspath(__file__))
 sc = json.load(open(sys.argv[1])); target = int(sys.argv[2])
 m = Machine()

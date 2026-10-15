@@ -6,7 +6,7 @@ Frame numbers printed = frame index after the step (pad of rel frame r is applie
 import argparse, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from machine import Machine
+from oracle_sel import Machine
 ap = argparse.ArgumentParser()
 ap.add_argument('--inputs', default='[]'); ap.add_argument('--frames', type=int, default=60)
 ap.add_argument('--watch', default='s:7892'); ap.add_argument('--wait', type=int, default=300)

@@ -6,7 +6,7 @@ Prints the oracle file name/size and the byte differences against the engine blo
 import argparse, json, os, re, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
-from machine import Machine
+from oracle_sel import Machine
 from fid_common import oracle_jump, patch_cdtime
 ap = argparse.ArgumentParser()
 ap.add_argument('--jump', required=True); ap.add_argument('--inputs-file', required=True); ap.add_argument('--frames', type=int, required=True)

@@ -1,0 +1,162 @@
+{
+ "description": "intro_real up to the first Junker HQ message box (H-INT/IE1 palette split check, M:0xFF0C4A)",
+ "frames": 9000,
+ "inputs": [
+  {
+   "until": {
+    "s16:7840": 6
+   },
+   "max": 6000
+  },
+  [
+   95,
+   0
+  ],
+  {
+   "shot": "copyright"
+  },
+  [
+   180,
+   0
+  ],
+  {
+   "shot": "konami_laser"
+  },
+  [
+   400,
+   0
+  ],
+  {
+   "shot": "konami_logo"
+  },
+  {
+   "until": {
+    "s16:7896": 9
+   },
+   "max": 6000
+  },
+  [
+   20,
+   0
+  ],
+  {
+   "shot": "title"
+  },
+  [
+   1,
+   128
+  ],
+  {
+   "until": {
+    "s16:7896": 11
+   },
+   "max": 6000
+  },
+  [
+   150,
+   0
+  ],
+  {
+   "shot": "options"
+  },
+  [
+   1,
+   128
+  ],
+  {
+   "until": {
+    "s16:7842": 2
+   },
+   "max": 6000
+  },
+  [
+   20,
+   0
+  ],
+  {
+   "shot": "disclaimer"
+  },
+  [
+   560,
+   0
+  ],
+  {
+   "shot": "intro_c"
+  },
+  [
+   1,
+   32
+  ],
+  [
+   400,
+   0
+  ],
+  {
+   "shot": "intro_start"
+  },
+  [
+   1,
+   128
+  ],
+  {
+   "until": {
+    "s16:980C": 63
+   },
+   "max": 6000
+  },
+  [
+   363,
+   0
+  ],
+  {
+   "shot": "omni_building"
+  },
+  [
+   600,
+   0
+  ],
+  {
+   "shot": "omni_caption"
+  },
+  [
+   300,
+   0
+  ],
+  {
+   "shot": "act1"
+  },
+  [
+   300,
+   0
+  ],
+  {
+   "until": {
+    "s8:9740": 5,
+    "s8:9720": 0,
+    "s8:9B44": 1
+   },
+   "max": 3000
+  },
+  [
+   20,
+   0
+  ],
+  {
+   "shot": "msg_panel"
+  },
+  {
+   "dump": "msg_panel"
+  },
+  [
+   1,
+   32
+  ],
+  [
+   200,
+   0
+  ],
+  {
+   "shot": "msg2"
+  }
+ ]
+}

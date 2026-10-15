@@ -5,7 +5,7 @@ usage (from re/oracle): .venv/bin/python -I fid_fmlen.py out/fid2/fmlen.json [id
 Compares with assets/audio/web/fm.json (engine `fm_len` = ceil(seconds * 60))."""
 import json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from machine import Machine
+from oracle_sel import Machine
 from fid_common import oracle_jump, patch_cdtime
 patch_cdtime()
 ROOT = os.path.join(HERE, '..', '..')

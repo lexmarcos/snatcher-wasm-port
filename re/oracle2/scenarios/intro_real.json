@@ -1,20 +1,47 @@
 {
- "description": "Event-aligned variant of intro.json for oracle2 (real BIOS): waits for game states ($7896 title, $7842 module) instead of frame numbers. Shots are inline.",
+ "description": "Event-aligned variant of intro.json for oracle2 (real BIOS): waits for game states (S:$7840 sp state, $7896 title state, $7842 module, $980C script) instead of frame numbers; shots are inline and use the HLE offsets from those events. Load times of the real BIOS are slower, so the shots are only approximately the same moment.",
  "frames": 9000,
  "inputs": [
   {
    "until": {
-    "s16:7896": 9
+    "s16:7840": 6
    },
-   "max": 4000
+   "max": 6000
+  },
+  [
+   95,
+   0
+  ],
+  {
+   "shot": "copyright"
+  },
+  [
+   180,
+   0
+  ],
+  {
+   "shot": "konami_laser"
+  },
+  [
+   400,
+   0
+  ],
+  {
+   "shot": "konami_logo"
   },
   {
-   "shot": "title"
+   "until": {
+    "s16:7896": 9
+   },
+   "max": 6000
   },
   [
    20,
    0
   ],
+  {
+   "shot": "title"
+  },
   [
    1,
    128
@@ -23,7 +50,7 @@
    "until": {
     "s16:7896": 11
    },
-   "max": 4000
+   "max": 6000
   },
   [
    150,
@@ -40,7 +67,7 @@
    "until": {
     "s16:7842": 2
    },
-   "max": 4000
+   "max": 6000
   },
   [
    20,
@@ -54,7 +81,7 @@
    0
   ],
   {
-   "shot": "omni_building"
+   "shot": "intro_c"
   },
   [
    1,
@@ -65,7 +92,7 @@
    0
   ],
   {
-   "shot": "omni_caption"
+   "shot": "intro_start"
   },
   [
    1,
@@ -73,9 +100,23 @@
   ],
   {
    "until": {
-    "s16:7842": 5
+    "s16:980C": 63
    },
-   "max": 4000
+   "max": 6000
+  },
+  [
+   363,
+   0
+  ],
+  {
+   "shot": "omni_building"
+  },
+  [
+   600,
+   0
+  ],
+  {
+   "shot": "omni_caption"
   },
   [
    300,
@@ -91,86 +132,6 @@
   {
    "shot": "junker_hq_mika"
   },
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
-  [
-   149,
-   0
-  ],
-  [
-   1,
-   32
-  ],
   [
    149,
    0

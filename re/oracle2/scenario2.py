@@ -7,6 +7,7 @@ JSON extensions (ignored by the HLE oracle's scenario.py):
   inputs entry {"until": {"state":1,"script":63,"sp_state":6,"vm_pc":..}, "max": N, "hold": bits}  wait (pad = hold, default 0) until the
      frame record matches every key, at most N frames (default 6000); the script clock is not advanced by waiting entries
   inputs entry {"shot": "name"} / {"save": "name"}: screenshot / save state at this point of the input list (no frame consumed), event aligned
+  inputs entry {"dump": "name"}: write VDP regs / CRAM / VSRAM / VRAM md5 to NAME.json
   until keys may also be memory words: "s16:7896": 9 (sub, hex address), "s8:..", "m16:..", "s32:.." (main addresses as in the HLE docs, e.g. m16:FFE061)
   "shots": {"name": frame}  or {"name": {"at": frame}} ; "states": same. With --events the shots are taken at the HLE frame + drift of the
      last 'until' (i.e. the frames are relative to the end of the last wait) so that they land on the same game event."""
@@ -65,6 +66,10 @@ def main():
             e = entries.pop(0)
             if isinstance(e, dict) and 'shot' in e:
                 Image.fromarray(m.frame_rgb()).save(os.path.join(a.out, e['shot'] + '.png')); m.log({'t': 'shot', 'name': e['shot'], 'f': m.frame}); continue
+            if isinstance(e, dict) and 'dump' in e:
+                import hashlib
+                d = {'f': m.frame, 'regs': m.vdp_regs(), 'cram': ['%03x' % c for c in m.cram()], 'vsram': m.vsram(), 'vram_md5': hashlib.md5(m.vram()).hexdigest()}
+                json.dump(d, open(os.path.join(a.out, e['dump'] + '.json'), 'w')); continue
             if isinstance(e, dict) and 'save' in e:
                 m.save_state(os.path.join(HERE, 'states', e['save'] + '.state')); m.log({'t': 'save', 'name': e['save'], 'f': m.frame}); continue
             if isinstance(e, dict): wait = dict(e, left=e.get('max', 6000))

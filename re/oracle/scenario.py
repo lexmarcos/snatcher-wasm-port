@@ -4,7 +4,7 @@ usage: .venv/bin/python -I scenario.py scenarios/intro.json [--out out/refs] [--
 Writes OUT/<name>.png, OUT/trace.jsonl and states/<name>.pkl."""
 import argparse, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from machine import Machine
+from oracle_sel import Machine
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))

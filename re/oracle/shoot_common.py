@@ -6,7 +6,7 @@ Menu navigation uses 3-frame presses with a 25-frame gap (a 1-frame press is som
 import os, sys, json
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from machine import Machine
+from oracle_sel import Machine
 
 DOWN, UP, LEFT, RIGHT, B, C, A, START = 2, 1, 4, 8, 16, 32, 64, 128
 ROOT = os.path.join(HERE, '..', '..')

@@ -56,7 +56,7 @@ PY = os.path.join(HERE, '.venv', 'bin', 'python')
 # ---------------- oracle (in-process, same loop as fid_play.py)
 if not a.skip_oracle:
     sys.path.insert(0, HERE)
-    from machine import Machine
+    from oracle_sel import Machine
     from fid_common import patch_cdtime
     patch_cdtime()
     if a.oracle_jump and not a.jump:

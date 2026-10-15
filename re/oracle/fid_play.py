@@ -9,7 +9,7 @@ and prints the story (menus with item texts, messages, voices, scene changes) wi
 import argparse, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from machine import Machine
+from oracle_sel import Machine
 from fid_common import patch_cdtime
 patch_cdtime()
 ap = argparse.ArgumentParser()
