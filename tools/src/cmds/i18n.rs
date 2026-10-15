@@ -1312,24 +1312,45 @@ const ABBREVIATIONS: &[&str] = &["sr.", "sra.", "srta.", "dr.", "dra.", "prof.",
 /// Strip trailing closing punctuation / spaces so that `x." ` and `x.` look the same.
 fn core_end(s: &str) -> &str { s.trim_end_matches(|c: char| matches!(c, '"' | '\'' | ')' | ' ' | '»')) }
 
-/// One page break that does not read well: severity 5 abbreviation (`Sr.` / page / `Seed`), 4 function word (article, preposition, conjunction,
-/// pronoun, auxiliary) before the break, 3 no punctuation at all, 2 an ellipsis followed by a lower-case continuation, 1 comma / semicolon / dash
-/// (tolerated: a natural pause). 0 = the text before the break ends a sentence or clause (`. ? ! … :`).
+const CONJUNCTIONS: &[&str] = &["e", "mas", "ou", "porque", "pois", "que", "quando", "onde", "se", "como", "enquanto", "embora", "então", "porém", "senão", "caso", "quem", "quanto", "portanto"];
+
+/// How badly a page break reads, from the text just before it and just after it (`plain_page` form; a window of a few words each is enough).
+/// 5 = after an abbreviation (`Sr.` / page / `Seed`), 4 = after a function word (article, preposition, conjunction, pronoun, auxiliary),
+/// 3 = no punctuation at all (or a dangling dash), 2 = in front of a conjunction or after an ellipsis followed by a lower-case continuation
+/// (a clause boundary: tolerated), 1 = after a comma / semicolon (a natural pause: tolerated), 0 = the text before ends a sentence or clause
+/// (`. ? ! … :`), the next text starts a new field (`Label:`) or a new list entry (`Name - Role`).
 pub fn break_severity(before: &str, after: &str) -> (u8, &'static str) {
     let b = core_end(before);
     let last = b.rsplit(' ').next().unwrap_or("");
     let lastc = b.chars().last().unwrap_or(' ');
     let low = last.to_lowercase();
-    let next_lower = after.chars().next().map_or(false, |c| c.is_lowercase());
+    let first_after = after.split(' ').next().unwrap_or("");
+    let next_lower = first_after.chars().next().map_or(false, |c| c.is_lowercase());
     if ABBREVIATIONS.contains(&low.as_str()) { return (5, "abbreviation"); }
+    let aw: Vec<&str> = after.split(' ').take(4).collect();
+    let upper = |w: &str| w.chars().find(|c| c.is_alphabetic()).map_or(false, |c| c.is_uppercase());
+    if aw.first().map_or(false, |w| upper(w)) {
+        if aw.iter().take(3).any(|w| w.len() > 1 && w.ends_with(':')) { return (0, "next field"); }
+        if let Some(d) = aw.iter().take(4).position(|w| *w == "-") { if d >= 1 && aw[..d].iter().all(|w| upper(w)) { return (0, "next list entry"); } }
+    }
     match lastc {
         '.' | '?' | '!' | ':' | '…' => if lastc == '.' && b.ends_with("...") && next_lower { (2, "ellipsis + lower-case continuation") } else { (0, "") },
-        ',' | ';' | '-' => (1, "comma"),
+        ',' | ';' => (1, "comma"),
+        '-' if b.ends_with(" -") => (3, "dangling dash"),
+        '-' => (1, "dash"),
         _ => {
             if FUNCTION_WORDS.contains(&low.trim_matches(|c: char| !c.is_alphabetic() && c != '\'').to_string().as_str()) { (4, "function word before the break") }
+            else if CONJUNCTIONS.contains(&first_after.to_lowercase().trim_matches(|c: char| !c.is_alphabetic()).to_string().as_str()) { (2, "before a conjunction") }
             else { (3, "no punctuation") }
         }
     }
+}
+
+/// `break_severity` for a whole page followed by the next one: a page that is only a quoted title (a name in quotes) is a heading, not a sentence.
+pub fn page_break_severity(before: &str, after: &str) -> (u8, &'static str) {
+    let b = before.trim();
+    if b.starts_with('"') && b.ends_with('"') && b.matches('"').count() == 2 { return (0, "title"); }
+    break_severity(&tail_words(before, 4), &head_words(after, 4))
 }
 
 struct BreakRow { sev: u8, why: &'static str, origin: &'static str, id: String, who: String, before: String, after: String, lines: (usize, usize), pages: usize, en_pages: usize }
@@ -1380,12 +1401,12 @@ pub fn breaks_cmd(lang: &str, dir: &str, args: &[String]) -> Result<(), String> 
             });
             let en_raw = raw.get(off).copied().unwrap_or(&[]);
             let en_pages: Vec<&[u8]> = en_raw.split(|&c| c == i::PAGE).collect();
-            let en_mid: Vec<bool> = (0..en_pages.len().saturating_sub(1)).map(|k| break_severity(&plain_page(en_pages[k]), &plain_page(en_pages[k + 1])).0 >= 2).collect();
+            let en_mid: Vec<bool> = (0..en_pages.len().saturating_sub(1)).map(|k| page_break_severity(&plain_page(en_pages[k]), &plain_page(en_pages[k + 1])).0 >= 3).collect();
             let mut at = 0;
             for k in 0..pages.len() - 1 {
                 at += words_of(pages[k]).len();
                 let (before, after) = (plain_page(pages[k]), plain_page(pages[k + 1]));
-                let (sev, why) = break_severity(&before, &after);
+                let (sev, why) = page_break_severity(&before, &after);
                 total += 1;
                 // orphan: a one-line page in a multi-page message whose break was added or whose text does not end the sentence
                 let lines = |p: &[u8]| p.iter().filter(|&&c| c == i::NL).count() + 1;
