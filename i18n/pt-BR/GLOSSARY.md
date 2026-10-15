@@ -170,3 +170,7 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 ## Regras acrescentadas pelas revisões de SP28 e SP29 (4/5 e 4/5)
 * Katrina (18 anos): "a gente", "pra", "meu pai" (sem artigo antes do possessivo), "com certeza"; nunca "estejamos/podemos". Erros de pontuação do original (".." no fim) não se reproduzem.
 * Quando o diálogo cita um comando de menu, usa o verbo exato do rótulo (PRAY TO GOD = REZAR: "Rezar!"). Temperaturas em Fahrenheit passam a Celsius (68-72 F = 20-22 °C). Respostas digitadas continuam em inglês e os avisos dizem "(em inglês)".
+
+## Regras acrescentadas pela revisão de SP30 (4/5)
+* "reception booth/desk" = sempre "balcão de recepção" (nunca "cabine") no diálogo e no menu. Gillian e Random: "Não tem dúvida", "Não tem sinal de...", "com certeza"; "tem cheiro de" (não "cheira a"); imperativos coloquiais ("Fica calmo", "Não baixa a guarda"); Gillian: "identificar eles", "se a gente tivesse".
+* Siglas nas listas técnicas do Metal Gear mantêm a expansão do inglês traduzida (RMN com "ressonância magnética nuclear", STM com "microscópios de tunelamento").
