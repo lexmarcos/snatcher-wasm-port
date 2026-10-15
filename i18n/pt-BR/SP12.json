@@ -17,6 +17,7 @@
     "00c6": {"h": "4100e254", "t": "INVESTIGAR"},
     "00db": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
     "00e7": {"h": "accae4cc", "t": "CHAVE"},
+    "00eb": {"h": "521506a2", "t": "ONDE FICA A LOJA"},
     "00fd": {"h": "e4e08a96", "t": "OLHAR"},
     "0102": {"h": "930d8be9", "t": "MÁSCARA"},
     "0107": {"h": "563736aa", "t": "RETRATO FALADO"},
@@ -37,6 +38,7 @@
     "0188": {"h": "265620f6", "t": "USAR METAL GEAR"},
     "0197": {"h": "ad2dba48", "t": "VIDEOFONE"},
     "1ce2": {"h": "4749792d", "t": ".........."},
+    "1f62": {"h": "325ee5f7", "t": "O que é isso?"},
     "26f3": {"h": "3e1e3a55", "t": "Esta é a sua carteira Junker. Ela{nl}lhe dá todos os seus privilégios{nl}especiais. Cuide bem dela."},
     "274b": {"h": "8c0413d6", "t": "Esse é o dinheiro para despesas{nl}que a agência lhe deu."},
     "277e": {"h": "1dc5c7a1", "t": "Esse é o bilhete em que o Gibson{nl}lhe disse onde estão os dados de{nl}computador que explicam o ponto{nl}fraco dos SNATCHERS."},
@@ -66,6 +68,7 @@
     "2d58": {"h": "fc5062be", "t": "No frasco está escrito \"A loja{nl}que tem tudo: Plato's Cavern\"."},
     "2d9b": {"h": "9ec90745", "t": "Parece mesmo que estava à venda{nl}na Plato's Cavern."},
     "2dd9": {"h": "0f42ae79", "t": "Podemos descobrir algo se{nl}verificarmos o lugar onde isto foi{nl}comprado."},
+    "2e1d": {"h": "08002d97", "t": "É uma máscara especial, de alto{nl}detalhamento, feita à mão pelo{nl}popular Rick Bakery."},
     "2e68": {"h": "63c18553", "t": "Essa é uma foto do Jean-Jack{nl}Gibson."},
     "2e8e": {"h": "4b52ea69", "t": "Essa é uma fotografia 2D{nl}composta, montada a partir dos{nl}dados 3D do Jordan."},
     "2ed3": {"h": "8bd667fd", "t": "Foi tirada do jogo de xadrez da{nl}casa do Jean. O que pode{nl}significar?"},
@@ -80,6 +83,7 @@
     "33f6": {"h": "02041057", "t": "Em qual número de arquivo quer{nl}salvar?"},
     "3426": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
     "3454": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
-    "348b": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."}
+    "348b": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
+    "34bb": {"h": "f9945824", "t": "Não há ninguém a quem mostrar."}
   }
 }

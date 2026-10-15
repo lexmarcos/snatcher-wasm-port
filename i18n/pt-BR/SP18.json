@@ -2,6 +2,7 @@
   "file": "SP18",
   "lang": "pt-BR",
   "entries": {
+    "0006": {"h": "e18467bb", "t": "SOBRE A LOJA"},
     "0038": {"h": "5cad7d72", "t": "PERGUNTAR"},
     "005d": {"h": "b14354e9", "t": "LIGAR"},
     "0062": {"h": "d37765d2", "t": "DINHEIRO"},
@@ -11,8 +12,10 @@
     "00b1": {"h": "8ecd5bb1", "t": "FOTO DO GIBSON"},
     "0131": {"h": "cacfa5a5", "t": "CARTEIRA JUNKER"},
     "013d": {"h": "accae4cc", "t": "CHAVE"},
+    "0141": {"h": "521506a2", "t": "ONDE FICA A LOJA"},
     "015d": {"h": "930d8be9", "t": "MÁSCARA"},
     "016e": {"h": "563736aa", "t": "RETRATO FALADO"},
+    "0184": {"h": "f76412cb", "t": "NAPOLEON"},
     "01c2": {"h": "18a265c3", "t": "FOTO"},
     "01c8": {"h": "22dd49dc", "t": "PLATO'S CAVERN"},
     "020b": {"h": "cdf818f9", "t": "PEDAÇO DE PAPEL"},

@@ -106,3 +106,9 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * SP08@42b7 (expansão da sigla JUNKER na placa) fica em inglês. "Insectors" fica como nome do robô.
 * Quando o jogador digita a resposta num teclado em inglês (SP09, enigma da marca de nascença de Katrina), os avisos dizem "(em inglês)" e a ficha de Katrina em SP05 traz as palavras
   a digitar entre parênteses (BIRTHMARK, HEART-SHAPED, INNER THIGH).
+
+## Regras acrescentadas pela revisão de SP09 (4/5)
+* Pistas vagas no inglês ficam vagas: a peça "ao lado do rei" não é nomeada ("a que fica ao lado do rei"); "rainha" só onde o inglês diz "queen" (SP09 "falta a rainha preta").
+* Gillian e Katrina usam imperativos coloquiais mesmo em gritos e cantadas ("Abre aí!", "Cala a boca!", "Anima aí", "Toma, deixa eu..."), e pronomes depois do verbo ("conhece ele", "receber você"). "o/lhe" só para Metal Gear.
+* Alice é "cachorra" (feminino em todas as falas); a garrafa de protetor solar é "garrafa" (não "frasco"); "Jean-Jack Gibson" com hífen nos diálogos (as fichas de SP05 mantêm "Jean Jack"). "<<sob>>" = "<<choro>>".
+* SP09: nos enigmas digitados o aviso é "(em inglês)"; os rótulos de teclado (números, WRONG, MOLE, ...) ficam em inglês.
