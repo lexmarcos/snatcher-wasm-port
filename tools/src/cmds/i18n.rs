@@ -12,6 +12,7 @@
 //!   snt i18n-fill-dups <lang-dir> <files-dir>                  reuse a translation for identical English strings in other files (same speaker class)
 //!   snt i18n-rewrap <lang-dir> <files-dir> [all|SPnn..]        re-flow messages whose lines became too wide after mechanical edits
 //!   snt i18n-reflow <lang-dir> <files-dir> [all|SPnn..] [--dry]  re-paginate the dialogue for the pt-BR 10 px layout (5 / 6 lines per page)
+//!   snt i18n-breaks <lang-dir> <files-dir> [all|SPnn..] [--base <dir>] [--min N] [--orphans]  list page breaks that fall in the middle of a sentence
 //!   snt i18n-status <lang-dir> <files-dir>                     translated / total per file
 use sncore::i18n as i;
 use sncore::script::{self as sc, Node, Operand};
@@ -37,6 +38,7 @@ pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
         "i18n-fill-dups" if args.len() == 3 => Some(fill_dups(&args[1], &args[2])),
         "i18n-rewrap" if args.len() >= 3 => Some(rewrap(&args[1], &args[2], &args[3..])),
         "i18n-reflow" if args.len() >= 3 => Some(reflow_cmd(&args[1], &args[2], &args[3..])),
+        "i18n-breaks" if args.len() >= 3 => Some(breaks_cmd(&args[1], &args[2], &args[3..])),
         "i18n-kinds" if args.len() == 2 => Some(kind_counts(&args[1])),
         _ => None,
     }
@@ -1280,3 +1282,143 @@ pub fn reflow_cmd(lang: &str, dir: &str, which: &[String]) -> Result<(), String>
     println!("reflow{}: {strings} strings changed, {added} page breaks added, {wrapped} pages re-wrapped, {auto_changed} auto-advance strings re-wrapped, {} auto-advance pages do not fit", if dry { " (dry run)" } else { "" }, unfit.len());
     Ok(())
 }
+
+// ---------------------------------------------------------------- i18n-breaks (page breaks in the middle of a sentence)
+
+/// Plain text of one page for the break analysis: line breaks become spaces, colour / auto tokens vanish, a button placeholder is one word.
+fn plain_page(page: &[u8]) -> String {
+    let mut s = String::new();
+    for &c in page {
+        match c {
+            i::NL => s.push(' '),
+            0xF8..=0xFE | i::AUTO => {}
+            0xEC | 0xEE | 0xF0 => s.push('#'),
+            _ => s.push_str(&i::bytes_to_markup(&[c])),
+        }
+    }
+    s.split(' ').filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
+const FUNCTION_WORDS: &[&str] = &[
+    "a", "o", "as", "os", "um", "uma", "uns", "umas", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas", "num", "numa", "por", "pelo", "pela", "pelos",
+    "pelas", "para", "pra", "pro", "com", "sem", "sob", "sobre", "ao", "aos", "à", "às", "e", "ou", "mas", "que", "se", "nem", "como", "quando", "porque", "onde", "até",
+    "entre", "contra", "seu", "sua", "seus", "suas", "meu", "minha", "meus", "minhas", "teu", "tua", "este", "esse", "esta", "essa", "esses", "essas", "estes", "estas",
+    "nosso", "nossa", "nossos", "nossas", "eu", "você", "ele", "ela", "nós", "vocês", "eles", "elas", "me", "te", "lhe", "lhes", "não", "já", "mais", "muito", "tão",
+    "todo", "toda", "todos", "todas", "cada", "qual", "quais", "quem", "cujo", "cuja", "d'água", "ser", "é", "foi", "são", "está", "estão", "vai", "vou", "vamos", "tem",
+    "ter", "tinha", "há", "faz", "fazer", "pode", "posso", "deve", "preciso", "quer", "quero", "estou", "estava", "era",
+];
+const ABBREVIATIONS: &[&str] = &["sr.", "sra.", "srta.", "dr.", "dra.", "prof.", "st.", "mr.", "mrs.", "ms.", "n.", "nº.", "vs.", "ex.", "av.", "cap."];
+
+/// Strip trailing closing punctuation / spaces so that `x." ` and `x.` look the same.
+fn core_end(s: &str) -> &str { s.trim_end_matches(|c: char| matches!(c, '"' | '\'' | ')' | ' ' | '»')) }
+
+/// One page break that does not read well: severity 5 abbreviation (`Sr.` / page / `Seed`), 4 function word (article, preposition, conjunction,
+/// pronoun, auxiliary) before the break, 3 no punctuation at all, 2 an ellipsis followed by a lower-case continuation, 1 comma / semicolon / dash
+/// (tolerated: a natural pause). 0 = the text before the break ends a sentence or clause (`. ? ! … :`).
+pub fn break_severity(before: &str, after: &str) -> (u8, &'static str) {
+    let b = core_end(before);
+    let last = b.rsplit(' ').next().unwrap_or("");
+    let lastc = b.chars().last().unwrap_or(' ');
+    let low = last.to_lowercase();
+    let next_lower = after.chars().next().map_or(false, |c| c.is_lowercase());
+    if ABBREVIATIONS.contains(&low.as_str()) { return (5, "abbreviation"); }
+    match lastc {
+        '.' | '?' | '!' | ':' | '…' => if lastc == '.' && b.ends_with("...") && next_lower { (2, "ellipsis + lower-case continuation") } else { (0, "") },
+        ',' | ';' | '-' => (1, "comma"),
+        _ => {
+            if FUNCTION_WORDS.contains(&low.trim_matches(|c: char| !c.is_alphabetic() && c != '\'').to_string().as_str()) { (4, "function word before the break") }
+            else { (3, "no punctuation") }
+        }
+    }
+}
+
+struct BreakRow { sev: u8, why: &'static str, origin: &'static str, id: String, who: String, before: String, after: String, lines: (usize, usize), pages: usize, en_pages: usize }
+
+/// `snt i18n-breaks <lang-dir> <files-dir> [all|SPnn..] [--base <lang-dir>] [--min N] [--orphans]`: list the `{page}` of the pt-BR dialogue that fall in the
+/// middle of a sentence (docs/i18n.md "Page breaks in the middle of a sentence"). With `--base <dir>` (an older copy of the pt-BR files, e.g. from
+/// `git show main:i18n/pt-BR/SPxx.json`) each break is classed ADDED (inserted by i18n-reflow: its word position was no break in the base), EN (it existed
+/// and the English original has a mid-sentence `{page}` too: mirrors the original pacing) or PRE (the translation's own).
+pub fn breaks_cmd(lang: &str, dir: &str, args: &[String]) -> Result<(), String> {
+    let (mut base, mut min, mut orphans) = (None, 1u8, false);
+    let mut which: Vec<&String> = vec![];
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--base" => base = it.next().cloned(),
+            "--min" => min = it.next().and_then(|s| s.parse().ok()).ok_or("--min needs a number")?,
+            "--orphans" => orphans = true,
+            _ => which.push(a),
+        }
+    }
+    let names = spk_names(dir);
+    let list: Vec<u8> = if which.is_empty() || which[0] == "all" { (0..=38).collect() } else { which.iter().map(|s| sp_arg(s)).collect::<Result<_, _>>()? };
+    let mut rows: Vec<BreakRow> = vec![];
+    let mut orph: Vec<String> = vec![];
+    let (mut total, mut good) = (0usize, 0usize);
+    for n in list {
+        if !Path::new(&format!("{dir}/SP{n:02}.BIN")).exists() { continue; }
+        let fd = load_file(dir, n)?;
+        let raw = raw_of(&fd);
+        let by: HashMap<u16, &Item> = fd.items.iter().map(|x| (x.off, x)).collect();
+        let e = read_entries(&lang_path(lang, &format!("SP{n:02}")))?;
+        let be = match &base { Some(b) => read_entries(&lang_path(b, &format!("SP{n:02}")))?, None => FileTr::new() };
+        for (off, en) in &e {
+            let Some(it) = by.get(off) else { continue };
+            if it.kind != Kind::Say || it.entry { continue; }
+            let Ok(b) = i::markup_to_bytes(&en.text) else { continue };
+            let pages: Vec<&[u8]> = b.split(|&c| c == i::PAGE).collect();
+            if pages.len() < 2 { continue; }
+            let id = format!("SP{n:02}@{off:04x}");
+            let who = spk_label(&names, it.spk);
+            let auto = b.contains(&i::AUTO);
+            // break positions (number of words before the break) of the base text and the English original
+            let base_pos: Option<Vec<usize>> = be.get(off).and_then(|x| i::markup_to_bytes(&x.text).ok()).map(|bb| {
+                let mut pos = vec![]; let mut at = 0;
+                let ps: Vec<&[u8]> = bb.split(|&c| c == i::PAGE).collect();
+                for p in &ps[..ps.len() - 1] { at += words_of(p).len(); pos.push(at); }
+                pos
+            });
+            let en_raw = raw.get(off).copied().unwrap_or(&[]);
+            let en_pages: Vec<&[u8]> = en_raw.split(|&c| c == i::PAGE).collect();
+            let en_mid: Vec<bool> = (0..en_pages.len().saturating_sub(1)).map(|k| break_severity(&plain_page(en_pages[k]), &plain_page(en_pages[k + 1])).0 >= 2).collect();
+            let mut at = 0;
+            for k in 0..pages.len() - 1 {
+                at += words_of(pages[k]).len();
+                let (before, after) = (plain_page(pages[k]), plain_page(pages[k + 1]));
+                let (sev, why) = break_severity(&before, &after);
+                total += 1;
+                // orphan: a one-line page in a multi-page message whose break was added or whose text does not end the sentence
+                let lines = |p: &[u8]| p.iter().filter(|&&c| c == i::NL).count() + 1;
+                let origin = match &base_pos {
+                    None => "-",
+                    Some(bp) => match bp.iter().position(|&x| x == at) {
+                        None => "ADDED",
+                        Some(bi) => if bp.len() == en_mid.len() && en_mid[bi] { "EN" } else { "PRE" },
+                    },
+                };
+                if orphans && (lines(pages[k]) == 1 || lines(pages[k + 1]) == 1) && (origin == "ADDED" || sev > 0) && !auto {
+                    orph.push(format!("{origin:5} {id} [{who}] {}l | {}l  \"{}\" {{page}} \"{}\"", lines(pages[k]), lines(pages[k + 1]), tail_words(&before, 6), head_words(&after, 6)));
+                }
+                if sev == 0 { good += 1; continue; }
+                rows.push(BreakRow { sev, why, origin, id: id.clone(), who: who.clone(), before: tail_words(&before, 7), after: head_words(&after, 7), lines: (lines(pages[k]), lines(pages[k + 1])), pages: pages.len(), en_pages: en_pages.len() });
+            }
+        }
+    }
+    rows.sort_by(|a, b| b.sev.cmp(&a.sev).then(a.id.cmp(&b.id)));
+    let mut tally: BTreeMap<(&str, u8), usize> = BTreeMap::new();
+    for r in &rows { *tally.entry((r.origin, r.sev)).or_default() += 1; }
+    for r in rows.iter().filter(|r| r.sev >= min) {
+        println!("S{} {:5} {} [{}] {}p/EN {}p {}l|{}l  \"{}\" {{page}} \"{}\"  ({})", r.sev, r.origin, r.id, r.who, r.pages, r.en_pages, r.lines.0, r.lines.1, r.before, r.after, r.why);
+    }
+    if orphans { for o in &orph { println!("ORPHAN {o}"); } }
+    println!("i18n-breaks: {total} page breaks, {good} end a sentence or clause, {} read badly (S1 comma/dash {}, S2 {}, S3 {}, S4 {}, S5 {})",
+        rows.len(), rows.iter().filter(|r| r.sev == 1).count(), rows.iter().filter(|r| r.sev == 2).count(), rows.iter().filter(|r| r.sev == 3).count(), rows.iter().filter(|r| r.sev == 4).count(), rows.iter().filter(|r| r.sev == 5).count());
+    for origin in ["ADDED", "EN", "PRE", "-"] {
+        let c = |s: u8| tally.get(&(origin, s)).copied().unwrap_or(0);
+        if (1..=5).any(|s| c(s) > 0) { println!("  {origin:5}: S1 {} S2 {} S3 {} S4 {} S5 {}", c(1), c(2), c(3), c(4), c(5)); }
+    }
+    Ok(())
+}
+
+fn tail_words(s: &str, n: usize) -> String { let w: Vec<&str> = s.split(' ').collect(); w[w.len().saturating_sub(n)..].join(" ") }
+fn head_words(s: &str, n: usize) -> String { s.split(' ').take(n).collect::<Vec<_>>().join(" ") }
