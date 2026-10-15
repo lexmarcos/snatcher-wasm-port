@@ -1,20 +1,24 @@
 # FIDELITY workstream – engine vs ORIGINAL (oracle): Act 1, Acts 2-3, ending
 
-## Status (FIDELITY2, Acts 2-3; updated at each commit)
-- Harness: `fid_session.py NAME SPnn:pc FRAMES` (play adaptively in the oracle from a script entry point, replay both, report), `run_batch.sh`, `fid_summary.py`, `fid_drift.py`,
-  `fid_save.py` (save block compare), `fid_cont.py` (CONTINUE round trip), `fid_fmlen.py` (FM done-flag durations). Entry points = SP01 CHOICE leaves (pc = CHOICE address + 3).
-- Results so far (pass queues identical / total): Act 2 opening SP20 (a2_new) 137/137, Alton plaza (a2_alton) 194/194, Act 3 start SP36 (a3_new) 61/61, NAZO TOKETA 100/100, KYOUKAI 127/127,
-  JEMMIE 26/26, endings (SP38) zenhan 77/77 + kohan 3/3 incl. DATA_Y16 staff roll pixel-identical for 31000 frames and START at the end; open items: napoleon 136/182, oleen 161/195, gh 214/217,
-  katrina 195/197 (see "Acts 2-3 findings / open").
-
-## Status
-- **Result**: a 58,000-frame (16 min) oracle session through Act 1 – Junker HQ lobby (all LOOK/INVESTIGATE/TALK/ASK branches, Mika), the guided tour (Chief's office, engineering, detective's room,
-  computer room, shooting range), Harry/Metal Gear Mk II, the turbocycle ride, the abandoned factory exterior and first interior rooms (SP06 → SP07, MOVE/LISTEN/SAVE/USE METAL GEAR menus) – replayed in the engine:
-  **158 of 159 action queues are identical** (the only differences are the 3 engine-only boot passes before the anchor), drift ≤ 80 frames after 58,000 frames (`fid_cmp.py --sync`, `docs/re/fidelity.md`
-  "Harness"). Screens (233 samples): the bulk of the remaining differences are looping-animation phase (fan, blink, cloud wave, palette cycles; the same image appears at an offset of a few frames or ≤ 40 frames
-  for the factory sky) – see "Known differences".
-- Message box, command menu (open / move / confirm / close), portrait panels, scene changes (cmd 0F/12/0D), cmd 0B/0E CD waits, cmd 15 popups: verified frame-exact (menus) or within 1-3 frames (scene loads).
-- Web smoke test (headless Chrome, `scripts/build-web.sh`, server :5300): `?newgame`, `?scene=SP01:0`, `?newgame&debug` load without console errors, audio manifests 200, message arrow visible.
+## Status (FIDELITY2, Acts 2-3 + ending; final)
+- **Result**: 32 adaptive oracle sessions (about 1.2 million oracle frames) from SP01 debug entry points - Act 2 (opening SP20, Gibson's home / Queens hospital / Oleen hospital / Alton plaza / Napoleon /
+  Katrina search / Tika / Itai / taxi / Honbu), Act 3 (SP36 start, NAZO TOKETA, KYOUKAI, JEMMIE, MODNAR, FUKKATU, last command), the CD-DA section entries (turbocycle chase, Chin speech, Harry/Chief death,
+  Promise Mika, Modnar death) and both SP38 endings with the DATA_Y16 staff roll - replayed in the engine: **2984 of 2986 action queues identical** (the 2 oracle-only passes and 2 engine-only passes are
+  the last pass of a run cut at its frame limit), every session ends with the same story position. Screens: 70-95 % of the sampled frames are pixel-exact (<= 60 px) or exact at a +-12 frame offset;
+  the rest are animation phase (cockpit shake parity, scrolling pans, blinking) and the known items below. Per-session numbers: `re/oracle/out/fid2/*.out`.
+- Staff roll (Y16) from the script path: pixel-identical for 31000 frames (0 px in 9/9 samples 4200-5400, 28990-31400), START at the end (30990+) gives the same Junker logo screen.
+- CONTINUE round trip and save block: `fid_save.py` / `fid_cont.py` (finding 19): equal.
+- Web smoke test after the changes: see PROGRESS.md.
+- **Open / known differences** (all HYPOTHESIS unless noted):
+  1. Engine runs 0.3-0.7 % faster than the oracle over 40000 frames (drift -100..-350 frames per session; a few +): scene loads end 3-11 frames earlier (sub CPU LZ/CD load time not modelled; command 11 itself takes
+     4-5 frames in the oracle, `fid_loadlen.py`, but adding them made the drift worse, so the remaining difference is elsewhere), 1 frame per message close.
+  2. PCM voice stream: the oracle's sub handler skips 1-2 frames every 30.33 frames while a voice streams (+35, +65, +95, +126, ..., lengths 1,2,2; `Engine::tick`) and 3-7 frames at the start of each voice
+     (varies per voice; the port has 2). Not modelled beyond that; the turbocycle chase loop (SP29) is therefore ~18 frames per iteration faster in the engine.
+  3. PCM effect busy bit: oracle bit 3 lasted 478 frames for bank 11 effect 0x1B (= manifest) but only 4 frames for bank 18 effect 0x22 (manifest 111 frames) in KYOUKAI; the engine uses the manifest lengths
+     (probably the oracle's RF5C164 address read-back, S:0x15912..0x15998, in that case).
+  4. After a failed shooting stage the engine shows the GAME OVER module (vm state 4); the oracle's HLE stays black (a2_taxi after 24000).
+  5. Debug entries out of context (SP29 L_04a3, SP38 L_0010, ...) wait forever for CD time / object animations in both (the port's old 7200/36000 frame timeouts were removed, the original has none).
+- Next: model the voice-start stalls and sub-CPU load times to remove the remaining drift; verify the GAME OVER module against hardware knowledge instead of the oracle.
 
 ## Acts 2–3 (FIDELITY2)
 

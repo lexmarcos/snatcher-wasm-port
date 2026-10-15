@@ -54,14 +54,12 @@ dedication shutters, docs/re/modules.md §3.2; the oracle's missing CD time `$78
    SHOOTING – DONE (docs/re/shooting.md): all 15 stages frame-exact vs the oracle with pad
    (45/45 runs identical final counters); light gun emulated in the oracle and mapped from the
    mouse (HYPOTHESIS: Y calibration bias GUN_CAL_BIAS_Y=31 in menus.rs). Oracle pad bug fixed.
-   FIDELITY2 (Acts 2–3, ending, save/continue) – INTERRUPTED by the session limit, resumed:
-   done so far (commits 23e19d0..95eedac): jump-start harness (fid_common/fid_session), cmd 0E two-step,
-   scene chunk 8 screen mode, ending start (mode 6), save block fields, FM done-flag lengths,
-   PCM effect busy for 0C/0A, CONTINUE round-trip tools. Not yet: Acts 2–3 comparison results,
-   docs/re/fidelity.md "Acts 2–3" section. Build/tests/web build green after resume.
+   FIDELITY2 (Acts 2–3, ending, save/continue) – DONE (docs/re/fidelity.md "Acts 2–3"): 32 oracle sessions from
+   SP01 debug entries (Acts 2/3, CD-DA entries, both endings + staff roll), 2984/2986 action queues identical,
+   staff roll pixel-identical, save block and CONTINUE round trip equal. Remaining: engine ~0.5 % faster over
+   long sessions (sub-CPU load / voice-start stalls), PCM-effect busy lengths in one case (see Open list).
    WEB polish – DONE (docs/re/web.md): start overlay + folder picker, volume/fullscreen/pause menu,
    save export/import, mono/stereo, graceful missing assets, 60 Hz pacer; `scripts/test-web.sh`.
-   Running now: FIDELITY2 (resumed same agent).
 5. Ghidra DB: done once after resume (sub_prg: 406 functions, 303 named; main_ip: 180) via
    `re/analyze.sh` with the concatenated label files; re-run after new labels.
 
