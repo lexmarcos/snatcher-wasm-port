@@ -72,3 +72,8 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * "ceramoplastics" = "plásticos cerâmicos". "Caça-recompensas" no menu leva artigo como os irmãos: SOBRE OS CAÇA-RECOMPENSAS.
 * "at face value" (piada com o menu ROSTO DA MIKA) = "pelo valor de face".
 * Siglas JORDAN e JUNKER: a expansão em inglês fica (nomes oficiais), SP06@0df9/@0e3b/@502d.
+
+## Regras acrescentadas pela revisão de SP07 (4/5)
+* "head twisted off" = "torceram a cabeça dele até arrancá-la". "screen" (de SNOW-9) = "cortina de fumaça". Temporizador da bomba = "cronômetro" (termo fixo).
+* Metal Gear pode usar "Receio que..."; a proibição vale só para Harry e Gillian. Lembretes de salvar: "Convém SALVAR" / "você deve SALVAR".
+* O rótulo SAIR é compartilhado entre o verbo (IR > SAIR) e o objeto "saída" (INVESTIGAR): mantido SAIR.

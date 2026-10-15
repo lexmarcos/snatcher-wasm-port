@@ -1,0 +1,14 @@
+{
+  "file": "SP00",
+  "lang": "pt-BR",
+  "entries": {
+    "0000": {"h": "73d33a86", "t": "CONTINUAR JOGO"},
+    "000e": {"h": "36c0b212", "t": "ENCERRAR"},
+    "0015": {"h": "c3698949", "t": "Ah, não! Não há {c3}memória{c1}{nl}suficiente para salvar mais dados{nl}do jogo! Você terá que{nl}{c3}sobrescrever{c1} dados existentes se{nl}quiser salvar agora!"},
+    "00a5": {"h": "58f5b2a0", "t": "Salvamento concluído!"},
+    "00b5": {"h": "5686330d", "t": "Quer continuar jogando?"},
+    "00d6": {"h": "adef24e4", "t": "Certo, voltando à investigação..."},
+    "0107": {"h": "e0ddd0bb", "t": "Certo, por hoje chega!"},
+    "0129": {"h": "f1c0cd74", "t": "Gillian, espero que possamos{nl}continuar a investigação juntos{nl}em breve!"}
+  }
+}
