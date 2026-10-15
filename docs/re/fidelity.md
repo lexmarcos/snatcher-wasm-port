@@ -16,6 +16,41 @@
 - Message box, command menu (open / move / confirm / close), portrait panels, scene changes (cmd 0F/12/0D), cmd 0B/0E CD waits, cmd 15 popups: verified frame-exact (menus) or within 1-3 frames (scene loads).
 - Web smoke test (headless Chrome, `scripts/build-web.sh`, server :5300): `?newgame`, `?scene=SP01:0`, `?newgame&debug` load without console errors, audio manifests 200, message arrow visible.
 
+## Acts 2–3 (FIDELITY2)
+
+### Method
+Both sides start at the same script entry point with the same story state: the oracle loads `states/junker_hq.pkl`, runs 300 frames, then `fid_common.oracle_jump` writes SPnn to S:0x1A800,
+zeroes the VM save block `$9C00..$9DBF` and the six VM stacks, play time `$79EA`, sets `$15120 = FFFF`, clears `$1511E` (a Junker HQ voice may still play) and `$980E/F`, and jumps to `pc`
+(`$9800`); the engine runs `Engine::jump` (`run … SPnn:pc`). Entry points are the leaves of the SP01 debug menu (`pc = CHOICE address + 3`, e.g. ACT2 NEW `SP01:132`, ACT3 NEW `SP01:27b`,
+"Ending ZENHAN" `SP01:8d7`, "Ending KOHAN" `SP01:8e0`; list: `assets/script/SP01.txt`). `fid_session.py NAME SPnn:pc FRAMES` = `fid_play.py --jump … --cycle --rng` (adaptive policy: every distinct menu's
+items in turn, never FINISH, confirm messages, keypad/keyboard entry = 12 (keypad) or 4 (keyboard) C presses then START) + `fid_cmp.py --jump … --rng --sync` (screens drift-corrected, `--refine` now tries
+every engine frame offset ±12; a one-frame animation parity (e.g. the cockpit's alternating VSRAM shake) used to look like a content difference). `run_batch.sh` runs several sessions in parallel.
+Harness corrections (not engine bugs): the stock oracle's CD time `$787A` stays 0xFFFFFFFF (cmd 1B never completes) → `fid_common.patch_cdtime` (same in-process patch as modules_scn.py, no oracle file
+modified); the oracle trace keeps only the first 64 words of a queue; queues 22/16/05/23 (menu/keypad redraws) are ignored; menu readiness: the engine's `wait_state()==2` is 2 frames later than the
+oracle's menu-ready test, so `SYNCU=2` (default of `fid_cmp.py`) adds 2 to the engine's `since` counter of menu presses (without it every menu round trip showed +2 frames of "drift").
+`fid_summary.py`, `fid_drift.py` (where the drift between matched passes changes), `fid_pdrift.py` (per press), `fid_gap.py`, `fid_dsum.py` locate timing differences; `fid_fmlen.py` / `fid_loadlen.py` measure
+FM done-flag durations / file-load times in the oracle by injecting sequencer commands from the idle SP01 menu.
+
+### Findings (each fixed in the engine; evidence = oracle watch/probe, original address)
+14. **Command 0E is a 3-state command** (S:0x1024E `cd_play_track`, S:0x10258 waits for CDBSTAT = 0x100 then `clr.l $787A`, S:0x10270): a following cmd 1B (wait for CD time) therefore counts from the new
+    track's start. The port completed 0E at once and 1B compared the OLD track's time → passes 2260 frames early (Act 2 opening `0E[9] 1B[0,37,47]`).
+15. **FM done flags `$980E/F`**: the manifest durations include a release tail; the original's flag clears 34 frames (sfx) / 118 frames (music) before the rendered end for every id (`fid_fmlen.py`, 74 ids, ±1):
+    `Engine::fm_done_len`. The menu confirm sound 0x1D clears after 19-20 frames (was 30), music 0x45 after 244 (was 362) → cmd 13/19 waits and the turbocycle ride were 100 frames long.
+16. **PCM effect busy bit** (`$1511E` bit 3, set by `subfn_06`, cleared when the first effect channel ends; shoot.rs `pcm` has the model): cmd 0A also waits for it (`$1511E & 0xF`), cmd 0C and anim op 9F
+    start it. Alton plaza: op 9F plays effect 0x1B (bank 11, 103424 samples at 13 kHz = 478 frames) and the `0D[10] 10[28] 0A` queue ended 314 frames after the port's. The port also gated op 9F with
+    `frame & 7 == 0` (invented, never verified), so the effect was usually never played; the oracle calls it once per script step.
+17. **Scene chunk 8** (`$236406`, S:0xF7D6): the main CPU (M:0xFF330C → sub_ff1538 / sub_ff1540) switches the plane size (0xFF = 32×64, else 64×32) and clears VRAM 0x0000-0xBFFF, the 4 KiB at 0xC000/0xE000 and the
+    hscroll table. DATA_Y15 (ending scenes) were drawn with the wrong stride (striped pictures): `Event::ScreenMode` handler in `game.rs`.
+18. **Ending start**: the VM thread leaves state 2 only after the queue of the pass that executed SYS SETSTATE(1) finished (oracle: queue done 4199, mode 6 at 4200); the port switched at the pass start.
+    Mode 6 step 0 (S:0xE242) black-outs the palettes (S:0xF560), `subfn_03` clears all 64 object slots, `$7891 = FF` (palette split off: the lower part of the staff-roll pictures was black) and steps 1/2 delay the
+    module by ~6 frames (`$7896` 0 at 4206): `enter_module(Ending)`. The staff roll then matches pixel for pixel (0 differing pixels in 9 of 9 samples 4200-5400 and at 28990-31400 incl. START at the end).
+19. **Save block / CONTINUE**: cmd 1E increments the BCD save counter `$9C00` (previous in `$9C01`, S:0x1040C) and sets the slot bit `$78B6` / `$79E2[slot-1]` (S:0x104BA; the SAVE menu then asks before
+    overwriting); `$9C02..` play time (`$79EA`, HH MM SS FF BCD counted per sub frame in mode 5, S:0xD686) was never counted; `$9C1C` is the BYTE `$980E` (the port read the word → 0x1D/0x61 mixed up,
+    `$7890` word test took `$7891`); `$9C1A` = `$15120` = last PCM bank/voice id (bank-load ids 1..35 keep it, voices ≥ 36 reset it to FFFF, S:0x15502/0x155EE); `$9C20..` = object snapshot (S:0x14FB4).
+    `fid_save.py`: oracle BURAM file `SNATCHER_02` vs the engine's Out::Save block: all 0x1C0 bytes equal except the play-time seconds/frames (the engine was 48 frames slower at that point).
+    `fid_cont.py` (re/py/modules_scn.py scenario `scenarios/fid2_continue.json`, both save files written by the original): boot, CONTINUE slot 2 → the first queue after the continue is identical
+    (`11[1,A800,52] 0F 11[2,8000,7] 0D[10] 0A 20[2] 07[61]`), the restored Gibson-house scene and root menu are pixel-identical (fade phase 11 frames).
+
 ## Harness (re/oracle)
 - `fid_play.py --cycle --rng --frames N --out play.json`: plays the ORIGINAL adaptively (menu policy: every distinct menu's items in turn; confirm every message) and records the pad script
   `[[rel,pad,kind,since],..]` (kind m = message waiting, u = menu key loop; `since` = frames after readiness; lost presses are dropped); prints the story (menus, messages, queues, script changes).
