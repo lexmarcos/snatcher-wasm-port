@@ -245,12 +245,15 @@ for (const [name, def, confirm, cancel] of [["xbox", PADS.xbox, 0, 1], ["dualsen
 // ---- E: storage blocked: the game still works and maps just are not saved ----
 {
   const page = await browser.newPage();
-  await page.evaluateOnNewDocument(() => { Object.defineProperty(window, "localStorage", { get() { throw new Error("blocked"); } }); });
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new Error("blocked"); } });
+    navigator.getGamepads = () => []; // a real pad attached to the test machine must not take part
+  });
   page.on("pageerror", (e) => { errors++; console.log("[pageerror]", e.message); });
   await page.goto(`http://localhost:${port}/?${SCENE}`, { waitUntil: "load" });
   await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
   await waitFrames(page, 30);
-  check("works with localStorage blocked", (await prompt(page)).style === 4);
+  check("works with localStorage blocked", (await prompt(page)).style === 4, JSON.stringify(await prompt(page)) + " " + (await device(page)));
   await page.close();
 }
 
