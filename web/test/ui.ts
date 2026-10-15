@@ -77,6 +77,19 @@ const visible = (page: Page, sel: string) => page.$eval(sel, (e) => !(e as HTMLE
     return { mono, st };
   });
   check("F3/FC give mono (1 channel mix), F4/FD stereo", JSON.stringify(mode) === JSON.stringify({ mono: [true, true, 1, 1], st: [false, false, 2, 2] }), JSON.stringify(mode));
+  const dm = await page.evaluate(async () => { // same node settings as AudioOut's mix nodes, rendered offline: L=1,R=0 in
+    const res: number[][] = [];
+    for (const mono of [true, false]) {
+      const oc = new OfflineAudioContext(2, 128, 48000);
+      const buf = oc.createBuffer(2, 128, 48000); buf.getChannelData(0).fill(1);
+      const src = oc.createBufferSource(); src.buffer = buf;
+      const mix = oc.createGain(); mix.channelCountMode = "explicit"; mix.channelInterpretation = "speakers"; mix.channelCount = mono ? 1 : 2;
+      src.connect(mix); mix.connect(oc.destination); src.start();
+      const r = await oc.startRendering(); res.push([r.getChannelData(0)[64], r.getChannelData(1)[64]]);
+    }
+    return res;
+  });
+  check("mono mix node downmixes to 0.5 (L+R) on both outputs, stereo keeps the pan", JSON.stringify(dm) === "[[0.5,0.5],[1,0]]", JSON.stringify(dm));
   const stops = await page.evaluate(async () => {
     const a = (window as any).snatcher.audio; a.ensure();
     const id = Object.keys(a.fm.sounds).find((k) => a.fm.sounds[k].music)!;
