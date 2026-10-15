@@ -1141,14 +1141,9 @@ pub fn words_of(raw: &[u8]) -> Vec<Vec<u8>> {
     raw.split(|&c| c == b' ' || c == i::NL || c == i::PAGE).filter(|w| !w.is_empty()).map(|w| w.to_vec()).collect()
 }
 
-/// A line that ends a sentence (. ? !, possibly followed by quotes, brackets or colour tokens): the preferred place for an added page break.
-fn sentence_end(line: &[u8]) -> bool {
-    let mut t = line;
-    while let Some(&c) = t.last() {
-        if matches!(c, 0xF8..=0xFE | i::AUTO | b'"' | b'\'' | b')' | b' ') { t = &t[..t.len() - 1]; } else { break; }
-    }
-    matches!(t.last(), Some(b'.' | b'?' | b'!'))
-}
+/// Glyph bytes of a word (colour and auto tokens take no cell): the engine cuts a line that reaches `LINE_MAX_CHARS` of them, so a line holds at most one less.
+fn glyph_count(word: &[u8]) -> usize { word.iter().filter(|&&c| !matches!(c, 0xF8..=0xFE | i::AUTO)).count() }
+const MAX_LINE_CHARS: usize = i::LINE_MAX_CHARS - 1;
 
 /// Greedy fill of the real box width (colour / button / auto tokens stay attached to their word because words are split at spaces only).
 fn greedy_lines(seg: &[u8], spk: u8, widths: &[u8]) -> Vec<Vec<u8>> {
@@ -1157,14 +1152,16 @@ fn greedy_lines(seg: &[u8], spk: u8, widths: &[u8]) -> Vec<Vec<u8>> {
     let space = i::advance(widths, b' ');
     let mut lines: Vec<Vec<u8>> = vec![];
     let mut cur: Vec<u8> = vec![];
-    let mut w = 0u32;
+    let (mut w, mut chars) = (0u32, 0usize);
     for word in seg.split(|&c| c == b' ' || c == i::NL).filter(|w| !w.is_empty()) {
         let ww: u32 = word.iter().map(|&c| i::advance(widths, c)).sum();
+        let wc = glyph_count(word);
         if !cur.is_empty() {
-            if w + space + ww > limit { lines.push(std::mem::take(&mut cur)); w = 0; } else { cur.push(b' '); w += space; }
+            if w + space + ww > limit || chars + 1 + wc > MAX_LINE_CHARS { lines.push(std::mem::take(&mut cur)); w = 0; chars = 0; } else { cur.push(b' '); w += space; chars += 1; }
         }
         cur.extend_from_slice(word);
         w += ww;
+        chars += wc;
     }
     lines.push(cur);
     lines
@@ -1187,61 +1184,141 @@ fn structural_breaks(lines: &[&[u8]], spk: u8, widths: &[u8]) -> bool {
     })
 }
 
-/// Split `lines` into the fewest pages of at most `cap` lines; among those avoid one-line pages and breaks in front of a `- ...` line (the second half of a list item), prefer breaks after a sentence, then evenly sized pages.
-/// Returns the page sizes.
-fn split_pages(lines: &[Vec<u8>], cap: usize) -> Vec<usize> {
-    let n = lines.len();
-    let k = (n + cap - 1) / cap;
-    // best[j][i] = (one-line pages, breaks not at a sentence end, sum of squared page sizes) for the first i lines in j pages
-    let mut best: Vec<Vec<Option<((u32, u32, u32, u32), usize)>>> = vec![vec![None; n + 1]; k + 1];
-    best[0][0] = Some(((0, 0, 0, 0), 0));
-    for j in 1..=k {
-        for i in j..=n {
-            for sz in 1..=cap.min(i) {
-                let prev = i - sz;
-                let Some(((orph, dash, nb, sq), _)) = best[j - 1][prev] else { continue };
-                let brk = if prev > 0 && !sentence_end(&lines[prev - 1]) { 1 } else { 0 };
-                let dashed = prev > 0 && lines[prev].iter().find(|&&c| !matches!(c, 0xF8..=0xFE)) == Some(&b'-');
-                let cost = (orph + (sz == 1 && n > 1) as u32, dash + dashed as u32, nb + brk, sq + (sz * sz) as u32);
-                if best[j][i].map_or(true, |(c, _)| cost < c) { best[j][i] = Some((cost, sz)); }
+/// Cost of a page break by `break_severity`: a sentence end is free, a comma costs a little, the middle of a clause a lot.
+const BREAK_WEIGHT: [u32; 6] = [0, 2, 4, 12, 20, 40];
+/// Cost of a one-line page (small: a short last sentence on its own page is better than a break inside a sentence).
+const ORPHAN_WEIGHT: u32 = 1;
+
+/// Severity of the break in front of each word (index 0 = 0): see `break_severity`, judged on a window of 4 words each side.
+fn word_severities(words: &[Vec<u8>]) -> Vec<u8> {
+    let txt: Vec<String> = words.iter().map(|w| plain_page(w)).collect();
+    (0..words.len()).map(|k| {
+        if k == 0 { return 0; }
+        let before = txt[k.saturating_sub(4)..k].iter().filter(|t| !t.is_empty()).cloned().collect::<Vec<_>>().join(" ");
+        let after = txt[k..(k + 4).min(words.len())].iter().filter(|t| !t.is_empty()).cloned().collect::<Vec<_>>().join(" ");
+        break_severity(&before, &after).0
+    }).collect()
+}
+
+/// Dynamic programme over `n` units (words with re-wrapping, or whole lines): split into the fewest pages that fit, where unit `i..=i+d` makes
+/// `fit[i][d]` lines (empty when it does not fit); `extra[i]` is the cost of a break in front of unit `i`, `sev[i]` its severity. Among the splits
+/// with the fewest pages the cheapest wins (breaks, one-line pages, then evenly sized pages); one more page is taken when that removes every break
+/// of severity 3 or more (the middle of a clause) that the shortest split has. Returns the end (exclusive) of each page.
+fn dp_pages(n: usize, fit: &[Vec<u32>], extra: &[u32], sev: &[u8]) -> Option<Vec<usize>> {
+    type Cell = Option<((u32, u32), usize)>;
+    let pmax = n.min(64);
+    let mut best: Vec<Vec<Cell>> = vec![vec![None; n + 1]; pmax + 2];
+    best[0][0] = Some(((0, 0), 0));
+    let mut first_ok = None;
+    for p in 1..=pmax {
+        for i in 0..n {
+            let Some(((c0, q0), _)) = best[p - 1][i] else { continue };
+            for (d, &l) in fit[i].iter().enumerate() {
+                let j = i + d + 1;
+                let cost = c0 + if i > 0 { extra[i] } else { 0 } + if l == 1 { ORPHAN_WEIGHT } else { 0 };
+                let key = (cost, q0 + l * l);
+                if best[p][j].map_or(true, |(k, _)| key < k) { best[p][j] = Some((key, i)); }
             }
         }
+        if best[p][n].is_some() && first_ok.is_none() { first_ok = Some(p); if p + 1 > pmax { break; } }
+        if first_ok.map_or(false, |f| p > f) { break; }
     }
-    let mut sizes = vec![];
-    let (mut j, mut i) = (k, n);
-    while j > 0 { let sz = best[j][i].map(|b| b.1).unwrap_or(cap.min(i)); sizes.push(sz); i -= sz; j -= 1; }
-    sizes.reverse();
-    sizes
+    let rebuild = |p: usize| -> Vec<usize> {
+        let (mut ends, mut j, mut pp) = (vec![], n, p);
+        while pp > 0 { ends.push(j); j = best[pp][j].map(|b| b.1).unwrap_or(0); pp -= 1; }
+        ends.reverse();
+        ends
+    };
+    let worst = |ends: &[usize]| ends[..ends.len() - 1].iter().map(|&e| sev[e]).max().unwrap_or(0);
+    let p = first_ok?;
+    let a = rebuild(p);
+    if worst(&a) >= 3 && p + 1 <= pmax && best[p + 1][n].is_some() {
+        let b = rebuild(p + 1);
+        if worst(&b) < 3 { return Some(b); }
+    }
+    Some(a)
 }
 
 /// Re-paginate a message for the pt-BR dialogue windows (5 lines per page with a name, 6 without). Never changes a word. The author's
-/// `{page}` stay; a page with too many lines is re-wrapped greedily when that saves a page and the author's breaks are only width-driven (always
-/// for `{auto}`), and split at the author's line breaks with added `{page}` otherwise. An `{auto}` message never gets an added `{page}`: it is re-wrapped or reported in `unfit`.
+/// `{page}` stay. A page with too many lines is split where a break reads best (`break_severity`: sentence end, then clause, never between an
+/// article and its noun): when the author's line breaks are only width-driven the page is re-wrapped from its words (every page greedily filled),
+/// otherwise (a list, a title, a sentence per line) it is split at the author's line breaks. Added `{page}` are counted in `pages_added`.
+/// An `{auto}` message never gets an added `{page}`: it is re-wrapped or reported in `unfit`.
 pub fn repaginate(raw: &[u8], spk: u8, widths: &[u8]) -> Repaged {
     let cap = i::lines_per_page(spk as u32, true);
     let auto = raw.contains(&i::AUTO);
+    let (x0, right) = if spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) };
+    let (limit, space) = (right - x0, i::advance(widths, b' '));
     let mut out = Repaged::default();
     for (si, seg) in raw.split(|&c| c == i::PAGE).enumerate() {
         if si > 0 { out.text.push(i::PAGE); }
         let author: Vec<&[u8]> = seg.split(|&c| c == i::NL).collect();
         if author.len() <= cap { out.text.extend_from_slice(seg); continue; }
         let greedy = greedy_lines(seg, spk, widths);
-        let pages = |n: usize| (n + cap - 1) / cap;
-        let lines: Vec<Vec<u8>> = if auto {
+        if auto {
             if greedy.len() > cap { out.unfit.push(si); out.text.extend_from_slice(seg); continue; }
-            greedy
-        } else if pages(greedy.len()) < pages(author.len()) && !structural_breaks(&author, spk, widths) { greedy } else { author.iter().map(|l| l.to_vec()).collect() };
-        if lines.iter().map(|l| l.as_slice()).ne(author.iter().copied()) { out.rewrapped += 1; }
-        let mut at = 0;
-        let sizes = split_pages(&lines, cap);
-        for (pi, sz) in sizes.iter().enumerate() {
-            if pi > 0 { out.text.push(i::PAGE); out.pages_added += 1; }
-            for (li, l) in lines[at..at + sz].iter().enumerate() {
-                if li > 0 { out.text.push(i::NL); }
-                out.text.extend_from_slice(l);
-            }
-            at += sz;
+            if greedy.iter().map(|l| l.as_slice()).ne(author.iter().copied()) { out.rewrapped += 1; }
+            out.text.extend_from_slice(&greedy.join(&i::NL));
+            continue;
         }
+        let words: Vec<Vec<u8>> = seg.split(|&c| c == b' ' || c == i::NL).filter(|w| !w.is_empty()).map(|w| w.to_vec()).collect();
+        let sev = word_severities(&words);
+        let wd: Vec<(u32, usize)> = words.iter().map(|w| (w.iter().map(|&c| i::advance(widths, c)).sum(), glyph_count(w))).collect();
+        let structural = structural_breaks(&author, spk, widths);
+        // free mode: pages are filled from the words; `ranges` are word ranges of the pages
+        let free: Option<Vec<(usize, usize)>> = if structural { None } else {
+            let n = words.len();
+            let fit: Vec<Vec<u32>> = (0..n).map(|s| {
+                let (mut cw, mut cc, mut lines, mut empty, mut v) = (0u32, 0usize, 1u32, true, vec![]);
+                for j in s..n {
+                    let (ww, wc) = wd[j];
+                    if !empty && (cw + space + ww > limit || cc + 1 + wc > MAX_LINE_CHARS) { lines += 1; cw = 0; cc = 0; empty = true; }
+                    if lines as usize > cap { break; }
+                    if !empty { cw += space; cc += 1; }
+                    cw += ww; cc += wc; empty = false;
+                    v.push(lines);
+                }
+                v
+            }).collect();
+            let extra: Vec<u32> = sev.iter().map(|&v| BREAK_WEIGHT[v as usize]).collect();
+            dp_pages(n, &fit, &extra, &sev).map(|ends| { let mut s = 0; ends.iter().map(|&e| { let r = (s, e); s = e; r }).collect() })
+        };
+        let pages: Vec<Vec<Vec<u8>>> = match free {
+            Some(ranges) => ranges.iter().map(|&(a, b)| greedy_lines(&words[a..b].join(&b' '), spk, widths)).collect(),
+            None => {
+                // the author's lines are atomic: the first word of each line gives the severity of a break in front of it
+                let mut first_word = vec![]; let mut k = 0;
+                for l in &author { first_word.push(k); k += l.split(|&c| c == b' ').filter(|w| !w.is_empty()).count(); }
+                let n = author.len();
+                let fit: Vec<Vec<u32>> = (0..n).map(|s| (1..=cap.min(n - s) as u32).collect()).collect();
+                let lsev: Vec<u8> = (0..n).map(|l| if l == 0 { 0 } else { sev.get(first_word[l]).copied().unwrap_or(3) }).collect();
+                let extra: Vec<u32> = (0..n).map(|l| BREAK_WEIGHT[lsev[l] as usize] + if l > 0 && author[l].iter().find(|&&c| !matches!(c, 0xF8..=0xFE)) == Some(&b'-') { 6 } else { 0 }).collect();
+                let ends = dp_pages(n, &fit, &extra, &lsev).unwrap_or_else(|| (1..=(n + cap - 1) / cap).map(|k| (k * cap).min(n)).collect());
+                let mut s = 0;
+                ends.iter().map(|&e| { let r = author[s..e].iter().map(|l| l.to_vec()).collect(); s = e; r }).collect()
+            }
+        };
+        let flat: Vec<&[u8]> = pages.iter().flatten().map(|l| l.as_slice()).collect();
+        if flat.ne(&author) { out.rewrapped += 1; }
+        for (pi, pg) in pages.iter().enumerate() {
+            if pi > 0 { out.text.push(i::PAGE); out.pages_added += 1; }
+            out.text.extend_from_slice(&pg.join(&i::NL));
+        }
+    }
+    out
+}
+
+/// `raw` with every `{page}` that `base` (the author's text, same words) does not have turned back into a line break.
+fn unpage(raw: &[u8], base: &[u8]) -> Vec<u8> {
+    let (mut keep, mut at) = (BTreeSet::new(), 0usize);
+    let parts: Vec<&[u8]> = base.split(|&c| c == i::PAGE).collect();
+    for p in &parts[..parts.len() - 1] { at += words_of(p).len(); keep.insert(at); }
+    let (mut out, mut at) = (vec![], 0usize);
+    let parts: Vec<&[u8]> = raw.split(|&c| c == i::PAGE).collect();
+    for (k, p) in parts.iter().enumerate() {
+        out.extend_from_slice(p);
+        at += words_of(p).len();
+        if k + 1 < parts.len() { out.push(if keep.contains(&at) { i::PAGE } else { i::NL }); }
     }
     out
 }
@@ -1250,7 +1327,9 @@ pub fn repaginate(raw: &[u8], spk: u8, widths: &[u8]) -> Repaged {
 /// "Dialogue and menu layouts"). Deterministic and idempotent; `--dry` only reports. Prints the `{auto}` strings that still do not fit.
 pub fn reflow_cmd(lang: &str, dir: &str, which: &[String]) -> Result<(), String> {
     let dry = which.iter().any(|w| w == "--dry");
-    let which: Vec<&String> = which.iter().filter(|w| *w != "--dry").collect();
+    // `--redo <base-lang-dir>`: forget the page breaks that are not in an older copy of the translation (the author's), then re-paginate
+    let redo = which.iter().position(|w| w == "--redo").and_then(|k| which.get(k + 1)).cloned();
+    let which: Vec<&String> = which.iter().enumerate().filter(|(k, w)| *w != "--dry" && *w != "--redo" && !(*k > 0 && which[*k - 1] == "--redo")).map(|(_, w)| w).collect();
     let widths = font_widths(dir)?;
     let names = spk_names(dir);
     let list: Vec<u8> = if which.is_empty() || which[0] == "all" { (0..=38).collect() } else { which.iter().map(|s| sp_arg(s)).collect::<Result<_, _>>()? };
@@ -1262,11 +1341,16 @@ pub fn reflow_cmd(lang: &str, dir: &str, which: &[String]) -> Result<(), String>
         let by: HashMap<u16, &Item> = fd.items.iter().map(|x| (x.off, x)).collect();
         let path = lang_path(lang, &format!("SP{n:02}"));
         let mut e = read_entries(&path)?;
+        let be = match &redo { Some(b) => read_entries(&lang_path(b, &format!("SP{n:02}")))?, None => FileTr::new() };
         let mut changed = false;
         for (off, en) in e.iter_mut() {
             let Some(it) = by.get(off) else { continue };
             if it.kind != Kind::Say || it.entry { continue; }
             let Ok(b) = i::markup_to_bytes(&en.text) else { continue };
+            let b = match be.get(off).and_then(|x| i::markup_to_bytes(&x.text).ok()) {
+                Some(bb) if words_of(&bb) == words_of(&b) => unpage(&b, &bb),
+                _ => b,
+            };
             let r = repaginate(&b, it.spk, &widths);
             for pg in &r.unfit { unfit.push(format!("SP{n:02}@{off:04x} page {} ({}): {}", pg + 1, spk_label(&names, it.spk), en.text)); }
             if r.text == b { continue; }
