@@ -2,7 +2,7 @@
 //! the pack builder for the engine and a few measuring helpers.
 //!
 //!   snt i18n-ctx    <files-dir> <SPnn> [from-off [to-off]]     context dump of the English text (work file, not committed)
-//!   snt i18n-import <lang-dir> <files-dir> <patch.tsv>         merge `SPnn@off<TAB>text` lines into <lang-dir>/SPnn.json (hash filled in)
+//!   snt i18n-import <lang-dir> <files-dir> <patch.tsv>         merge `SPnn@off<TAB>text` lines into <lang-dir>/SPnn.json (hash filled in; `~text` = wrap + paginate)
 //!   snt i18n-check  <lang-dir> <files-dir> [SPnn ...|all]      the objective gate: keys, hashes, tokens, characters, box geometry
 //!   snt i18n-build  <lang-dir> <pack-out>                      compact translation pack read by the engine
 //!   snt i18n-stats  <files-dir>                                widths of the original text (measuring aid)
@@ -384,7 +384,8 @@ fn import(lang: &str, dir: &str, patch: &str) -> Result<(), String> {
             // a leading `~` asks for automatic line breaks (greedy fill of the real box width)
             let t = match t.strip_prefix('~') {
                 Some(plain) => match by.get(&off).map(|x| (x.kind, x.spk)) {
-                    Some((Kind::Say, spk)) => reflow(plain, spk, &widths)?,
+                    // greedy lines, then pages for the pt-BR dialogue layout (5 / 6 lines per page)
+                    Some((Kind::Say, spk)) => i::bytes_to_markup(&repaginate(&i::markup_to_bytes(&reflow(plain, spk, &widths)?)?, spk, &widths).text),
                     _ => plain.to_string(),
                 },
                 None => t,
@@ -882,6 +883,77 @@ mod tests {
         assert!(rep.fails.iter().any(|f| f.starts_with("SP06@0130: hash mismatch")));
     }
 
+    fn widths_for_tests() -> Option<Vec<u8>> { assets().and_then(|d| font_widths(&d).ok()) }
+
+    /// The words never change, colour / button / auto tokens stay attached to their word, the author's `{page}` stay, and a second run changes nothing.
+    #[test]
+    fn reflow_keeps_the_words_and_is_idempotent() {
+        let Some(w) = widths_for_tests() else { return };
+        let mut text = String::new();
+        for k in 0..16 { text += &format!("{{c3}}palavra{k}{{c1}} outra frase aqui{}", if k % 4 == 3 { ".{nl}" } else { "{nl}" }); }
+        text += "fim {btn:F0}";
+        for spk in [0u8, 1, 3] {
+            // the second source is what `i18n-import` makes of an unwrapped translation (`~`): greedy lines, then the reflow gives it pages
+            for src in [format!("{text}{{page}}segunda {{c2}}página{{c1}}.{{nl}}mais{{nl}}linhas"), reflow(&text.replace("{nl}", " "), spk, &w).unwrap()] {
+                let raw = i::markup_to_bytes(&src).unwrap();
+                let r = repaginate(&raw, spk, &w);
+                assert_eq!(words_of(&r.text), words_of(&raw), "spk {spk}");
+                let cap = i::lines_per_page(spk as u32, true);
+                for page in r.text.split(|&c| c == i::PAGE) { assert!(page.iter().filter(|&&c| c == i::NL).count() < cap, "spk {spk}: page too long"); }
+                // every colour token and the button placeholder are still there, in order
+                assert_eq!(tokens(&r.text).0, tokens(&raw).0);
+                assert_eq!(tokens(&r.text).1, tokens(&raw).1);
+                assert!(r.text.split(|&c| c == i::PAGE).count() >= raw.split(|&c| c == i::PAGE).count(), "the author's page breaks stay");
+                assert_eq!(r.pages_added, r.text.iter().filter(|&&c| c == i::PAGE).count() - raw.iter().filter(|&&c| c == i::PAGE).count());
+                let again = repaginate(&r.text, spk, &w);
+                assert_eq!(again.text, r.text, "second run must change nothing");
+                assert_eq!((again.pages_added, again.rewrapped), (0, 0));
+                // the result fits the checker's layout: no implicit page break
+                assert!(!i::layout_message_in(&r.text, spk, &w, true).lines.iter().any(|l| l.full_page));
+            }
+        }
+    }
+
+    /// Short messages are untouched; a page that overflows is split at a sentence end when possible; `{auto}` messages never get a `{page}`.
+    #[test]
+    fn reflow_splits_at_sentences_and_never_pages_an_auto_message() {
+        let Some(w) = widths_for_tests() else { return };
+        let short = i::markup_to_bytes("a{nl}b{nl}c").unwrap();
+        assert_eq!(repaginate(&short, 3, &w).text, short);
+        // 7 lines, named speaker (5 per page): the sentence ends after line 3 and 7 lines make 2 pages
+        let raw = i::markup_to_bytes("Um dois tres.{nl}quatro cinco seis{nl}sete oito nove.{nl}dez onze doze{nl}treze catorze{nl}quinze{nl}dezesseis.").unwrap();
+        let r = repaginate(&raw, 3, &w);
+        assert_eq!(r.pages_added, 1);
+        let pages: Vec<_> = r.text.split(|&c| c == i::PAGE).collect();
+        assert!(pages.iter().all(|p| p.iter().filter(|&&c| c == i::NL).count() < 5));
+        assert!(i::bytes_to_markup(pages[0]).ends_with("nove."), "page break after the sentence: {:?}", i::bytes_to_markup(&r.text));
+        // an {auto} message: 7 short lines are re-wrapped into the window instead of paged (they fit in 5 lines at this width)
+        let mut auto = raw.clone(); auto.push(i::AUTO);
+        let r = repaginate(&auto, 3, &w);
+        assert_eq!(r.pages_added, 0);
+        assert!(r.unfit.is_empty());
+        assert!(!r.text.contains(&i::PAGE));
+        assert_eq!(words_of(&r.text), words_of(&auto));
+        // too long to fit even re-wrapped: reported, left alone
+        let mut long = i::markup_to_bytes(&"palavra comprida{nl}".repeat(20)).unwrap(); long.push(i::AUTO);
+        let r = repaginate(&long, 3, &w);
+        assert_eq!(r.unfit, vec![0]);
+        assert_eq!(r.text, long);
+    }
+
+    #[test]
+    fn check_enforces_the_dialogue_limits() {
+        let Some(d) = assets() else { return };
+        // SP06@0320 (a named line): 6 short lines fit the English box (6 lines) but not the pt-BR one (5): the check wants an explicit page break
+        let r = run(&d, "tall1", "SP06@0320\tum{nl}dois{nl}tres{nl}quatro{nl}cinco{nl}seis\n");
+        assert!(r.fails.iter().any(|f| f.starts_with("SP06@0320: page 1 is full (5 lines")), "{:?}", r.fails);
+        let r = run(&d, "tall2", "SP06@0320\tum{nl}dois{nl}tres{nl}quatro{nl}cinco{page}seis\n");
+        assert!(r.fails.is_empty(), "{:?}", r.fails);
+        // menus keep the old limits: a label of 33 bytes still fails, accented capitals are fine
+        let r = run(&d, "tall3", "SP06@019a\tÁÉÍÓÚ ÀÂÃÊÔÕ ÜÇ\n");
+        assert!(r.fails.is_empty(), "{:?}", r.fails);
+    }
+
     #[test]
     fn token_rules() {
         // colour sequence, auto-advance and page breaks must be kept; compare via the token summary
@@ -1009,7 +1081,7 @@ pub fn fill_dups(lang: &str, dir: &str) -> Result<(), String> {
             let Ok(b) = i::markup_to_bytes(t) else { continue };
             let ok = match it.kind {
                 Kind::Choice => i::menu_width(&b, &widths).0 <= i::RIGHT_MENU,
-                Kind::Say => { let (x0, right) = if it.spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) }; let _ = x0; i::layout_message(&b, it.spk, &widths).lines.iter().all(|l| l.x_end <= right) && i::layout_message(&b, it.spk, &widths).pages <= i::layout_message(raw[&it.off], it.spk, &widths).pages }
+                Kind::Say => { let (x0, right) = if it.spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) }; let _ = x0; i::layout_message_in(&b, it.spk, &widths, true).lines.iter().all(|l| l.x_end <= right) && i::layout_message_in(&b, it.spk, &widths, true).pages <= i::layout_message(raw[&it.off], it.spk, &widths).pages }
             };
             if !ok { skipped += 1; println!("skipped SP{n:02}@{:04x} (does not fit as is)", it.off); continue; }
             e.insert(it.off, Entry { hash: h, text: t.clone() });

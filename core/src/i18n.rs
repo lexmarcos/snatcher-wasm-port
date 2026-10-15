@@ -458,6 +458,33 @@ mod tests {
     }
 
     #[test]
+    fn dialogue_layout_pages_and_positions() {
+        let widths = vec![8u8; 200];
+        let lines = |n: usize| -> Vec<u8> { (0..n).flat_map(|k| { let mut v = format!("L{k}").into_bytes(); if k + 1 < n { v.push(NL); } v }).collect() };
+        // 10 px layout: 5 lines per page with a name, 6 for narration and without a name; the original layout keeps 6 / 7
+        for (spk, tall_n, en_n) in [(3u8, 5usize, 6usize), (2, 5, 6), (1, 6, 7), (0, 6, 7)] {
+            assert_eq!(lines_per_page(spk as u32, true), tall_n);
+            assert_eq!(lines_per_page(spk as u32, false), en_n);
+            assert_eq!(layout_message_in(&lines(tall_n), spk, &widths, true).pages, 1);
+            let l = layout_message_in(&lines(tall_n + 1), spk, &widths, true);
+            assert_eq!(l.pages, 2);
+            assert!(l.lines[tall_n - 1].full_page, "the engine breaks the page by itself after line {tall_n}");
+            assert_eq!(layout_message(&lines(en_n), spk, &widths).pages, 1);
+            assert_eq!(layout_message(&lines(en_n + 1), spk, &widths).pages, 2);
+        }
+        // line Y: below the name + accent rows, pitch 10
+        let l = layout_message_in(&lines(3), 3, &widths, true);
+        assert_eq!(l.lines.iter().map(|x| x.y).collect::<Vec<_>>(), vec![9 + TALL_ACCENT_ROWS, 19 + TALL_ACCENT_ROWS, 29 + TALL_ACCENT_ROWS]);
+        let l = layout_message_in(&lines(3), 1, &widths, true);
+        assert_eq!(l.lines.iter().map(|x| x.y).collect::<Vec<_>>(), vec![TALL_ACCENT_ROWS, 10 + TALL_ACCENT_ROWS, 20 + TALL_ACCENT_ROWS]);
+        // the last glyph row of the last line stays inside the 64 row bitmap
+        for spk in [0u32, 1, 3] { assert!(first_line_y(spk, true) + TALL_PITCH * (lines_per_page(spk, true) as u32 - 1) + 7 < 64); }
+        // every accented capital has a dialogue form, and only those
+        for g in PT_GLYPHS { assert_eq!(tall_cap(pt_code(g.ch).unwrap()).is_some(), g.ch.is_uppercase(), "{}", g.ch); }
+        for t in TALL_CAPS { assert!(PT_GLYPHS.iter().any(|g| g.ch == t.ch && g.adv == if t.base == 'I' { 5 } else { g.adv })); }
+    }
+
+    #[test]
     fn menu_width_stops_at_end_and_counts_bytes() {
         let widths = vec![7u8; 200];
         assert_eq!(menu_width(b"LOOK", &widths), (X_MENU + 28, 4));
