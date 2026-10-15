@@ -140,7 +140,7 @@ on load; every access is try/catch, the game works without storage). The "Button
 ### 6.5 Icons
 Last used device decides the icon set and switches live: keyboard (keydown of a game key), a specific pad (any button, D-pad or stick outside the dead
 zone); unplugging that pad goes back to the keyboard. A mouse click (light gun) never changes the set: a mouse has no A/B/C, so the previous set stays.
-At start the keyboard set is active; `?` headless runs and all fidelity tests keep `Style::Genesis` (the engine default), so their output is unchanged
+At start the keyboard set is active in the browser; the engine itself defaults to `Style::Genesis`, which native runs, the oracle comparisons and all fidelity tests keep (the engine default), so their output is unchanged
 (`engine/tests/prompts.rs`: byte-identical for all six configurations).
 Glyphs: `core/src/prompt.rs`, a separate table appended after the original 102 glyphs (codes 0x86-0xA5, advance 8-9 px, 0xA5 = zero-width blank):
 3 families x 9 controls (south, east, west, north, bumpers, triggers, Menu/Options/+) = 0x86-0xA0, keyboard Z X C Enter = 0xA1-0xA4 (generated from
@@ -166,6 +166,8 @@ The engine emits no semantic event for "gun fired" or "player hit": `shoot.rs` o
 `T_ATTACK_SFX`, `player_hit` at shoot.rs:663). Per the task rules no engine logic was added. Later item: add `Out::Rumble{kind}` at the shot (shoot.rs ~361)
 and `player_hit`, forward it in `lib.rs`, and call `gamepad.vibrationActuator?.playEffect("dual-rumble", {duration:80, strongMagnitude:.4, weakMagnitude:.8})`
 with feature detection and a menu toggle.
+
+`scripts/test-web.sh` now takes about 15 minutes (`web/test/pads.ts` opens ~20 pages and waits for the typewriter each time).
 
 ### 6.7 Manual checklist (per controller)
 1. Plug in / pair the pad, open http://localhost:5300/, press any button on it: the "Controls" list (menu panel or start overlay) must switch to the pad, the status
