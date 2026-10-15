@@ -15,3 +15,10 @@ re/out/
 re/images/
 web/node_modules/
 __pycache__/
+Sega Mega CD BIOS/
+re/oracle2/third_party/
+re/oracle2/build/
+re/oracle2/sys/
+re/oracle2/save/
+re/oracle2/out/
+re/oracle2/states/
