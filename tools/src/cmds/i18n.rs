@@ -187,6 +187,8 @@ pub struct Item {
     pub label: String,
     /// CHOICE belongs to a text-entry menu (keypad / keyboard, 9+ siblings): must stay English
     pub entry: bool,
+    /// offset of the script node that shows the string (`?scene=SPnn:<pc>` jumps there)
+    pub pc: usize,
 }
 
 #[allow(dead_code)]
@@ -213,7 +215,7 @@ impl<'a> W<'a> {
         match n.op {
             0x38 => {
                 if let (Some(Operand::Text(t)), body) = (n.operands.first(), n.operands.get(1)) {
-                    self.items.push(Item { off: *t, kind: Kind::Choice, spk: 0, path: self.path.clone(), scene: self.scene.clone(), voice: None, label: self.label.clone(), entry: false });
+                    self.items.push(Item { off: *t, kind: Kind::Choice, spk: 0, path: self.path.clone(), scene: self.scene.clone(), voice: None, label: self.label.clone(), entry: false, pc: n.offset });
                     self.path.push(*t);
                     if let Some(Operand::Node(b)) = body { self.visit(b); }
                     self.path.pop();
@@ -230,7 +232,7 @@ impl<'a> W<'a> {
                 };
                 if let Some(Operand::Text(t)) = text {
                     let v = self.voice.take();
-                    self.items.push(Item { off: t, kind: Kind::Say, spk, path: self.path.clone(), scene: self.scene.clone(), voice: v, label: self.label.clone(), entry: false });
+                    self.items.push(Item { off: t, kind: Kind::Say, spk, path: self.path.clone(), scene: self.scene.clone(), voice: v, label: self.label.clone(), entry: false, pc: n.offset });
                 }
             }
             0x3D => {
@@ -339,7 +341,7 @@ fn ctx(dir: &str, spn: &str, from: Option<&str>, to: Option<&str>) -> Result<(),
             Kind::Say => {
                 let l = i::layout_message(r, it.spk, &widths);
                 let v = it.voice.map(|v| format!(" v{v:04x}")).unwrap_or_default();
-                println!("{ind}@{:04x} [{}]{v} {m}   <{}p>", it.off, spk_label(&names, it.spk), l.pages);
+                println!("{ind}@{:04x} [{}]{v} {m}   <{}p> pc={:04x}", it.off, spk_label(&names, it.spk), l.pages, it.pc);
             }
         }
         if let Some(pt) = &pt {
@@ -941,6 +943,45 @@ mod tests {
         let r = repaginate(&long, 3, &w);
         assert_eq!(r.unfit, vec![0]);
         assert_eq!(r.text, long);
+    }
+
+    /// The severity of a break: sentence ends are free, a comma is tolerated, article / abbreviation / bare clause middles are not.
+    #[test]
+    fn break_severity_ranks_the_breaks() {
+        assert_eq!(break_severity("Ele saiu.", "Depois voltou").0, 0);
+        assert_eq!(break_severity("Quem foi?\"", "Ninguém sabe").0, 0);
+        assert_eq!(break_severity("Sim, senhor,", "eu vou").0, 1);
+        assert_eq!(break_severity("Vi o Sr.", "Seed ontem").0, 5);
+        assert_eq!(break_severity("Ele foi para o", "quartel").0, 4);
+        assert_eq!(break_severity("Ele foi ao quartel", "ontem").0, 3);
+        assert_eq!(break_severity("Ele foi ao quartel", "e voltou").0, 2);
+        assert_eq!(break_severity("Bom...", "e então").0, 2);
+        assert_eq!(break_severity("Abril de 2047:", "A agência").0, 3);
+        assert_eq!(break_severity("Tipo sanguíneo: O+", "Personalidade: Calmo").0, 0, "next field");
+        assert_eq!(page_break_severity("\"Mika Slayton\"", "Assistente").0, 0, "title page");
+    }
+
+    /// A long page is split at a sentence end (re-wrapping the lines), and where a sentence is longer than a page, never between an article and its noun.
+    #[test]
+    fn reflow_moves_the_break_to_the_sentence_end() {
+        let Some(w) = widths_for_tests() else { return };
+        // two sentences of 3 lines each wrapped by the width (no author breaks): 6 lines on a 5-line page -> the break goes between them
+        let s1 = "Isto e um texto bastante longo para ocupar tres linhas inteiras da janela de dialogo do jogo agora mesmo.";
+        let s2 = "Aqui vem a segunda frase, tambem longa o bastante para ocupar mais tres linhas completas da janela.";
+        let raw = i::markup_to_bytes(&reflow(&format!("{s1} {s2}"), 3, &w).unwrap()).unwrap();
+        let r = repaginate(&raw, 3, &w);
+        let pages: Vec<String> = r.text.split(|&c| c == i::PAGE).map(|p| plain_page(p)).collect();
+        assert_eq!(pages.len(), 2, "{pages:?}");
+        assert!(pages[0].ends_with("agora mesmo."), "{pages:?}");
+        assert_eq!(words_of(&r.text), words_of(&raw));
+        assert_eq!(repaginate(&r.text, 3, &w).text, r.text, "idempotent");
+        // a sentence of 7 lines: every page break is at the best clause boundary available (not after an article / preposition)
+        let long = "Um texto sem pontuacao alguma que vai continuar por muitas linhas seguidas porque ninguem colocou um ponto final nele ate agora e que ainda precisa de mais algumas palavras para passar de sete linhas inteiras na janela do jogo, portanto";
+        let raw = i::markup_to_bytes(&reflow(long, 3, &w).unwrap()).unwrap();
+        let r = repaginate(&raw, 3, &w);
+        for pair in r.text.split(|&c| c == i::PAGE).map(plain_page).collect::<Vec<_>>().windows(2) {
+            assert!(break_severity(&pair[0], &pair[1]).0 < 4, "bad break {:?} | {:?}", pair[0], pair[1]);
+        }
     }
 
     #[test]
