@@ -53,7 +53,8 @@ def cells():
 def cal():
     m = Machine(); m.load_state(os.path.join(HERE, 'states', 'title.pkl')); m.inputs = []
     s = m.sub
-    m.comcmd[1] = (m.comcmd[1] & 0xFF00) | 1; m.pad2_ctrl = 0xB0       # the gun was detected at power-up
+    from oracle_sel import is2
+    if not is2(): m.comcmd[1] = (m.comcmd[1] & 0xFF00) | 1; m.pad2_ctrl = 0xB0       # the gun was detected at power-up (oracle2: the real main CPU detects the core's Justifier itself)
     m.gun = {'x': 128, 'y': 101, 'trig': 0, 'aux': 0}
 
     def go(n, bits=0):

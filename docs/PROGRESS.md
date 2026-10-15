@@ -30,21 +30,20 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
   Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
 ## Resume here
-All workstreams finished (2026-10-15). Build, tests (sncore 33, snengine 21), `scripts/build-web.sh`
-and `scripts/test-web.sh` (0 console errors) are green. Fidelity vs the original (oracle):
-Act 1 158/159, Acts 2–3 + endings 2984/2986 action queues identical; staff roll pixel-identical;
-CONTINUE round trip equal; all 15 shooting stages frame-exact with pad; FM driver write-exact.
-User bug fixes (2026-10-15): white message panel without text in portrait scenes (oracle
-artefact copied into the renderer – fixed in both) and intro CD-DA leaking into the game (CD now
-stops on every disc load like cmd 11's cd_pause). Regression tests from the title screen:
-`cargo test --release -p snengine --test player_path` (fail without the fixes).
-Open items (each with evidence in the named doc), in suggested order:
-1. Timing drift 0.3–0.7% (scene/sub-CPU load time and the 3–7 frame voice-start stall not modelled) – docs/re/fidelity.md.
-2. Turbocycle chase loop (SP29) ~18 frames/iteration fast; GAME OVER after a failed shooting stage
-   shows the module while the oracle stays black (a2_taxi) – docs/re/fidelity.md.
-3. Shooting: trigger white flash (M:0xFF1A44), sound-start stalls, gun Y bias HYPOTHESIS – docs/re/shooting.md.
-4. Front end: touch controls, voice pan / music ducking – docs/re/web.md, docs/re/audio.md.
-5. YM2612 output vs real hardware (no chip reference available) – docs/re/audio.md.
+oracle2 (2026-10-15, `docs/re/oracle2.md`): a second, **real-BIOS** oracle (Genesis Plus GX + Sega CD BIOS US v1.10, deterministic, ~735 frames/s, same trace format, `ORACLE=2` for the fid/shoot tools)
+confirms the HLE oracle: 12/12 reference screens pixel-identical, the message-box palette split dark, Act 1 session 106/106 queues identical HLE vs real BIOS, engine 106/106. It found what the HLE cannot show:
+(1) GAME OVER / QUIT INVESTIGATION: the real game shows the GAME OVER picture, then the SP reloads and the game **restarts at the title** - the HLE stayed black, the engine stayed on GAME OVER forever; **fixed** in the engine
+(`Engine::reset_to_title`, test `state4_restarts_at_the_title`); (2) real-BIOS timing: file loads take 12 + sectors/1.25 + 7 frames (HLE/engine 3/0), a voice start 38 frames (HLE 4, engine 2), so the engine is ~8 % faster than the console model.
+Fidelity vs the original (oracle): Acts 1-3 + endings queues identical (Act 1 106/106, SP29 165/165, a2_taxi 74/75 + the now fixed state-4 queue); staff roll pixel-identical; CONTINUE round trip equal; all 15 shooting stages frame-exact with pad;
+FM driver write-exact, FM output within ~2 dB of the Nuked YM2612 run of the real driver (oracle2 section 5). Build, tests (sncore 33, snengine 21 + player_path 4, prompts 3), `scripts/build-web.sh` and `scripts/test-web.sh` are green.
+Open items, in suggested order:
+1. Timing vs the real console (docs/re/oracle2.md section 3): optional load/voice-start model (`20 + sectors*0.8` frames per file load, voice start 12/30 frames by seek distance); the core's seek time is a heuristic, decide first whether exact feel matters.
+2. Sub-CPU stalls at PCM sound starts (verified on the real BIOS: 2.6 handler-less frames per effect start in stage 0): lost presses while a sound plays are not modelled (docs/re/shooting.md).
+3. Gun Y bias (`GUN_CAL_BIAS_Y` = 31) stays a HYPOTHESIS: the game's own calibration gives value = y + 27 on both oracles (identical cell rows at y 21/61); only a real Justifier can tell (docs/re/shooting.md, oracle2 section 2).
+   Trigger flash (full white frame at every shot while the blaster is drawn) confirmed on the real BIOS, intentionally not drawn.
+4. Front end: touch controls, voice pan / music ducking - docs/re/web.md, docs/re/audio.md.
+5. YM2612: the real chip model has a DAC noise floor / ladder distortion the engine lacks (high bands 10-30 dB higher in noisy sounds); levels agree, nothing retuned (oracle2 section 5).
+6. Larger engine item left: after the GAME OVER restart the title chain timing (`SP_RELOAD_FRAMES` = 90) is from one real-BIOS measurement; the copyright/logo/title phase of the real restart lasts 840 frames like a cold boot.
 
 ## Controllers (Xbox / PlayStation / Switch, button icons) – status 2026-10-15
 Done and tested (details, tables, checklist: `docs/re/web.md` section 6): family detection (30 real id strings), standard + raw (Firefox-style) layouts,
@@ -58,5 +57,5 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 (baked into graphics); (4) optional: gamepad navigation of the web menu.
 
 ## Blockers
-- No Sega CD BIOS (not downloaded by rule) → HLE oracle instead; YM2612/mix levels unverified by ear.
+- A real Sega CD BIOS is now used by oracle2 (user-supplied, never committed); YM2612/mix levels are checked against Nuked YM2612 but not against real hardware.
 - REA cannot load raw 68000 images; Ghidra headless is used.

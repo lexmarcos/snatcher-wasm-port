@@ -27,19 +27,28 @@ for rel in range(1, frames + 1):
     for _, pc, r in m.hits:
         if pc == 0x154F8 and (r['d0'] & 0xFFFF) >= 36:
             cur = {'id': r['d0'] & 0xFFFF, 'start': rel, 'end': None}; res.append(cur)
-    if cur and cur['end'] is None and rel > cur['start'] + 3 and not (s.r8(0x1511E) & 2): cur['end'] = rel
+    if cur and cur['end'] is None:
+        if s.r8(0x1511E) & 2:
+            if cur.get('on') is None: cur['on'] = rel       # voice stream playing (bit 1 of $1511E) first seen
+        elif cur.get('on') is not None: cur['end'] = rel
 for c in res:
     c['handler_runs_12'] = hr[c['start'] - 1:c['start'] + 11]
     c['stall12'] = sum(1 for x in c['handler_runs_12'] if x == 0)
+    c['stall80'] = sum(1 for x in hr[c['start'] - 1:c['start'] + 79] if x == 0)
     if c['end']:
-        c['frames'] = c['end'] - c['start']
+        c['frames'] = c['end'] - c['start']          # request -> stream end
+        c['lead'] = c['on'] - c['start']             # request -> stream playing (CD seek + prime)
+        c['play'] = c['end'] - c['on']               # stream playing time
         mf = pcm.get(str(c['id']), {}).get('seconds'); c['manifest'] = mf and mf * 60
 json.dump(res, open(out, 'w'))
 done = [c for c in res if c.get('frames')]
 import statistics
 print('voices', len(res), 'complete', len(done))
 if done:
-    d = [c['frames'] - c['manifest'] for c in done if c.get('manifest')]
-    print('duration - manifest (frames): mean %.1f min %.1f max %.1f' % (statistics.mean(d), min(d), max(d)))
+    d = [c['play'] - c['manifest'] for c in done if c.get('manifest')]
+    print('stream playing time - manifest (frames): mean %.1f min %.1f max %.1f' % (statistics.mean(d), min(d), max(d)))
+    ld = [c['lead'] for c in done]
+    print('request -> stream playing (frames): mean %.1f min %d max %d' % (statistics.mean(ld), min(ld), max(ld)))
+    print('handler-less frames in the 80 frames after a voice start: mean %.2f' % statistics.mean(c['stall80'] for c in done))
     print('handler-less frames in the 12 frames after a voice start: mean %.2f min %d max %d' % (statistics.mean(c['stall12'] for c in done), min(c['stall12'] for c in done), max(c['stall12'] for c in done)))
     print('(handler-less frames of the whole run: %.3f)' % (hr.count(0) / len(hr)))

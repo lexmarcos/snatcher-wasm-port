@@ -8,6 +8,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'oracle'))
 ap = argparse.ArgumentParser()
 ap.add_argument('kind'); ap.add_argument('pad'); ap.add_argument('frames', type=int); ap.add_argument('trace')
+ap.add_argument('--shots-from', default='', help='trace of an earlier identical run: save a PNG OFFSET frames after each (non-menu) queue start'); ap.add_argument('--offset', type=int, default=40); ap.add_argument('--shot-dir', default='')
 ap.add_argument('--jump', default=''); ap.add_argument('--load', default='junker_hq'); ap.add_argument('--wait', type=int, default=300)
 a = ap.parse_args()
 os.environ['ORACLE'] = '2' if a.kind == '2' else 'hle'
@@ -20,6 +21,18 @@ m.inputs = []
 if a.jump: oracle_jump(m, a.jump, a.wait)
 else:
     for _ in range(a.wait): m.step_frame(capture=False)
+shotf = {}
+if a.shots_from:
+    qi = 0
+    for l in open(a.shots_from):
+        d = json.loads(l)
+        if d['t'] != 'seq_start': continue
+        hx = d['queue']; w = [int(hx[i:i + 4], 16) for i in range(0, len(hx), 4)]
+        while w and w[-1] == 0: w.pop()
+        if len(w) == 0 or w[0] in (0x22, 0x16, 0x05, 0x23) or w == [0x1C, 0x1D]: continue
+        shotf[d['f'] + a.offset] = qi; qi += 1
+    os.makedirs(a.shot_dir, exist_ok=True)
+    from PIL import Image
 s = m.sub
 script = json.load(open(a.pad)); k = 0
 ready_since = {}; last_press = -100; ecount = 0; unpressed_since = 0; extra = 0; pending = None; lost = 0
@@ -42,7 +55,8 @@ for rel in range(1, a.frames + 1):
     snap0 = (s.r8(0x9710), s.r8(0x79F4), s.r8(0x9B44), s.r8(0x7A25), s.r8(0x9740), s.r8(0x97F2))
     m.inputs = [[1, pad]]
     s.write(0x786A, bytes(4))
-    m.step_frame(capture=False)
+    m.step_frame(capture=((m.frame + 1) in shotf))
+    if m.frame in shotf: Image.fromarray(m.vdp.frame_image()).save(os.path.join(a.shot_dir, 'q%03d.png' % shotf[m.frame]))
     if pad:
         last_press = rel
         seen = s.r8(0x7991) & (pad & 0x8F | (0x20 if pad & 0x20 else 0))

@@ -128,3 +128,21 @@ Original driver run from the idle title screen (F2 first: the music stops, silen
 Differences: (1) levels agree within about 2 dB peak / 1.7 dB RMS for 12 of 14 ids (the engine's "unity" mixing is close to the core's), (2) tonal content and envelopes agree, so driver + YM translation are right, (3) the real chip model adds a
 **broadband noise floor / DAC ladder distortion** (high bands 10-30 dB above the engine in quiet or noisy sounds) which the engine's chip model (no ladder effect, documented) does not have, (4) song 40 has +10 dB below 100 Hz
 (PCM drum kit at 60 Hz band: +13 dB; engine drum level vs the real RF5C164 path, unverified). Nothing was retuned: (3) is a property of the real chip that a web port arguably should not copy.
+
+### 6. Act 1 side by side (HLE vs oracle2) and the engine
+Session: `fid_play.py --cycle --rng --frames 40000` from the Junker HQ anchor on each oracle (`act1_hle.*`, `act1_2.*` in `re/oracle/out/fid2`). The two adaptive runs diverge once (policy: a menu key lost to a sub-CPU stall
+picks another ASK topic, queue 89), so the *same* game-level inputs were replayed on both: `o2_syncplay.py` (presses synchronised to menu/message readiness with the recorded `since`, lost presses retried like `fid_play`).
+- **Queues: 106 of 106 identical** (`o2_cmpq.py out/fid2/sync_act1_hle.trace.jsonl out/fid2/sync_act1_2.trace.jsonl`), over 36773 (HLE) / 39771 (oracle2) frames. No behavioural divergence of the script/sequencer logic.
+- **Screens** 60 frames after each queue start (`qshots_*`, normalised colours): 48 identical, 31 within 60 px, 27 with more; the 27 are timing phase, checked by eye: text typed one line less (q62, q66), fade-in phase (q21), scene still loading
+  on the real BIOS (q19, q20: black where the HLE already shows the scene; the load is 20-30 frames longer), a few sprite phases. No content difference.
+- **Engine vs both**: `fid_cmp --sync` Act 1: engine matches 108/108 (HLE) and 106/106 (oracle2) queues, the same 3 engine-only passes before the anchor in both (new-game prelude). Screens at drift-corrected frames: engine vs HLE 30 exact / 23 <= 60 px / 27 more,
+  engine vs oracle2 14 / 26 / 40 (the real BIOS drift is uneven - loads and voice starts - so the +-12-frame refine does not always find the phase).
+- A divergence "oracle2 differs from the HLE and the engine follows the HLE" therefore exists only in **timing** (section 3), not in logic. No engine bug of that kind was found in Act 1, SP29 (165/165 queues) or a2_taxi (74 of 75, the 75th = the state-4 queue [02] that is fixed now).
+- One more difference seen only on the real console path: the game also depends on uninitialised PRG-RAM (`$9DC0..` holds BIOS boot-screen text on the real BIOS, zero in the HLE). Zeroing it (`O2_ZERO_VARS=1` in `fid_common.oracle_jump`) changed nothing in the sessions tested.
+
+## Limits of oracle2
+- The core is an emulator, not hardware: CD seek/latency is a heuristic (section 3), the Justifier latch is idealised, no real-time effects of the physical drive, no region/BIOS variants run (only Model 1 v1.10; the Model 2 v2.00w image was not needed).
+- PC hooks step the CPU per instruction (identical state, same speed here); they exist for the sub CPU (and main CPU) only, no memory-write watches (use per-frame polling or hooks on the writing instruction).
+- `seq_start` comes from hooks on S:0xFFC4 and the `clr.b seq_busy` sites, equal to the HLE's rising-edge events in all sessions compared (106/106), but it is not the same code path.
+- Not produced: `cd_dest`, `buram`, `cdbios`, `pcm_on` events; trace `f` of the HLE is the frame index before the step (the same convention is kept: events carry the frame in which they were logged).
+- BIOS and disc images are never copied (the BIOS is a symlink in a gitignored directory).
