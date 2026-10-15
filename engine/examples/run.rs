@@ -43,6 +43,12 @@ fn main() {
         if *n == "PCMLD_01.BIN" { continue; }
         if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); }
     }
+    // I18N_PACK=path/to/pt-BR.pack: play in pt-BR (docs/i18n.md)
+    if let Ok(p) = std::env::var("I18N_PACK") {
+        let n = e.load_translation(&std::fs::read(&p).expect("pack")).expect("valid pack");
+        e.set_language(true);
+        println!("translation pack: {n} strings");
+    }
     // main-CPU boot screens need the IP image (HEADER.BIN + IP.BIN of the disc, assets/raw/{header,ip}.bin)
     for (n, f) in [("HEADER.BIN", "header.bin"), ("IP.BIN", "ip.bin")] {
         if let Ok(d) = std::fs::read(raw.join("..").join(f)) { e.load_file(n, d); }

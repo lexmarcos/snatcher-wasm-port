@@ -71,6 +71,10 @@ impl Game {
     pub fn set_prompt(&mut self, style: u8, a: u8, b: u8, c: u8, start: u8) { self.e.prompt.set(style, a, b, c, start); }
     /// Change only the style (keeps the control ids).
     pub fn set_prompt_style(&mut self, style: u8) { self.e.prompt.style = sncore::prompt::Style::from_u8(style); }
+    /// Language of the game text: "en" (default, original text) or "pt-BR". Applies from the next message or menu drawn.
+    pub fn set_language(&mut self, lang: &str) { self.e.set_language(lang.eq_ignore_ascii_case("pt-br") || lang.eq_ignore_ascii_case("pt")); }
+    /// Install the pt-BR translation pack (`snt i18n-build`, served as /i18n/pt-BR.pack). Returns the number of strings, or -1 if the pack is invalid.
+    pub fn load_translation(&mut self, pack: Vec<u8>) -> i32 { self.e.load_translation(&pack).map(|n| n as i32).unwrap_or(-1) }
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).
     pub fn tick(&mut self, pad: u16) {
         self.e.tick(pad as u8);

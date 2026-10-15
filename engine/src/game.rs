@@ -162,6 +162,28 @@ pub struct Engine {
     pub ix: crate::menus::Ix,
     /// frames until the game restarts at the title after VM state 4 (0 = not pending)
     pub reboot_in: u32,
+    /// translation state (docs/i18n.md); English is the default and leaves every output unchanged
+    pub i18n: I18n,
+}
+
+/// Language state: when `pt` is set and a translation pack is loaded, message and menu text come from the pack (per string,
+/// falling back to the original when an entry is missing). The VM keeps using the original text offsets (menu paths, CHOICE
+/// matching): only the display side maps an offset to its translated string, which lives after the original text area.
+#[derive(Default)]
+pub struct I18n {
+    pub pt: bool,
+    pub pack: sncore::i18n::Translation,
+    /// speaker names with the translation applied (same indices as `Engine::names`)
+    names: Vec<(u8, Vec<u8>)>,
+    /// text area (from 0x3800) of the current script followed by the translated strings, and original offset -> translated offset
+    area: Vec<u8>,
+    map: HashMap<u16, u16>,
+}
+
+impl I18n {
+    fn rebuild_names(&mut self, orig: &[(u8, Vec<u8>)]) {
+        self.names = orig.iter().enumerate().map(|(i, (c, n))| (*c, self.pack.names.get(&(i as u8)).cloned().unwrap_or_else(|| n.clone()))).collect();
+    }
 }
 
 fn rd16(a: &[u16], i: usize) -> u16 { a.get(i).copied().unwrap_or(0) }
@@ -177,7 +199,7 @@ impl Engine {
             text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, mod_delay: 0, voice_age: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
-            top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(), reboot_in: 0,
+            top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(), reboot_in: 0, i18n: I18n::default(),
         }
     }
 
@@ -187,6 +209,7 @@ impl Engine {
             self.mem.map(gfx::SUBCODE_BASE, data.clone());
             self.font = Some(Font::from_subcode(&data));
             self.names = actions::speaker_names(&data);
+            self.i18n.rebuild_names(&self.names);
             self.input = Some(Input::from_subcode(&data));
         }
         self.files.insert(name, data);
@@ -207,6 +230,7 @@ impl Engine {
     pub fn reset_to_title(&mut self) {
         let mut e = Engine::new();
         std::mem::swap(&mut e.files, &mut self.files);
+        e.i18n = std::mem::take(&mut self.i18n);
         e.font = self.font.take(); e.names = std::mem::take(&mut self.names); e.input = self.input.take(); e.prompt = std::mem::take(&mut self.prompt);
         e.saves = std::mem::take(&mut self.saves); e.voice_len = std::mem::take(&mut self.voice_len); e.fm_len = std::mem::take(&mut self.fm_len);
         e.trace = self.trace; e.fid_rng = self.fid_rng; e.module_factory = self.module_factory; e.frame = self.frame;
@@ -654,9 +678,43 @@ impl Engine {
     }
 
     fn script_text(&self, off: u16) -> &[u8] {
+        if self.i18n.pt && !self.i18n.map.is_empty() { return self.i18n.area.get(self.tr_off(off) as usize..).unwrap_or(&[]); }
         let o = 0x3800 + off as usize;
         self.script.get(o..).unwrap_or(&[])
     }
+
+    /// Offset the display side reads for the original text offset `off` (itself in English or when no translation exists).
+    pub fn tr_off(&self, off: u16) -> u16 {
+        if self.i18n.pt { self.i18n.map.get(&off).copied().unwrap_or(off) } else { off }
+    }
+
+    /// Switch the language (true = pt-BR). Takes effect for the next message / menu drawn.
+    pub fn set_language(&mut self, pt: bool) {
+        self.i18n.pt = pt;
+        self.i18n_refresh(sncore::script::sp_number(self.vm.script_id));
+    }
+
+    /// Install a translation pack (`snt i18n-build`). Returns the number of translated strings.
+    pub fn load_translation(&mut self, pack: &[u8]) -> Result<usize, String> {
+        self.i18n.pack = sncore::i18n::Translation::parse(pack)?;
+        self.i18n.rebuild_names(&self.names);
+        self.i18n_refresh(sncore::script::sp_number(self.vm.script_id));
+        Ok(self.i18n.pack.files.values().map(|m| m.len()).sum())
+    }
+
+    /// Rebuild the translated text area for the script that is loaded now.
+    fn i18n_refresh(&mut self, sp: Option<u8>) {
+        self.i18n.map.clear();
+        self.i18n.area.clear();
+        if !self.i18n.pt { return; }
+        let (Some(sp), Some(orig)) = (sp, self.script.get(0x3800..)) else { return };
+        if !self.i18n.pack.files.contains_key(&sp) { return; }
+        let (area, map) = self.i18n.pack.extend_area(sp, orig);
+        self.i18n.area = area;
+        self.i18n.map = map;
+    }
+
+
 
     /// Render stream of visible menu line `i` in colour `col` (`FC 00 F9 01 FE c FB 10 y text FF`, S:0x10D9A).
     fn menu_line_stream(&mut self, i: usize, col: u8) -> Vec<u8> {
@@ -704,7 +762,7 @@ impl Engine {
     /// The script text area as the message box prints it: button placeholders EC/EE/F0 resolved (letter, or icon when a
     /// prompt style is set) and the word START replaced by its icon. Same length as the script text: offsets stay valid.
     pub fn message_text(&self) -> Vec<u8> {
-        let t = self.script.get(0x3800..).unwrap_or(&[]);
+        let t = if self.i18n.pt && !self.i18n.map.is_empty() { &self.i18n.area[..] } else { self.script.get(0x3800..).unwrap_or(&[]) };
         let mut v: Vec<u8> = t.iter().map(|&c| self.letter(c)).collect();
         self.prompt.subst_start(&mut v);
         v
@@ -986,7 +1044,7 @@ impl Engine {
             return;
         };
         match addr {
-            0x1A800 => { self.script = data; }
+            0x1A800 => { self.script = data; self.i18n_refresh(sncore::script::sp_number(file)); }
             0x28000 => { self.mem.map(gfx::DATA_BASE, data); self.data_file = Some(file); }
             _ => {}
         }
@@ -1059,7 +1117,7 @@ impl Engine {
     fn cmd_message(&mut self, spk: u16, off: u16) -> bool {
         if self.msg.is_none() {
             let wide = self.regs.get_b(0x7893);
-            self.msg = Some(MessageBox::new(spk, off, wide));
+            self.msg = Some(MessageBox::new(spk, self.tr_off(off), wide));
         }
         let confirm = self.input.as_ref().map(|i| i.pressed & btn::L_CONFIRM != 0).unwrap_or(false);
         let fast = self.input.as_ref().map(|i| i.held & btn::L_CONFIRM != 0).unwrap_or(false) || self.regs.get_b(0x9727) != 0;
@@ -1067,7 +1125,8 @@ impl Engine {
         let text = self.message_text();
         let mut m = self.msg.take().unwrap();
         let st0 = if self.text.busy { 99 } else { m.state };
-        let ev = m.tick(&mut self.text, &text, &self.names, confirm);
+        let names = if self.i18n.pt && !self.i18n.pack.names.is_empty() { &self.i18n.names } else { &self.names };
+        let ev = m.tick(&mut self.text, &text, names, confirm);
         // S:0x13674 sub_01395A (state 10): `$9717 = 0` (portrait objects talk); S:0x13698 (state 2, narration): `$9717 = FF`
         if st0 == 10 { self.regs.set_b(0x9717, 0); }
         if st0 == 2 && m.speaker == 0 { self.regs.set_b(0x9717, 0xFF); }

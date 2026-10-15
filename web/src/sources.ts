@@ -2,6 +2,7 @@
 //  - served: the local dev server (`bun web/server.ts`) serving the extracted ./assets directory
 //  - picked: a folder chosen with <input webkitdirectory> (File objects, read lazily, never uploaded)
 // Nothing here talks to a remote host; game data is never bundled or published.
+import { T, type UiKey } from "./i18n";
 
 export interface GameFile { name: string; read(): Promise<ArrayBuffer> }
 
@@ -26,24 +27,25 @@ async function getBuf(url: string): Promise<ArrayBuffer | null> {
   try { const r = await fetch(url); return r.ok ? await r.arrayBuffer() : null; } catch { return null; }
 }
 
-export async function probeServed(): Promise<{ src?: Source; error?: string }> {
+/** `error` is a UI string key (`err.*`), translated by the caller. */
+export async function probeServed(): Promise<{ src?: Source; error?: UiKey }> {
   let text: string;
   try {
     const r = await fetch("/assets/raw/filelist.tsv");
-    if (!r.ok) return { error: "no local assets found at /assets/raw (run the extraction, see README)" };
+    if (!r.ok) return { error: "err.noassets" };
     text = await r.text();
-  } catch { return { error: "the local asset server is not reachable" }; }
+  } catch { return { error: "err.noserver" }; }
   const names = text.split("\n").slice(1).map((l) => l.split("\t")[0].trim()).filter((n) => n && !SKIP.has(n));
-  if (!names.length) return { error: "assets/raw/filelist.tsv is empty" };
+  if (!names.length) return { error: "err.empty" };
   const src: Source = {
-    label: "local server (./assets)",
+    get label() { return T("src.server"); },
     gameFiles: () => names.map((name) => ({
       name,
       read: async () => { const b = await getBuf("/assets/raw/files/" + name); if (!b) throw new Error("missing " + name); return b; },
     })),
     boot: (name) => getBuf("/assets/raw/" + name.toLowerCase()),
     audio: (path) => getBuf("/assets/" + path),
-    summary: () => [`${names.length} game files listed in assets/raw/filelist.tsv`],
+    summary: () => [T("src.listed", { n: names.length })],
   };
   return { src };
 }
@@ -97,14 +99,14 @@ export function pickedSource(list: File[]): Source {
   };
 
   return {
-    label: "picked folder",
+    get label() { return T("src.picked"); },
     gameFiles: () => [...gameByName].map(([name, f]) => ({ name, read: () => f.arrayBuffer() })),
     boot: async (name) => { const f = bootBy.get(name.toLowerCase()); return f ? f.arrayBuffer() : null; },
     audio: async (path) => { const f = findAudio(path); return f ? f.arrayBuffer() : null; },
     summary: () => [
-      `${gameByName.size} game files`,
-      `header.bin ${bootBy.has("header.bin") ? "found" : "missing"}, ip.bin ${bootBy.has("ip.bin") ? "found" : "missing"}`,
-      `audio: ${oggs} .ogg files, pcm.json ${findAudio("audio/web/pcm.json") ? "found" : "missing"}, fm.json ${findAudio("audio/web/fm.json") ? "found" : "missing"}`,
+      T("src.files", { n: gameByName.size }),
+      T("src.boot", { h: bootBy.has("header.bin") ? T("src.found") : T("src.missing"), i: bootBy.has("ip.bin") ? T("src.found") : T("src.missing") }),
+      T("src.audio", { n: oggs, p: findAudio("audio/web/pcm.json") ? T("src.found") : T("src.missing"), f: findAudio("audio/web/fm.json") ? T("src.found") : T("src.missing") }),
     ],
   };
 }

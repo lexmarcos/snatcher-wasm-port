@@ -1,0 +1,108 @@
+// Front end language: English (built in) and Brazilian Portuguese (i18n/pt-BR/ui.json, fetched on demand).
+// The game text itself is translated inside the engine (docs/i18n.md); this file only covers the page around it.
+// Every user-visible string of the page has a key here. `T(key, vars)` returns the string of the active language and
+// falls back to English when a key is missing, so a half-finished ui.json never breaks the page. `{name}` marks a variable.
+
+export type Lang = "en" | "pt-BR";
+
+export const UI_EN = {
+  // toolbar and canvas
+  "bar.menu": "Menu (Esc)", "bar.menu.title": "Settings, controls, saves (Esc)",
+  "bar.mute": "Mute (M)", "bar.unmute": "Unmute (M)", "bar.mute.title": "Mute audio (M)",
+  "bar.full": "Fullscreen (F)", "bar.full.title": "Fullscreen (F)",
+  "canvas.label": "Snatcher game screen",
+  "msg.loading": "loading…", "msg.ready": "ready", "msg.waiting": "waiting for game files",
+  "msg.files": "{n} game files loaded", "msg.nosaves": "no saves to export", "msg.saved": "saved to slot {n}",
+  "msg.pad": "gamepad: {name}", "msg.nopad": "no gamepad", "msg.engine": "engine error: {e}",
+  // start overlay
+  "ov.title": "Snatcher – web port",
+  "ov.intro": "A private, non-commercial preservation project: the game engine is rewritten for the browser and plays <b>your own</b> copy of the game data. No game data is included or uploaded; everything stays on this machine.",
+  "ov.files": "Game files", "ov.looking": "Looking for local files…",
+  "ov.play": "Play", "ov.pick": "Choose extracted folder…", "ov.loading": "Loading {done}/{total}…",
+  "ov.help": "Choose the folder you extracted from your disc (the project's <code>assets</code> folder works best: it holds <code>raw/files</code>, <code>raw/header.bin</code>, <code>raw/ip.bin</code> and the audio in <code>audio/web</code> and <code>web/music</code>). Files are read in this page only.",
+  "ov.saves": "Saves", "ov.import": "Import saves…", "ov.export": "Export saves", "ov.controls": "Controls",
+  "ov.using": "Using: {label}", "ov.nofiles": "No game files found in that selection.",
+  "ov.nofiles2": "Looked at {n} files. Pick the folder that contains the extracted \"files\" folder (assets/raw) or the whole assets folder.",
+  "ov.nolocal": "No local game files found.", "ov.nolocal2": "{err}. Choose the extracted folder below, or run the extraction and start bun web/server.ts (see README).",
+  "ov.fail": "Could not start: {e}", "ov.language": "Language",
+  // sources
+  "src.server": "local server (./assets)", "src.picked": "picked folder",
+  "src.listed": "{n} game files listed in assets/raw/filelist.tsv",
+  "src.files": "{n} game files", "src.boot": "header.bin {h}, ip.bin {i}", "src.found": "found", "src.missing": "missing",
+  "src.audio": "audio: {n} .ogg files, pcm.json {p}, fm.json {f}",
+  "err.noassets": "no local assets found at /assets/raw (run the extraction, see README)", "err.noserver": "the local asset server is not reachable",
+  "err.empty": "assets/raw/filelist.tsv is empty",
+  // settings panel
+  "pn.title": "Menu", "pn.paused": "(game paused)", "pn.resume": "Resume", "pn.status": "Status", "pn.volume": "Volume",
+  "pn.music": "Music", "pn.voice": "Voice", "pn.fx": "Effects", "pn.display": "Display", "pn.smooth": "Smooth scaling",
+  "pn.debug": "Debug overlay (F1)", "pn.gamepad": "Gamepad", "pn.buttonsfor": "Buttons for", "pn.reset": "Reset to defaults",
+  "pn.promptlabel": "Button names in game text", "pn.prompt.auto": "Icons of the last used device", "pn.prompt.letters": "Original letters (A B C)",
+  "pn.saves": "Saves", "pn.controls": "Controls", "pn.language": "Language",
+  "pn.sound": "Sound mode (set by the game's options screen): FM {fm}, PCM {pcm}.", "pn.mono": "mono", "pn.stereo": "stereo",
+  "pn.savesnote": " Imported saves show up the next time the title screen is opened.",
+  // notes
+  "note.ok": "Everything loaded.", "note.noengine": "The engine (web/pkg) is not built: run scripts/build-web.sh. {e}",
+  "note.nofile": "none of the game files could be read",
+  "note.failfiles": "{fail} of {total} game files could not be read; the game may stall.",
+  "note.noboot": "header.bin / ip.bin not found: the copyright and Konami logo screens are skipped (optional).",
+  "note.audio": "{n} audio file(s) not found or not decodable (last: {last}); those sounds are silent.",
+  "note.manifests": "Audio manifests missing ({list}): {what}. Run the audio pipeline (README).",
+  "note.manifests.all": "voices, FM music and effects are silent", "note.manifests.part": "part of the audio is silent",
+  "note.start": "{e}", "note.crash": "The engine stopped with an error: {e}",
+  "note.storage": "Browser storage is blocked: saves last only until this page closes. Use Export saves.",
+  "note.nosaves": "No saves to export.", "note.exported": "Saves exported.",
+  "note.imported": "Imported save slot(s) {slots}.", "note.notimported": "No save imported.",
+  "note.nopack": "The pt-BR translation was not found (run scripts/build-web.sh); the game text stays in English.",
+  "saves.slots": "Saved slots: {list}.", "saves.none": "No saves yet.",
+  "saves.volatile": " Browser storage is unavailable: saves are kept for this session only, export them.",
+  // controls help
+  "ctl.keyboard": "Keyboard", "ctl.gamepad": "Gamepad", "ctl.lastused": "Last used. Press a gamepad button to show its controls here.",
+  "ctl.lastdev": "{name} (the last device used){extra}.", "ctl.generic": ", shown with Xbox-style icons",
+  "ctl.move": "Move", "ctl.arrows": "Arrow keys", "ctl.dpad": "D-pad", "ctl.stick": "left stick",
+  "ctl.confirm": "Confirm / fire", "ctl.cancel": "Cancel / light", "ctl.draw": "Draw blaster", "ctl.start": "Start",
+  "ctl.also": " (also {k})", "ctl.sorspace": "S or Space",
+  "ctl.web": "Web menu", "ctl.orEsc": " or Esc", "ctl.esc": "Esc",
+  "ctl.gun": "Light gun", "ctl.mouse": "mouse",
+  "ctl.gunhelp": " Move to aim, left button = trigger, right button = second button (holster). Pressing any pad key switches back to the pad.",
+  "ctl.misc": "Fullscreen / mute / debug",
+  "pad.assign": "Assign…", "pad.press": "Press a button… (Esc cancels)", "pad.nonstd": " (non-standard mapping)",
+  "pad.connected": "Connected: {list}.", "pad.none": "No gamepad detected. Press a button on it (browsers only show a pad after its first input).",
+  "pad.generic": "Unknown controllers use Xbox-style icons. ", "pad.connect": "Connect a gamepad and press a button on it first.",
+  "pad.row": "{what} (Genesis {g})",
+} as const;
+
+export type UiKey = keyof typeof UI_EN;
+
+let dict: Partial<Record<UiKey, string>> = {};
+let lang: Lang = "en";
+
+export const getLang = (): Lang => lang;
+
+export function setUiDict(l: Lang, d: Record<string, string> | null) {
+  lang = l;
+  dict = l === "en" || !d ? {} : (d as Partial<Record<UiKey, string>>);
+  try { document.documentElement.lang = l === "en" ? "en" : "pt-BR"; } catch { /* no document in unit tests */ }
+}
+
+export function T(key: UiKey, vars?: Record<string, string | number>): string {
+  let s: string = dict[key] ?? UI_EN[key];
+  if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+  return s;
+}
+
+/** Parse "en", "pt-BR", "pt_br", "pt" ... */
+export function parseLang(v: string | null | undefined): Lang | null {
+  if (!v) return null;
+  const l = v.toLowerCase().replace("_", "-");
+  if (l === "pt-br" || l === "pt") return "pt-BR";
+  if (l === "en" || l.startsWith("en-")) return "en";
+  return null;
+}
+
+/** Fill the static page: `data-i18n` (text), `data-i18n-html` (markup written by us), `data-i18n-title`, `data-i18n-label` (aria-label). */
+export function applyStatic(root: ParentNode = document) {
+  for (const e of Array.from(root.querySelectorAll<HTMLElement>("[data-i18n]"))) e.textContent = T(e.dataset.i18n as UiKey);
+  for (const e of Array.from(root.querySelectorAll<HTMLElement>("[data-i18n-html]"))) e.innerHTML = T(e.dataset.i18nHtml as UiKey);
+  for (const e of Array.from(root.querySelectorAll<HTMLElement>("[data-i18n-title]"))) e.title = T(e.dataset.i18nTitle as UiKey);
+  for (const e of Array.from(root.querySelectorAll<HTMLElement>("[data-i18n-label]"))) e.setAttribute("aria-label", T(e.dataset.i18nLabel as UiKey));
+}

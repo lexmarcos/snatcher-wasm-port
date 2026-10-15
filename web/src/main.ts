@@ -12,6 +12,7 @@ import { controlIcon, dpadIcon, mouseIcon, stickIcon } from "./icons";
 import { Pacer } from "./pacer";
 import { SaveStore, SLOTS } from "./saves";
 import { pickedSource, probeServed, type Source } from "./sources";
+import { T, applyStatic, getLang, parseLang, setUiDict, type Lang, type UiKey } from "./i18n";
 
 const W = 256, H = 224;
 const params = new URLSearchParams(location.search);
@@ -31,10 +32,13 @@ type Level = "warn" | "err" | "ok";
 const notes = new Map<string, { level: Level; text: string }>();
 function note(key: string, level: Level, text: string | null) {
   if (text === null) notes.delete(key); else notes.set(key, { level, text });
+  renderNotes();
+}
+function renderNotes() {
   for (const id of ["notes", "pnNotes"]) {
     const ul = $(id); ul.replaceChildren();
     for (const n of notes.values()) { const li = document.createElement("li"); li.className = n.level; li.textContent = n.text; ul.append(li); }
-    if (!notes.size && id === "pnNotes") { const li = document.createElement("li"); li.className = "ok"; li.textContent = "Everything loaded."; ul.append(li); }
+    if (!notes.size && id === "pnNotes") { const li = document.createElement("li"); li.className = "ok"; li.textContent = T("note.ok"); ul.append(li); }
   }
 }
 
@@ -91,7 +95,7 @@ function applyPrompt() {
 }
 
 // ---------- controls help (shows the controls of the active device) ----------
-const GEN_ROWS: [GenesisButton, string][] = [["C", "Confirm / fire"], ["B", "Cancel / light"], ["A", "Draw blaster"], ["START", "Start"]];
+const GEN_ROWS: [GenesisButton, UiKey][] = [["C", "ctl.confirm"], ["B", "ctl.cancel"], ["A", "ctl.draw"], ["START", "ctl.start"]];
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e;
 }
@@ -102,30 +106,31 @@ function renderControls() {
   const dev = input.device;
   const rows: [string, (td: HTMLElement) => void][] = [];
   const set = dev.kind === "keyboard" ? "keyboard" : setOf(dev.family);
-  rows.push([dev.kind === "keyboard" ? "Keyboard" : "Gamepad", (td) => {
-    td.textContent = dev.kind === "keyboard" ? "Last used. Press a gamepad button to show its controls here." : `${FAMILY_LABEL[dev.family]} (the last device used)${dev.family === "generic" ? ", shown with Xbox-style icons" : ""}.`;
+  rows.push([dev.kind === "keyboard" ? T("ctl.keyboard") : T("ctl.gamepad"), (td) => {
+    td.textContent = dev.kind === "keyboard" ? T("ctl.lastused") : T("ctl.lastdev", { name: FAMILY_LABEL[dev.family], extra: dev.family === "generic" ? T("ctl.generic") : "" });
   }]);
-  rows.push(["Move", (td) => {
-    if (dev.kind === "keyboard") td.textContent = "Arrow keys";
-    else { iconCell(dpadIcon(), "D-pad", td); td.append(" / "); iconCell(stickIcon(), "left stick", td); }
+  rows.push([T("ctl.move"), (td) => {
+    if (dev.kind === "keyboard") td.textContent = T("ctl.arrows");
+    else { iconCell(dpadIcon(), T("ctl.dpad"), td); td.append(" / "); iconCell(stickIcon(), T("ctl.stick"), td); }
   }]);
-  for (const [g, what] of GEN_ROWS) {
+  for (const [g, whatKey] of GEN_ROWS) {
+    const what = T(whatKey);
     rows.push([g === "START" ? what : `${what} (${g})`, (td) => {
       if (dev.kind === "keyboard") {
         const k = ({ A: "Z", B: "X", C: "C", START: "Enter" } as const)[g];
         iconCell(controlIcon("keyboard", k), k, td);
-        td.append(el("span", "dim", g === "START" ? "" : ` (also ${({ A: "A", B: "S or Space", C: "D" } as const)[g]})`));
+        td.append(el("span", "dim", g === "START" ? "" : T("ctl.also", { k: ({ A: "A", B: T("ctl.sorspace"), C: "D" } as const)[g] })));
       } else {
         const c = input.maps[dev.family][g];
         iconCell(controlIcon(setOf(dev.family), c), CONTROL_NAMES[setOf(dev.family)][c], td);
       }
     }]);
   }
-  rows.push(["Web menu", (td) => {
-    if (dev.kind === "pad") { iconCell(controlIcon(setOf(dev.family), "select"), SELECT_NAMES[setOf(dev.family)], td); td.append(" or Esc"); } else td.textContent = "Esc";
+  rows.push([T("ctl.web"), (td) => {
+    if (dev.kind === "pad") { iconCell(controlIcon(setOf(dev.family), "select"), SELECT_NAMES[setOf(dev.family)], td); td.append(T("ctl.orEsc")); } else td.textContent = T("ctl.esc");
   }]);
-  rows.push(["Light gun", (td) => { iconCell(mouseIcon(), "mouse", td); td.append(" Move to aim, left button = trigger, right button = second button (holster). Pressing any pad key switches back to the pad."); }]);
-  rows.push(["Fullscreen / mute / debug", (td) => { td.textContent = "F / M / F1"; }]);
+  rows.push([T("ctl.gun"), (td) => { iconCell(mouseIcon(), T("ctl.mouse"), td); td.append(T("ctl.gunhelp")); }]);
+  rows.push([T("ctl.misc"), (td) => { td.textContent = "F / M / F1"; }]);
   void set;
   for (const host of Array.from(document.querySelectorAll(".controls"))) {
     const t = el("table", "keys");
@@ -145,20 +150,21 @@ const shownFamily = (): Family => padFamily.value as Family;
 function renderPadMap() {
   const f = shownFamily(), set = setOf(f), m = input.maps[f];
   padMapTable.replaceChildren();
-  for (const [g, what] of GEN_ROWS) {
+  for (const [g, whatKey] of GEN_ROWS) {
+    const what = T(whatKey);
     const r = padMapTable.insertRow();
-    r.insertCell().textContent = g === "START" ? what : `${what} (Genesis ${g})`;
+    r.insertCell().textContent = g === "START" ? what : T("pad.row", { what, g });
     iconCell(controlIcon(set, m[g]), CONTROL_NAMES[set][m[g]], r.insertCell());
-    const b = el("button", undefined, capturing === g ? "Press a button… (Esc cancels)" : "Assign…"); b.type = "button";
+    const b = el("button", undefined, capturing === g ? T("pad.press") : T("pad.assign")); b.type = "button";
     b.onclick = () => startCapture(g);
     r.insertCell().append(b);
   }
   const pads = input.pads();
-  padInfo.textContent = pads.length ? `Connected: ${pads.map((p) => `${FAMILY_LABEL[p.family]}${p.mapping === "standard" ? "" : " (non-standard mapping)"} "${parseGamepadId(p.id).name.slice(0, 50)}"`).join("; ")}.` : "No gamepad detected. Press a button on it (browsers only show a pad after its first input).";
-  padHint.textContent = f === "generic" ? "Unknown controllers use Xbox-style icons. " : "";
+  padInfo.textContent = pads.length ? T("pad.connected", { list: pads.map((p) => `${FAMILY_LABEL[p.family]}${p.mapping === "standard" ? "" : T("pad.nonstd")} "${parseGamepadId(p.id).name.slice(0, 50)}"`).join("; ") }) : T("pad.none");
+  padHint.textContent = f === "generic" ? T("pad.generic") : "";
 }
 function startCapture(g: GenesisButton) {
-  if (!input.pads().length) { padHint.textContent = "Connect a gamepad and press a button on it first."; return; }
+  if (!input.pads().length) { padHint.textContent = T("pad.connect"); return; }
   capturing = g; renderPadMap();
   input.capture((c: Control) => {
     capturing = null;
@@ -173,7 +179,7 @@ $("padReset").onclick = () => { cancelCapture(); input.resetMap(shownFamily()); 
 input.onDevice = () => applyPrompt();
 input.onPads = () => {
   const p = input.pads();
-  msg.textContent = p.length ? `gamepad: ${FAMILY_LABEL[p[p.length - 1].family]}` : "no gamepad";
+  setMsg(p.length ? "msg.pad" : "msg.nopad", p.length ? { name: FAMILY_LABEL[p[p.length - 1].family] } : undefined);
   const cur = input.device;
   if (cur.kind === "pad") padFamily.value = cur.family;
   renderPadMap();
@@ -185,12 +191,60 @@ const store = new SaveStore();
 let game: any = null, audio: AudioOut | null = null;
 let crashed = false;
 
+// ---------- language (page strings: i18n.ts + i18n/pt-BR/ui.json; game text: the engine, translation pack) ----------
+// ?lang=pt-BR overrides the stored choice for this visit; the selectors in the start overlay and the menu panel persist it.
+type MsgState = { key: UiKey; vars?: Record<string, string | number> };
+let msgState: MsgState | null = null;
+function setMsg(key: UiKey, vars?: Record<string, string | number>) { msgState = { key, vars }; msg.textContent = T(key, vars); }
+const langOv = $<HTMLSelectElement>("langOv"), langPn = $<HTMLSelectElement>("langPn");
+let wantLang: Lang = parseLang(params.get("lang")) ?? parseLang(ls.get("snatcher.lang")) ?? "en";
+let uiCache: Record<string, string> | null = null;
+const packLoaded = new WeakSet<object>();
+async function fetchUi(): Promise<Record<string, string> | null> {
+  if (uiCache) return uiCache;
+  try { const r = await fetch("/i18n/pt-BR/ui.json"); if (!r.ok) return null; const j = await r.json(); uiCache = j.strings ?? j; return uiCache; } catch { return null; }
+}
+/** Install the pt-BR pack in an engine instance (once). */
+async function ensurePack(g: any): Promise<boolean> {
+  if (packLoaded.has(g)) return true;
+  try {
+    const r = await fetch("/i18n/pt-BR.pack");
+    if (!r.ok) return false;
+    const n = g.load_translation(new Uint8Array(await r.arrayBuffer()));
+    if (n < 0) return false;
+    packLoaded.add(g);
+    return true;
+  } catch { return false; }
+}
+async function syncEngineLanguage(g: any) {
+  let pt = wantLang === "pt-BR";
+  if (pt) { pt = await ensurePack(g); note("pack", pt ? "ok" : "warn", pt ? null : T("note.nopack")); } else note("pack", "ok", null);
+  g.set_language(pt ? "pt-BR" : "en");
+}
+function renderDynamic() {
+  applyMute(); refreshSaves(); renderControls(); renderPadMap(); renderNotes(); updateSoundMode();
+  if (msgState) msg.textContent = T(msgState.key, msgState.vars);
+  if (srcLines) showSource(srcLines(), srcCls);
+  if (!busy) btnPlay.textContent = T("ov.play");
+}
+async function applyLanguage(l: Lang, persist = true) {
+  wantLang = l;
+  if (persist) ls.set("snatcher.lang", l);
+  setUiDict(l, l === "pt-BR" ? await fetchUi() : null);
+  langOv.value = l; langPn.value = l;
+  applyStatic();
+  renderDynamic();
+  if (game) await syncEngineLanguage(game);
+}
+langOv.onchange = () => { void applyLanguage(langOv.value as Lang); };
+langPn.onchange = () => { void applyLanguage(langPn.value as Lang); };
+
 function savesLabel(): string {
   const s = store.slots().map(([n]) => n);
-  const base = s.length ? `Saved slots: ${s.join(", ")}.` : "No saves yet.";
-  return base + (store.volatile ? " Browser storage is unavailable: saves are kept for this session only, export them." : "");
+  const base = s.length ? T("saves.slots", { list: s.join(", ") }) : T("saves.none");
+  return base + (store.volatile ? T("saves.volatile") : "");
 }
-function refreshSaves() { $("ovSaves").textContent = savesLabel(); $("pnSaves").textContent = savesLabel() + (game ? " Imported saves show up the next time the title screen is opened." : ""); }
+function refreshSaves() { $("ovSaves").textContent = savesLabel(); $("pnSaves").textContent = savesLabel() + (game ? T("pn.savesnote") : ""); }
 refreshSaves();
 
 function download(name: string, text: string) {
@@ -200,9 +254,9 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 function exportSaves() {
-  if (!store.slots().length) { msg.textContent = "no saves to export"; note("saveio", "warn", "No saves to export."); return; }
+  if (!store.slots().length) { setMsg("msg.nosaves"); note("saveio", "warn", T("note.nosaves")); return; }
   download(`snatcher-saves-${new Date().toISOString().slice(0, 10)}.json`, store.exportJson());
-  note("saveio", "ok", "Saves exported.");
+  note("saveio", "ok", T("note.exported"));
 }
 const importFile = $<HTMLInputElement>("importFile");
 function importSaves() { importFile.value = ""; importFile.click(); }
@@ -211,7 +265,7 @@ importFile.onchange = async () => {
   if (!f) return;
   const r = store.importJson(await f.text());
   for (const n of r.imported) { const b = store.bytes(n); if (b && game) game.set_save(n, b); }
-  const text = r.imported.length ? `Imported save slot(s) ${r.imported.join(", ")}.` : "No save imported.";
+  const text = r.imported.length ? T("note.imported", { slots: r.imported.join(", ") }) : T("note.notimported");
   note("saveio", r.errors.length || !r.imported.length ? "warn" : "ok", text + (r.errors.length ? " " + r.errors.join("; ") : ""));
   refreshSaves();
 };
@@ -230,7 +284,7 @@ for (const [id, kind] of VOLS) {
 }
 let muted = ls.get("snatcher.mute") === "1";
 const btnMute = $("btnMute");
-function applyMute() { btnMute.setAttribute("aria-pressed", String(muted)); btnMute.textContent = muted ? "Unmute (M)" : "Mute (M)"; audio?.setMuted(muted); }
+function applyMute() { btnMute.setAttribute("aria-pressed", String(muted)); btnMute.textContent = muted ? T("bar.unmute") : T("bar.mute"); audio?.setMuted(muted); }
 function toggleMute() { muted = !muted; ls.set("snatcher.mute", muted ? "1" : "0"); applyMute(); }
 btnMute.onclick = () => { toggleMute(); canvas.focus(); };
 applyMute();
@@ -256,7 +310,7 @@ function closePanel() {
   canvas.focus();
 }
 function updateSoundMode() {
-  $("soundMode").textContent = audio ? `Sound mode (set by the game's options screen): FM ${audio.mono.fm ? "mono" : "stereo"}, PCM ${audio.mono.pcm ? "mono" : "stereo"}.` : "";
+  $("soundMode").textContent = audio ? T("pn.sound", { fm: audio.mono.fm ? T("pn.mono") : T("pn.stereo"), pcm: audio.mono.pcm ? T("pn.mono") : T("pn.stereo") }) : "";
 }
 $("btnMenu").onclick = () => openPanel();
 $("pnResume").onclick = closePanel;
@@ -284,11 +338,14 @@ function showSource(extra: string[] = [], cls = "dim") {
   srcStatus.className = cls;
   srcStatus.replaceChildren(...extra.map((t, i) => { const d = document.createElement("div"); d.textContent = t; if (!i) d.style.fontWeight = "bold"; return d; }));
 }
+/** Status lines are produced by a function so that they can be rebuilt in the other language. */
+let srcLines: (() => string[]) | null = null, srcCls = "dim";
+function showSourceT(lines: () => string[], cls = "dim") { srcLines = lines; srcCls = cls; showSource(lines(), cls); }
 function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; }
 function selectSource(src: Source) {
   current = src;
-  showSource([`Using: ${src.label}`, ...src.summary()], src.gameFiles().length ? "ok" : "err");
-  btnPlay.textContent = "Play"; setBusy(false); btnPlay.focus();
+  showSourceT(() => [T("ov.using", { label: src.label }), ...src.summary()], src.gameFiles().length ? "ok" : "err");
+  btnPlay.textContent = T("ov.play"); setBusy(false); btnPlay.focus();
 }
 
 btnPick.onclick = () => pick.click();
@@ -297,7 +354,7 @@ pick.onchange = () => {
   if (!files.length) return;
   const src = pickedSource(files);
   if (!src.gameFiles().length) {
-    showSource(["No game files found in that selection.", `Looked at ${files.length} files. Pick the folder that contains the extracted "files" folder (assets/raw) or the whole assets folder.`], "err");
+    showSourceT(() => [T("ov.nofiles"), T("ov.nofiles2", { n: files.length })], "err");
     current = null; setBusy(false);
     return;
   }
@@ -310,7 +367,7 @@ async function loadWasm() {
   return { pkg, wasm };
 }
 const wasmP = loadWasm();
-wasmP.catch((e) => { note("wasm", "err", "The engine (web/pkg) is not built: run scripts/build-web.sh. " + e); });
+wasmP.catch((e) => { note("wasm", "err", T("note.noengine", { e: String(e) })); });
 
 btnPlay.onclick = () => { if (current && !busy) void start(current); };
 
@@ -326,28 +383,29 @@ async function start(src: Source) {
     const worker = async () => {
       for (let f = pending.pop(); f; f = pending.pop()) {
         try { g.load_file(f.name, new Uint8Array(await f.read())); ok++; } catch { fail++; }
-        btnPlay.textContent = `Loading ${ok + fail}/${files.length}…`;
+        btnPlay.textContent = T("ov.loading", { done: ok + fail, total: files.length });
       }
     };
     await Promise.all(Array.from({ length: 6 }, worker));
-    btnPlay.textContent = "Play";
-    if (!ok) throw new Error("none of the game files could be read");
-    note("files", fail ? "warn" : "ok", fail ? `${fail} of ${files.length} game files could not be read; the game may stall.` : null);
-    msg.textContent = `${ok} game files loaded`;
+    btnPlay.textContent = T("ov.play");
+    if (!ok) throw new Error(T("note.nofile"));
+    note("files", fail ? "warn" : "ok", fail ? T("note.failfiles", { fail, total: files.length }) : null);
+    setMsg("msg.files", { n: ok });
     // main-CPU boot code (copyright + Konami logo screens): the disc's HEADER.BIN / IP.BIN; optional
     let boots = 0;
     for (const name of ["HEADER.BIN", "IP.BIN"]) { const b = await src.boot(name); if (b) { g.load_file(name, new Uint8Array(b)); boots++; } }
-    note("boot", "warn", boots < 2 ? "header.bin / ip.bin not found: the copyright and Konami logo screens are skipped (optional)." : null);
+    note("boot", "warn", boots < 2 ? T("note.noboot") : null);
+    await syncEngineLanguage(g);
     // saves → CONTINUE slots
     for (const n of SLOTS) { const b = store.bytes(n); if (b) g.set_save(n, b); }
     // audio
     const out = new AudioOut((p) => src.audio(p));
     let missingCount = 0;
-    out.onMissing = (p) => { missingCount++; note("audiofiles", "warn", `${missingCount} audio file(s) not found or not decodable (last: ${p}); those sounds are silent.`); };
+    out.onMissing = (p) => { missingCount++; note("audiofiles", "warn", T("note.audio", { n: missingCount, last: p })); };
     for (const [, kind] of VOLS) out.setVolume(kind, volume[kind] / 100);
     out.setMuted(muted);
     const { pcm, fm } = await out.loadManifests();
-    if (!pcm || !fm) note("manifests", "warn", `Audio manifests missing (${[!pcm && "audio/web/pcm.json", !fm && "audio/web/fm.json"].filter(Boolean).join(", ")}): ${!pcm && !fm ? "voices, FM music and effects are silent" : "part of the audio is silent"}. Run the audio pipeline (README).`);
+    if (!pcm || !fm) note("manifests", "warn", T("note.manifests", { list: [!pcm && "audio/web/pcm.json", !fm && "audio/web/fm.json"].filter(Boolean).join(", "), what: !pcm && !fm ? T("note.manifests.all") : T("note.manifests.part") }));
     if (pcm?.voices) for (const [id, v] of Object.entries<any>(pcm.voices)) g.set_voice_len(Number(id), Math.ceil(v.seconds * 60));
     if (fm?.sounds) for (const [id, v] of Object.entries<any>(fm.sounds)) g.set_fm_len(Number(id), Math.ceil(v.seconds * 60), v.loop_start != null);
     if (pcm?.sfx) { // PCM effect lengths per bank (the shooting results wait for the last effect, S:0x13072)
@@ -363,7 +421,7 @@ async function start(src: Source) {
     else g.boot();
 
     memory = wasm.memory; game = g; audio = out; input.game = g; input.enabled = true;
-    (window as any).snatcher = { game, audio, input, store, notes, handleEvent, applyPrompt, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
+    (window as any).snatcher = { game, audio, input, store, notes, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
     applyPrompt();
     overlayOpen = false; overlay.hidden = true;
     note("wasm", "ok", null);
@@ -371,7 +429,7 @@ async function start(src: Source) {
     refreshSaves(); fit();
     requestAnimationFrame(frame);
   } catch (e) {
-    showSource([`Could not start: ${(e as Error).message ?? e}`], "err");
+    showSourceT(() => [T("ov.fail", { e: String((e as Error).message ?? e) })], "err");
     note("start", "err", String(e));
     setBusy(false);
   }
@@ -396,8 +454,8 @@ function frame(now: number) {
       for (const e of JSON.parse(game.take_events())) handleEvent(e);
     }
   } catch (e) {
-    crashed = true; msg.textContent = "engine error: " + e; console.error(e);
-    note("crash", "err", "The engine stopped with an error: " + e);
+    crashed = true; setMsg("msg.engine", { e: String(e) }); console.error(e);
+    note("crash", "err", T("note.crash", { e: String(e) }));
     return;
   }
   img.data.set(new Uint8Array(memory!.buffer, game.framebuffer_ptr(), W * H * 4));
@@ -417,8 +475,8 @@ function handleEvent(e: any) {
     case "save": {
       store.set(e.slot, e.data);
       const b = store.bytes(e.slot); if (b) game.set_save(e.slot, b); // the engine also updates its own copy (game.rs cmd 0x1E)
-      if (store.volatile) note("storage", "warn", "Browser storage is blocked: saves last only until this page closes. Use Export saves.");
-      msg.textContent = `saved to slot ${e.slot}`;
+      if (store.volatile) note("storage", "warn", T("note.storage"));
+      setMsg("msg.saved", { n: e.slot });
       break;
     }
   }
@@ -427,10 +485,11 @@ function handleEvent(e: any) {
 // ---------- go ----------
 (async () => {
   fit();
+  await applyLanguage(wantLang, false);
   const r = await probeServed();
   if (r.src) selectSource(r.src);
-  else { showSource(["No local game files found.", `${r.error ?? ""}. Choose the extracted folder below, or run the extraction and start bun web/server.ts (see README).`], "warn"); setBusy(false); btnPick.focus(); }
-  msg.textContent = r.src ? "ready" : "waiting for game files";
+  else { showSourceT(() => [T("ov.nolocal"), T("ov.nolocal2", { err: r.error ? T(r.error as UiKey) : "" })], "warn"); setBusy(false); btnPick.focus(); }
+  setMsg(r.src ? "msg.ready" : "msg.waiting");
   // headless/dev shortcuts skip the overlay (and its click): ?newgame, ?scene=SP01:0, ?autostart
   if (r.src && (params.has("scene") || params.has("newgame") || params.has("autostart"))) await start(r.src);
 })();

@@ -41,11 +41,13 @@ impl Font {
         f.add_icons();
         f
     }
-    /// Append the button-prompt icons (codes 0x86.., `prompt.rs`) after the original glyphs; the originals stay as they are.
+    /// Append the button-prompt icons (codes 0x86.., `prompt.rs`) and the pt-BR glyphs (0xA6.., `i18n.rs`) after the original glyphs; the originals stay as they are.
     pub fn add_icons(&mut self) {
         self.glyphs.truncate(GLYPH_COUNT);
         self.widths.truncate(GLYPH_COUNT);
         for (g, w) in crate::prompt::icon_glyphs() { self.glyphs.push(g); self.widths.push(w); }
+        // pt-BR letters (codes 0xA6.., `i18n.rs`); never used by the English text
+        for (g, w) in crate::i18n::pt_glyph_bitmaps() { self.glyphs.push(g); self.widths.push(w); }
     }
 }
 

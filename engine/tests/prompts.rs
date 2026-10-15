@@ -76,7 +76,7 @@ fn each_style_prints_the_icon_of_the_control_behind_the_genesis_letter() {
 fn icon_glyphs_render_in_the_text_window_and_originals_are_untouched() {
     let Some(e) = engine() else { return };
     let font = e.font.as_ref().expect("font from SUBCODE");
-    assert_eq!(font.glyphs.len(), sncore::actions::GLYPH_COUNT + prompt::ICON_COUNT);
+    assert_eq!(font.glyphs.len(), sncore::actions::GLYPH_COUNT + prompt::ICON_COUNT + sncore::i18n::PT_GLYPHS.len());
     // the first 102 glyphs are the game's own: 'A' and the arrow 0x80 as documented
     assert_eq!(font.glyphs[(b'A' - 0x20) as usize][4], 0b0111_1110);
     let mut w = sncore::actions::TextWindow::new();

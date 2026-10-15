@@ -49,12 +49,12 @@
 </head>
 <body>
 <div id="wrap">
-  <canvas id="screen" width="256" height="224" tabindex="0" role="img" aria-label="Snatcher game screen"></canvas>
+  <canvas id="screen" width="256" height="224" tabindex="0" role="img" aria-label="Snatcher game screen" data-i18n-label="canvas.label"></canvas>
   <div id="bar" role="toolbar" aria-label="Game controls">
-    <button id="btnMenu" type="button" title="Settings, controls, saves (Esc)">Menu (Esc)</button>
-    <button id="btnMute" type="button" aria-pressed="false" title="Mute audio (M)">Mute (M)</button>
-    <button id="btnFull" type="button" title="Fullscreen (F)">Fullscreen (F)</button>
-    <span id="msg" role="status" aria-live="polite">loading…</span>
+    <button id="btnMenu" type="button" title="Settings, controls, saves (Esc)" data-i18n-title="bar.menu.title" data-i18n="bar.menu">Menu (Esc)</button>
+    <button id="btnMute" type="button" aria-pressed="false" title="Mute audio (M)" data-i18n-title="bar.mute.title">Mute (M)</button>
+    <button id="btnFull" type="button" title="Fullscreen (F)" data-i18n-title="bar.full.title" data-i18n="bar.full">Fullscreen (F)</button>
+    <span id="msg" role="status" aria-live="polite" data-i18n="msg.loading">loading…</span>
   </div>
 </div>
 <div id="debug"></div>
@@ -62,25 +62,27 @@
 <!-- start overlay -->
 <div id="overlay" class="modal" role="dialog" aria-modal="true" aria-labelledby="ovTitle">
   <div class="card">
-    <h1 id="ovTitle">Snatcher – web port</h1>
-    <p>A private, non-commercial preservation project: the game engine is rewritten for the browser and plays <b>your own</b> copy of the game data. No game data is included or uploaded; everything stays on this machine.</p>
-    <h2>Game files</h2>
-    <p id="srcStatus" class="dim">Looking for local files…</p>
+    <h1 id="ovTitle" data-i18n="ov.title">Snatcher – web port</h1>
+    <p data-i18n-html="ov.intro">A private, non-commercial preservation project: the game engine is rewritten for the browser and plays <b>your own</b> copy of the game data. No game data is included or uploaded; everything stays on this machine.</p>
+    <h2 data-i18n="ov.files">Game files</h2>
+    <p id="srcStatus" class="dim" data-i18n="ov.looking">Looking for local files…</p>
     <div class="row">
-      <button id="btnPlay" class="primary" type="button" disabled>Play</button>
-      <button id="btnPick" type="button">Choose extracted folder…</button>
+      <button id="btnPlay" class="primary" type="button" disabled data-i18n="ov.play">Play</button>
+      <button id="btnPick" type="button" data-i18n="ov.pick">Choose extracted folder…</button>
       <input id="pick" type="file" webkitdirectory multiple hidden>
     </div>
-    <p class="dim">Choose the folder you extracted from your disc (the project's <code>assets</code> folder works best: it holds <code>raw/files</code>, <code>raw/header.bin</code>, <code>raw/ip.bin</code> and the audio in <code>audio/web</code> and <code>web/music</code>). Files are read in this page only.</p>
+    <p class="dim" data-i18n-html="ov.help">Choose the folder you extracted from your disc (the project's <code>assets</code> folder works best: it holds <code>raw/files</code>, <code>raw/header.bin</code>, <code>raw/ip.bin</code> and the audio in <code>audio/web</code> and <code>web/music</code>). Files are read in this page only.</p>
     <ul id="notes" class="notes"></ul>
-    <h2>Saves</h2>
+    <h2 data-i18n="ov.saves">Saves</h2>
     <div class="row">
-      <button id="ovImport" type="button">Import saves…</button>
-      <button id="ovExport" type="button">Export saves</button>
+      <button id="ovImport" type="button" data-i18n="ov.import">Import saves…</button>
+      <button id="ovExport" type="button" data-i18n="ov.export">Export saves</button>
       <span id="ovSaves" class="dim"></span>
     </div>
+    <h2 data-i18n="ov.language">Language</h2>
+    <div class="row"><select id="langOv" aria-label="Language / Idioma"><option value="en">English</option><option value="pt-BR">Português (Brasil)</option></select></div>
     <details>
-      <summary>Controls</summary>
+      <summary data-i18n="ov.controls">Controls</summary>
       <div class="controls"></div>
     </details>
   </div>
@@ -89,34 +91,36 @@
 <!-- settings panel -->
 <div id="panel" class="modal" role="dialog" aria-modal="true" aria-labelledby="pnTitle" hidden>
   <div class="card">
-    <h1 id="pnTitle">Menu <span class="dim">(game paused)</span></h1>
-    <div class="row"><button id="pnResume" class="primary" type="button">Resume</button></div>
-    <h2>Status</h2>
+    <h1 id="pnTitle"><span data-i18n="pn.title">Menu</span> <span class="dim" data-i18n="pn.paused">(game paused)</span></h1>
+    <div class="row"><button id="pnResume" class="primary" type="button" data-i18n="pn.resume">Resume</button></div>
+    <h2 data-i18n="pn.status">Status</h2>
     <ul id="pnNotes" class="notes"></ul>
-    <h2>Volume</h2>
-    <div class="sl"><label for="volMusic">Music</label><input id="volMusic" type="range" min="0" max="100" step="1"><output id="volMusicO"></output></div>
-    <div class="sl"><label for="volVoice">Voice</label><input id="volVoice" type="range" min="0" max="100" step="1"><output id="volVoiceO"></output></div>
-    <div class="sl"><label for="volFx">Effects</label><input id="volFx" type="range" min="0" max="100" step="1"><output id="volFxO"></output></div>
+    <h2 data-i18n="pn.volume">Volume</h2>
+    <div class="sl"><label for="volMusic" data-i18n="pn.music">Music</label><input id="volMusic" type="range" min="0" max="100" step="1"><output id="volMusicO"></output></div>
+    <div class="sl"><label for="volVoice" data-i18n="pn.voice">Voice</label><input id="volVoice" type="range" min="0" max="100" step="1"><output id="volVoiceO"></output></div>
+    <div class="sl"><label for="volFx" data-i18n="pn.fx">Effects</label><input id="volFx" type="range" min="0" max="100" step="1"><output id="volFxO"></output></div>
     <p class="dim" id="soundMode"></p>
-    <h2>Display</h2>
-    <label class="check"><input type="checkbox" id="smooth"> Smooth scaling</label>
-    <label class="check"><input type="checkbox" id="dbg"> Debug overlay (F1)</label>
-    <div class="row"><button id="pnFull" type="button">Fullscreen (F)</button></div>
-    <h2>Gamepad</h2>
+    <h2 data-i18n="pn.display">Display</h2>
+    <label class="check"><input type="checkbox" id="smooth"> <span data-i18n="pn.smooth">Smooth scaling</span></label>
+    <label class="check"><input type="checkbox" id="dbg"> <span data-i18n="pn.debug">Debug overlay (F1)</span></label>
+    <div class="row"><button id="pnFull" type="button" data-i18n="bar.full">Fullscreen (F)</button></div>
+    <h2 data-i18n="pn.language">Language</h2>
+    <div class="row"><select id="langPn" aria-label="Language / Idioma"><option value="en">English</option><option value="pt-BR">Português (Brasil)</option></select></div>
+    <h2 data-i18n="pn.gamepad">Gamepad</h2>
     <p class="dim" id="padInfo"></p>
-    <div class="row"><label for="padFamily">Buttons for</label><select id="padFamily"></select><button id="padReset" type="button">Reset to defaults</button></div>
+    <div class="row"><label for="padFamily" data-i18n="pn.buttonsfor">Buttons for</label><select id="padFamily"></select><button id="padReset" type="button" data-i18n="pn.reset">Reset to defaults</button></div>
     <table class="keys" id="padMapTable"></table>
     <p class="dim" id="padHint"></p>
-    <div class="row"><label for="promptMode">Button names in game text</label>
-      <select id="promptMode"><option value="auto">Icons of the last used device</option><option value="letters">Original letters (A B C)</option></select></div>
-    <h2>Saves</h2>
+    <div class="row"><label for="promptMode" data-i18n="pn.promptlabel">Button names in game text</label>
+      <select id="promptMode"><option value="auto" data-i18n="pn.prompt.auto">Icons of the last used device</option><option value="letters" data-i18n="pn.prompt.letters">Original letters (A B C)</option></select></div>
+    <h2 data-i18n="pn.saves">Saves</h2>
     <div class="row">
-      <button id="pnExport" type="button">Export saves</button>
-      <button id="pnImport" type="button">Import saves…</button>
+      <button id="pnExport" type="button" data-i18n="ov.export">Export saves</button>
+      <button id="pnImport" type="button" data-i18n="ov.import">Import saves…</button>
     </div>
     <p class="dim" id="pnSaves"></p>
     <input id="importFile" type="file" accept="application/json,.json" hidden>
-    <h2>Controls</h2>
+    <h2 data-i18n="pn.controls">Controls</h2>
     <div class="controls"></div>
   </div>
 </div>
