@@ -1096,21 +1096,39 @@ fn greedy_lines(seg: &[u8], spk: u8, widths: &[u8]) -> Vec<Vec<u8>> {
     lines
 }
 
-/// Split `lines` into the fewest pages of at most `cap` lines; among those prefer breaks after a sentence, then evenly sized pages.
+/// The author's own line structure (a list, a title, a sentence per line) rather than a width-driven wrap: a line break after which the first word
+/// of the next line would still have fitted on the line, and that follows a sentence / label ending (`. ? ! : ;`) or precedes a line that starts
+/// with a colour token, a dash, a bracket or a digit. A greedy re-wrap must not merge such lines.
+fn structural_breaks(lines: &[&[u8]], spk: u8, widths: &[u8]) -> bool {
+    let (x0, right) = if spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) };
+    let limit = right - x0;
+    let w = |b: &[u8]| -> u32 { b.iter().map(|&c| i::advance(widths, c)).sum() };
+    lines.windows(2).any(|p| {
+        let first = p[1].split(|&c| c == b' ').next().unwrap_or(&[]);
+        if w(p[0]) + i::advance(widths, b' ') + w(first) > limit { return false; } // forced by the width: not a choice of the author
+        let mut t = p[0];
+        while let Some(&c) = t.last() { if matches!(c, 0xF8..=0xFE | i::AUTO | b'"' | b'\'' | b')' | b' ') { t = &t[..t.len() - 1]; } else { break; } }
+        matches!(t.last(), Some(b'.' | b'?' | b'!' | b':' | b';'))
+            || matches!(p[1].first(), Some(0xF8..=0xFE | b'-' | b'(' | b'0'..=b'9'))
+    })
+}
+
+/// Split `lines` into the fewest pages of at most `cap` lines; among those avoid one-line pages and breaks in front of a `- ...` line (the second half of a list item), prefer breaks after a sentence, then evenly sized pages.
 /// Returns the page sizes.
 fn split_pages(lines: &[Vec<u8>], cap: usize) -> Vec<usize> {
     let n = lines.len();
     let k = (n + cap - 1) / cap;
-    // best[j][i] = (breaks not at a sentence end, sum of squared page sizes) for the first i lines in j pages
-    let mut best: Vec<Vec<Option<((u32, u32), usize)>>> = vec![vec![None; n + 1]; k + 1];
-    best[0][0] = Some(((0, 0), 0));
+    // best[j][i] = (one-line pages, breaks not at a sentence end, sum of squared page sizes) for the first i lines in j pages
+    let mut best: Vec<Vec<Option<((u32, u32, u32, u32), usize)>>> = vec![vec![None; n + 1]; k + 1];
+    best[0][0] = Some(((0, 0, 0, 0), 0));
     for j in 1..=k {
         for i in j..=n {
             for sz in 1..=cap.min(i) {
                 let prev = i - sz;
-                let Some(((nb, sq), _)) = best[j - 1][prev] else { continue };
+                let Some(((orph, dash, nb, sq), _)) = best[j - 1][prev] else { continue };
                 let brk = if prev > 0 && !sentence_end(&lines[prev - 1]) { 1 } else { 0 };
-                let cost = (nb + brk, sq + (sz * sz) as u32);
+                let dashed = prev > 0 && lines[prev].iter().find(|&&c| !matches!(c, 0xF8..=0xFE)) == Some(&b'-');
+                let cost = (orph + (sz == 1 && n > 1) as u32, dash + dashed as u32, nb + brk, sq + (sz * sz) as u32);
                 if best[j][i].map_or(true, |(c, _)| cost < c) { best[j][i] = Some((cost, sz)); }
             }
         }
@@ -1123,8 +1141,8 @@ fn split_pages(lines: &[Vec<u8>], cap: usize) -> Vec<usize> {
 }
 
 /// Re-paginate a message for the pt-BR dialogue windows (5 lines per page with a name, 6 without). Never changes a word. The author's
-/// `{page}` stay; a page with too many lines is re-wrapped greedily when that saves a page (always tried first for `{auto}`) and split with
-/// added `{page}` otherwise. An `{auto}` message never gets an added `{page}`: it is re-wrapped or reported in `unfit`.
+/// `{page}` stay; a page with too many lines is re-wrapped greedily when that saves a page and the author's breaks are only width-driven (always
+/// for `{auto}`), and split at the author's line breaks with added `{page}` otherwise. An `{auto}` message never gets an added `{page}`: it is re-wrapped or reported in `unfit`.
 pub fn repaginate(raw: &[u8], spk: u8, widths: &[u8]) -> Repaged {
     let cap = i::lines_per_page(spk as u32, true);
     let auto = raw.contains(&i::AUTO);
@@ -1138,7 +1156,7 @@ pub fn repaginate(raw: &[u8], spk: u8, widths: &[u8]) -> Repaged {
         let lines: Vec<Vec<u8>> = if auto {
             if greedy.len() > cap { out.unfit.push(si); out.text.extend_from_slice(seg); continue; }
             greedy
-        } else if pages(greedy.len()) < pages(author.len()) { greedy } else { author.iter().map(|l| l.to_vec()).collect() };
+        } else if pages(greedy.len()) < pages(author.len()) && !structural_breaks(&author, spk, widths) { greedy } else { author.iter().map(|l| l.to_vec()).collect() };
         if lines.iter().map(|l| l.as_slice()).ne(author.iter().copied()) { out.rewrapped += 1; }
         let mut at = 0;
         let sizes = split_pages(&lines, cap);
