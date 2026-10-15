@@ -5,8 +5,8 @@
 import { AudioOut } from "./audio";
 import { Input } from "./input";
 import {
-  assign, CONTROL_NAMES, Control, DEFAULT_MAPS, Device, Family, FAMILIES, FAMILY_LABEL, GENESIS_ORDER, GenesisButton, promptFor, resolveIcon,
-  SELECT_NAMES, sanitizeMaps, setOf, STYLE,
+  CONTROL_NAMES, Control, Family, FAMILIES, FAMILY_LABEL, GENESIS_ORDER, GenesisButton, promptFor, resolveIcon,
+  SELECT_NAMES, parseGamepadId, setOf, STYLE,
 } from "./gamepads";
 import { controlIcon, dpadIcon, mouseIcon, stickIcon } from "./icons";
 import { Pacer } from "./pacer";
@@ -110,7 +110,7 @@ function renderControls() {
     else { iconCell(dpadIcon(), "D-pad", td); td.append(" / "); iconCell(stickIcon(), "left stick", td); }
   }]);
   for (const [g, what] of GEN_ROWS) {
-    rows.push([`${what} (${g === "START" ? "Start" : g})`, (td) => {
+    rows.push([g === "START" ? what : `${what} (${g})`, (td) => {
       if (dev.kind === "keyboard") {
         const k = ({ A: "Z", B: "X", C: "C", START: "Enter" } as const)[g];
         iconCell(controlIcon("keyboard", k), k, td);
@@ -147,14 +147,14 @@ function renderPadMap() {
   padMapTable.replaceChildren();
   for (const [g, what] of GEN_ROWS) {
     const r = padMapTable.insertRow();
-    r.insertCell().textContent = `${what} (${g === "START" ? "Start" : "Genesis " + g})`;
+    r.insertCell().textContent = g === "START" ? what : `${what} (Genesis ${g})`;
     iconCell(controlIcon(set, m[g]), CONTROL_NAMES[set][m[g]], r.insertCell());
     const b = el("button", undefined, capturing === g ? "Press a button… (Esc cancels)" : "Assign…"); b.type = "button";
     b.onclick = () => startCapture(g);
     r.insertCell().append(b);
   }
   const pads = input.pads();
-  padInfo.textContent = pads.length ? `Connected: ${pads.map((p) => `${FAMILY_LABEL[p.family]}${p.mapping === "standard" ? "" : " (non-standard mapping)"} "${p.id.slice(0, 60)}"`).join("; ")}.` : "No gamepad detected. Press a button on it (browsers only show a pad after its first input).";
+  padInfo.textContent = pads.length ? `Connected: ${pads.map((p) => `${FAMILY_LABEL[p.family]}${p.mapping === "standard" ? "" : " (non-standard mapping)"} "${parseGamepadId(p.id).name.slice(0, 50)}"`).join("; ")}.` : "No gamepad detected. Press a button on it (browsers only show a pad after its first input).";
   padHint.textContent = f === "generic" ? "Unknown controllers use Xbox-style icons. " : "";
 }
 function startCapture(g: GenesisButton) {

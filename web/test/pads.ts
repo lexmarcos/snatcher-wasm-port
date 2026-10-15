@@ -56,11 +56,12 @@ const prompt = (page: Page) => page.evaluate(() => (window as any).snatcher.prom
 const device = (page: Page) => page.evaluate(() => { const d = (window as any).snatcher.input.device; return d.kind === "pad" ? `pad:${d.family}` : d.kind; });
 const canvasHash = (page: Page) => page.evaluate(() => {
   const c = document.getElementById("screen") as HTMLCanvasElement;
-  const d = c.getContext("2d")!.getImageData(0, 150, 256, 60).data; // message window rows
+  const d = c.getContext("2d")!.getImageData(0, 150, 220, 40).data; // message text rows (not the animated cursor at the right edge)
   let h = 0; for (let i = 0; i < d.length; i++) h = (h * 31 + d[i]) >>> 0; return h;
 });
 const shot = async (page: Page, name: string) => { await (await page.$("canvas"))!.screenshot({ path: join(out, name) }); };
 
+const TYPED = 300; // frames until the typewriter has printed the line and the pad icon is on screen
 const SCENE = "scene=SP07:159"; // "Push the {c2}{EC} BUTTON{c1} to draw your blaster."  (pad configuration 0: EC = Genesis A)
 const KEYS = { xbox: [2, 1, 0, 8], dualsense: [2, 1, 0, 8], switch: [2, 0, 1, 8] }; // control ids behind Genesis A, B, C, START by default
 
@@ -69,7 +70,7 @@ const hashes: Record<string, number> = {};
 {
   const page = await open(SCENE);
   await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
-  await waitFrames(page, 330);
+  await waitFrames(page, TYPED);
   check("keyboard is the default device: keyboard icons", (await device(page)) === "keyboard" && (await prompt(page)).style === 4);
   hashes.keyboard = await canvasHash(page);
   await shot(page, "pads-keyboard.png");
@@ -80,7 +81,7 @@ for (const [name, def] of [["xbox", PADS.xbox], ["dualsense", PADS.dualsense], [
   // the pad is "active" from the first frame: its unassigned top face button is held (index 3 = Y / triangle / X)
   await page.evaluate(() => (window as any).__press(0, 3));
   await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
-  await waitFrames(page, 330);
+  await waitFrames(page, TYPED);
   const fam = name === "dualsense" || name === "firefoxPs" ? "playstation" : name === "switch" ? "switch" : "xbox";
   check(`${name}: last used device is the ${fam} pad`, (await device(page)) === `pad:${fam}`, await device(page));
   const p = await prompt(page);
@@ -102,7 +103,7 @@ check("every family draws a different icon (screens differ pairwise, except iden
     const page = await open("scene=SP09:542", def ? [def] : []);
     if (def) await page.evaluate(() => (window as any).__press(0, 3));
     await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
-    await waitFrames(page, 330);
+    await waitFrames(page, TYPED);
     sh[name] = await canvasHash(page);
     await shot(page, `pads-start-${name}.png`);
     await page.close();
@@ -114,7 +115,7 @@ check("every family draws a different icon (screens differ pairwise, except iden
 {
   const page = await open("scene=SP07:159&autostart", [PADS.xbox, PADS.dualsense, PADS.switch]);
   await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
-  await waitFrames(page, 330);
+  await waitFrames(page, TYPED);
   check("idle pads do not claim the device", (await device(page)) === "keyboard");
   // pad 0 (Xbox) top button, then pad 2 (Switch) top button: the last one wins; each switch is live
   await page.evaluate(() => (window as any).__press(0, 3)); await waitFrames(page, 3);
@@ -144,7 +145,7 @@ for (const [name, def, confirm, cancel] of [["xbox", PADS.xbox, 0, 1], ["dualsen
   const page = await open("scene=SP07:135", [def]);
   await page.evaluate(() => (window as any).__press(0, 3));
   await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
-  await waitFrames(page, 330);
+  await waitFrames(page, TYPED);
   await page.evaluate(() => (window as any).__release(0, 3));
   const s0 = (await info(page)).seq;
   await page.evaluate((b) => (window as any).__press(0, b), cancel); await waitFrames(page, 6);
@@ -183,7 +184,7 @@ for (const [name, def, confirm, cancel] of [["xbox", PADS.xbox, 0, 1], ["dualsen
   const page = await open(SCENE, [PADS.xbox]);
   await page.evaluate(() => (window as any).__press(0, 3));
   await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
-  await waitFrames(page, 330);
+  await waitFrames(page, TYPED);
   await page.evaluate(() => (window as any).__release(0, 3));
   const vis = (sel: string) => page.$eval(sel, (e) => !(e as HTMLElement).hidden);
   await page.evaluate(() => (window as any).__press(0, 8)); await sleep(150);
@@ -225,7 +226,7 @@ for (const [name, def, confirm, cancel] of [["xbox", PADS.xbox, 0, 1], ["dualsen
   await waitFrames(page, 30);
   const p3 = await prompt(page);
   check("after reload the saved map is used", JSON.stringify(p3.ids) === JSON.stringify([5, 0, 1, 8]), JSON.stringify(p3));
-  await waitFrames(page, 300);
+  await waitFrames(page, TYPED);
   hashes.remapped = await canvasHash(page);
   check("the icon on screen changed with the remap (RB instead of X)", hashes.remapped !== hashes.xbox);
   await shot(page, "pads-xbox-remapped-rb.png");
