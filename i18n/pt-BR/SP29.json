@@ -20,7 +20,7 @@
     "014a": {"h": "880a8760", "t": "Vamos para lá depois de passar{nl}pela Alton Plaza."},
     "0178": {"h": "367db535", "t": "Certo, traçando o rumo para o{nl}Hospital Queens."},
     "01a7": {"h": "3786a902", "t": "Gillian! Para onde você vai? Não{nl}vamos para o Hospital Queens?"},
-    "01f2": {"h": "602ff063", "t": "Amarelar agora não vai adiantar{nl}nada!!"},
+    "01f2": {"h": "602ff063", "t": "Desistir agora não vai adiantar{nl}nada!!"},
     "0227": {"h": "8faa1352", "t": "Vamos para a base dos{nl}SNATCHERS!"},
     "024b": {"h": "f829a427", "t": "Gillian, não temos tempo para isso.{nl}Devemos ir direto para o Hospital{nl}Queens."},
     "029f": {"h": "3cb641ac", "t": "Estamos perdidos! Não há nada{nl}que possamos fazer!!"},
@@ -32,7 +32,7 @@
     "03d3": {"h": "33858bd2", "t": "Droga! A velocidade não para de{nl}aumentar!"},
     "03f5": {"h": "2ff8896c", "t": "Vamos morrer! Vamos morrer!!"},
     "041e": {"h": "681f2f8b", "t": "Estamos perdidos. Ai, meu Deus..."},
-    "043d": {"h": "656a5010", "t": "É isso, Gillian! Orar! Olhe!{nl}Apareceu um novo comando no{nl}menu!"},
+    "043d": {"h": "656a5010", "t": "É isso, Gillian! Rezar! Olhe!{nl}Apareceu um novo comando no{nl}menu!"},
     "0487": {"h": "546607b3", "t": "Isso não funciona mais."},
     "04a1": {"h": "752df312", "t": "Você não pode estar falando{nl}sério! Nessa velocidade você seria{nl}despedaçado!"},
     "04de": {"h": "f8e0dcd2", "t": "Nunca sobreviveríamos! Seria{nl}como pular da Ponte do Brooklyn!"},
@@ -67,7 +67,7 @@
     "09c8": {"h": "4749792d", "t": ".........."},
     "09d3": {"h": "a393178e", "t": "...na verdade, eu não sou tão{nl}religioso."},
     "09f8": {"h": "85c267d2", "t": "Imaginei que não."},
-    "0a0b": {"h": "9a58f02e", "t": "Me salva! Se me salvar, prometo{nl}que vou te adorar com devoção!{nl}Você escolhe a religião!!"},
+    "0a0b": {"h": "9a58f02e", "t": "Me salva! Se você me salvar,{nl}prometo que vou adorar você com{nl}devoção! Você escolhe a religião!!"},
     "0a64": {"h": "97ee26ad", "t": "Você está falando sério, Gillian?"},
     "0a85": {"h": "5644393f", "t": "...claro que não!"}
   }
