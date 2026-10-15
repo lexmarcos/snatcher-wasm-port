@@ -29,18 +29,26 @@ export class Input {
   gunMode = false;
   /** Set by main (`input.game = game`); falls back to `window.snatcher.game`. */
   game: GunSink | null = null;
+  /** false while a menu/overlay is open: keys and mouse go to the page, not the game. */
+  private _enabled = true;
+  get enabled() { return this._enabled; }
+  set enabled(v: boolean) { this._enabled = v; if (!v) { this.keys = 0; this.mouseButtons = 0; } }
   /** Scripted inputs for headless tests: window.snatcher.input.script = [[frames, bits], ...] */
   script: [number, number][] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
     addEventListener("keydown", (e) => {
       const b = KEYMAP[e.code];
-      if (b) { this.keys |= b; this.gunMode = false; e.preventDefault(); }
+      // Enter/Space on a focused page control (toolbar button) must activate it, not drive the game
+      const t = e.target as HTMLElement | null;
+      if ((e.code === "Enter" || e.code === "Space") && t?.matches?.("button, input, select, textarea, a, summary")) return;
+      if (b && this._enabled && !e.ctrlKey && !e.metaKey && !e.altKey) { this.keys |= b; this.gunMode = false; e.preventDefault(); }
     });
-    addEventListener("keyup", (e) => { const b = KEYMAP[e.code]; if (b) { this.keys &= ~b; e.preventDefault(); } });
+    addEventListener("keyup", (e) => { const b = KEYMAP[e.code]; if (b) { this.keys &= ~b; if (this._enabled) e.preventDefault(); } });
     addEventListener("blur", () => { this.keys = 0; this.mouseButtons = 0; });
     canvas.addEventListener("mousemove", (e) => this.track(e));
     canvas.addEventListener("mousedown", (e) => {
+      if (!this._enabled) return;
       this.track(e);
       this.gunMode = true;
       this.mouseButtons |= e.button === 2 ? 2 : 1;
@@ -60,6 +68,7 @@ export class Input {
 
   /** Pad bits for this frame; also sends the light-gun state to the engine. */
   poll(): number {
+    if (!this._enabled) return 0;
     let bits = this.pad();
     if (bits) this.gunMode = false;
     const g = this.game ?? (window as any).snatcher?.game;

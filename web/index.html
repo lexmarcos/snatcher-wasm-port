@@ -2,31 +2,115 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <title>Snatcher Web Port</title>
 <style>
-  :root { --bg: #08090c; --fg: #c8d0d8; --dim: #6a7380; --accent: #3fb8c8; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 ui-monospace, Menlo, monospace; }
-  #wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; gap: 10px; }
-  canvas { image-rendering: pixelated; background: #000; }
+  :root { --bg: #08090c; --card: #10131a; --line: #252b36; --fg: #c8d0d8; --dim: #7c8694; --accent: #3fb8c8; --warn: #e0b050; --err: #e07070; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+  button, label.btn, select { font: inherit; color: var(--fg); background: #151922; border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+  button:hover:not(:disabled), label.btn:hover { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #123a42; border-color: var(--accent); color: #e8f6f8; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; gap: 8px; padding: 4px 16px; }
+  canvas { image-rendering: pixelated; background: #000; display: block; max-width: 100%; }
   canvas.smooth { image-rendering: auto; }
-  #bar { display: flex; gap: 12px; align-items: center; color: var(--dim); flex-wrap: wrap; justify-content: center; }
-  #bar button, #bar label { color: var(--fg); background: #151922; border: 1px solid #252b36; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
-  #debug { position: fixed; left: 8px; top: 8px; white-space: pre; background: rgba(0,0,0,.7); padding: 6px 8px; border-radius: 4px; display: none; pointer-events: none; }
+  #bar { display: flex; gap: 8px; align-items: center; color: var(--dim); flex-wrap: wrap; justify-content: center; }
+  #bar button { padding: 3px 8px; }
   #msg { color: var(--accent); }
+  :fullscreen #bar { display: none; }
+  #debug { position: fixed; left: 8px; top: 8px; white-space: pre; background: rgba(0,0,0,.75); padding: 6px 8px; border-radius: 4px; display: none; pointer-events: none; font-size: 12px; max-width: calc(100vw - 16px); overflow: hidden; }
+  /* overlay + settings panel */
+  .modal { position: fixed; inset: 0; background: rgba(4,5,8,.92); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 16px; z-index: 10; }
+  .modal[hidden] { display: none; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; width: 100%; max-width: 560px; margin: auto; }
+  .card h1 { font-size: 18px; margin: 0 0 8px; color: #e8eef2; }
+  .card h2 { font-size: 13px; margin: 16px 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  .card p { margin: 6px 0; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  .dim { color: var(--dim); }
+  .ok { color: #7cc88a; } .warn { color: var(--warn); } .err { color: var(--err); }
+  ul.notes { margin: 6px 0; padding-left: 18px; }
+  ul.notes li { margin: 2px 0; }
+  .sl { display: grid; grid-template-columns: 70px 1fr 40px; gap: 8px; align-items: center; margin: 4px 0; }
+  .sl input { width: 100%; accent-color: var(--accent); }
+  table.keys { border-collapse: collapse; width: 100%; }
+  table.keys td { padding: 2px 6px 2px 0; vertical-align: top; }
+  table.keys td:first-child { color: var(--fg); white-space: nowrap; }
+  kbd { background: #1b2029; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: inherit; }
+  details > summary { cursor: pointer; color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  @media (max-width: 480px) { .card { padding: 12px; } body { font-size: 13px; } }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <canvas id="screen" width="256" height="224"></canvas>
-  <div id="bar">
-    <span id="msg">loading…</span>
-    <label><input type="checkbox" id="smooth"> smooth</label>
-    <label><input type="checkbox" id="dbg"> debug (F1)</label>
-    <label>files… <input type="file" id="pick" webkitdirectory multiple hidden></label>
+  <canvas id="screen" width="256" height="224" tabindex="0" role="img" aria-label="Snatcher game screen"></canvas>
+  <div id="bar" role="toolbar" aria-label="Game controls">
+    <button id="btnMenu" type="button" title="Settings, controls, saves (Esc)">Menu (Esc)</button>
+    <button id="btnMute" type="button" aria-pressed="false" title="Mute audio (M)">Mute (M)</button>
+    <button id="btnFull" type="button" title="Fullscreen (F)">Fullscreen (F)</button>
+    <span id="msg" role="status" aria-live="polite">loading…</span>
   </div>
 </div>
 <div id="debug"></div>
+
+<!-- start overlay -->
+<div id="overlay" class="modal" role="dialog" aria-modal="true" aria-labelledby="ovTitle">
+  <div class="card">
+    <h1 id="ovTitle">Snatcher – web port</h1>
+    <p>A private, non-commercial preservation project: the game engine is rewritten for the browser and plays <b>your own</b> copy of the game data. No game data is included or uploaded; everything stays on this machine.</p>
+    <h2>Game files</h2>
+    <p id="srcStatus" class="dim">Looking for local files…</p>
+    <div class="row">
+      <button id="btnPlay" class="primary" type="button" disabled>Play</button>
+      <button id="btnPick" type="button">Choose extracted folder…</button>
+      <input id="pick" type="file" webkitdirectory multiple hidden>
+    </div>
+    <p class="dim">Choose the folder you extracted from your disc (the project's <code>assets</code> folder works best: it holds <code>raw/files</code>, <code>raw/header.bin</code>, <code>raw/ip.bin</code> and the audio in <code>audio/web</code> and <code>web/music</code>). Files are read in this page only.</p>
+    <ul id="notes" class="notes"></ul>
+    <h2>Saves</h2>
+    <div class="row">
+      <button id="ovImport" type="button">Import saves…</button>
+      <button id="ovExport" type="button">Export saves</button>
+      <span id="ovSaves" class="dim"></span>
+    </div>
+    <details>
+      <summary>Controls</summary>
+      <div class="controls"></div>
+    </details>
+  </div>
+</div>
+
+<!-- settings panel -->
+<div id="panel" class="modal" role="dialog" aria-modal="true" aria-labelledby="pnTitle" hidden>
+  <div class="card">
+    <h1 id="pnTitle">Menu <span class="dim">(game paused)</span></h1>
+    <div class="row"><button id="pnResume" class="primary" type="button">Resume</button></div>
+    <h2>Volume</h2>
+    <div class="sl"><label for="volMusic">Music</label><input id="volMusic" type="range" min="0" max="100" step="1"><output id="volMusicO"></output></div>
+    <div class="sl"><label for="volVoice">Voice</label><input id="volVoice" type="range" min="0" max="100" step="1"><output id="volVoiceO"></output></div>
+    <div class="sl"><label for="volFx">Effects</label><input id="volFx" type="range" min="0" max="100" step="1"><output id="volFxO"></output></div>
+    <p class="dim" id="soundMode"></p>
+    <h2>Display</h2>
+    <label class="check"><input type="checkbox" id="smooth"> Smooth scaling</label>
+    <label class="check"><input type="checkbox" id="dbg"> Debug overlay (F1)</label>
+    <div class="row"><button id="pnFull" type="button">Fullscreen (F)</button></div>
+    <h2>Saves</h2>
+    <div class="row">
+      <button id="pnExport" type="button">Export saves</button>
+      <button id="pnImport" type="button">Import saves…</button>
+    </div>
+    <p class="dim" id="pnSaves"></p>
+    <input id="importFile" type="file" accept="application/json,.json" hidden>
+    <h2>Controls</h2>
+    <div class="controls"></div>
+    <h2>Status</h2>
+    <ul id="pnNotes" class="notes"></ul>
+  </div>
+</div>
 <script type="module" src="/dist/main.js"></script>
 </body>
 </html>

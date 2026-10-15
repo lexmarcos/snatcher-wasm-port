@@ -1,0 +1,109 @@
+// Where the user's own game data comes from. Two interchangeable sources:
+//  - served: the local dev server (`bun web/server.ts`) serving the extracted ./assets directory
+//  - picked: a folder chosen with <input webkitdirectory> (File objects, read lazily, never uploaded)
+// Nothing here talks to a remote host; game data is never bundled or published.
+
+export interface GameFile { name: string; read(): Promise<ArrayBuffer> }
+
+export interface Source {
+  label: string;
+  /** Disc files the engine needs (assets/raw/files/*). */
+  gameFiles(): GameFile[];
+  /** Main-CPU boot code: "HEADER.BIN" / "IP.BIN" (optional). */
+  boot(name: string): Promise<ArrayBuffer | null>;
+  /** Audio file or manifest, path relative to assets/ (e.g. "audio/web/pcm.json", "web/music/track05.ogg"). */
+  audio(path: string): Promise<ArrayBuffer | null>;
+  /** Human-readable lines describing what was found. */
+  summary(): string[];
+}
+
+/** Files the engine never needs (PCMLD_01.BIN is the big PCM loader image, played via the audio pipeline instead). */
+const SKIP = new Set(["PCMLD_01.BIN"]);
+
+// ---------------------------------------------------------------- served
+
+async function getBuf(url: string): Promise<ArrayBuffer | null> {
+  try { const r = await fetch(url); return r.ok ? await r.arrayBuffer() : null; } catch { return null; }
+}
+
+export async function probeServed(): Promise<{ src?: Source; error?: string }> {
+  let text: string;
+  try {
+    const r = await fetch("/assets/raw/filelist.tsv");
+    if (!r.ok) return { error: "no local assets found at /assets/raw (run the extraction, see README)" };
+    text = await r.text();
+  } catch { return { error: "the local asset server is not reachable" }; }
+  const names = text.split("\n").slice(1).map((l) => l.split("\t")[0].trim()).filter((n) => n && !SKIP.has(n));
+  if (!names.length) return { error: "assets/raw/filelist.tsv is empty" };
+  const src: Source = {
+    label: "local server (./assets)",
+    gameFiles: () => names.map((name) => ({
+      name,
+      read: async () => { const b = await getBuf("/assets/raw/files/" + name); if (!b) throw new Error("missing " + name); return b; },
+    })),
+    boot: (name) => getBuf("/assets/raw/" + name.toLowerCase()),
+    audio: (path) => getBuf("/assets/" + path),
+    summary: () => [`${names.length} game files listed in assets/raw/filelist.tsv`],
+  };
+  return { src };
+}
+
+// ---------------------------------------------------------------- picked folder
+
+const relPath = (f: File) => ((f as any).webkitRelativePath || f.name).replace(/\\/g, "/") as string;
+
+/**
+ * Build a source from the files of a picked folder. The folder may be the project's `assets/`, `assets/raw`,
+ * `assets/raw/files`, or any parent of them; files are recognised by name and by the directory names above them:
+ *  - game files: everything directly inside a directory named `files` (fallback when the browser gives no
+ *    directory information: *.BIN / *.TXT files that are not header/ip/sp)
+ *  - header.bin / ip.bin by name
+ *  - audio: .ogg / .json looked up by the longest matching path suffix ("audio/web/fm/sfx_01.ogg",
+ *    then "web/fm/sfx_01.ogg", ...) so any pick depth works
+ */
+export function pickedSource(list: File[]): Source {
+  const files = list.map((f) => ({ f, parts: relPath(f).split("/") }));
+  const lname = (p: string[]) => p[p.length - 1].toLowerCase();
+  const isAudio = (n: string) => n.endsWith(".ogg") || n.endsWith(".json");
+
+  let games = files.filter((x) => x.parts.length >= 2 && x.parts[x.parts.length - 2].toLowerCase() === "files" && !isAudio(lname(x.parts)));
+  if (!games.length) {
+    games = files.filter((x) => /\.(bin|txt)$/i.test(x.parts[x.parts.length - 1]) && !["header.bin", "ip.bin", "sp.bin"].includes(lname(x.parts)));
+  }
+  games = games.filter((x) => !SKIP.has(x.parts[x.parts.length - 1].toUpperCase()));
+  const gameByName = new Map<string, File>();
+  for (const x of games) gameByName.set(x.parts[x.parts.length - 1].toUpperCase(), x.f);
+
+  const bootBy = new Map<string, File>();
+  for (const x of files) { const n = lname(x.parts); if ((n === "header.bin" || n === "ip.bin") && !bootBy.has(n)) bootBy.set(n, x.f); }
+
+  // suffix index for audio files
+  const idx = new Map<string, File>();
+  let oggs = 0;
+  for (const x of files) {
+    const n = lname(x.parts);
+    if (!isAudio(n)) continue;
+    if (n.endsWith(".ogg")) oggs++;
+    const low = x.parts.map((s) => s.toLowerCase());
+    for (let i = 0; i < low.length; i++) { const k = low.slice(i).join("/"); if (!idx.has(k)) idx.set(k, x.f); }
+  }
+  const findAudio = (path: string): File | null => {
+    const q = path.toLowerCase().split("/");
+    const isJson = q[q.length - 1].endsWith(".json");
+    // json manifests need at least "web/name.json" (assets/audio/fm.json is the unrelated raw table)
+    for (let i = 0; i < q.length - (isJson ? 1 : 0); i++) { const f = idx.get(q.slice(i).join("/")); if (f) return f; }
+    return null;
+  };
+
+  return {
+    label: "picked folder",
+    gameFiles: () => [...gameByName].map(([name, f]) => ({ name, read: () => f.arrayBuffer() })),
+    boot: async (name) => { const f = bootBy.get(name.toLowerCase()); return f ? f.arrayBuffer() : null; },
+    audio: async (path) => { const f = findAudio(path); return f ? f.arrayBuffer() : null; },
+    summary: () => [
+      `${gameByName.size} game files`,
+      `header.bin ${bootBy.has("header.bin") ? "found" : "missing"}, ip.bin ${bootBy.has("ip.bin") ? "found" : "missing"}`,
+      `audio: ${oggs} .ogg files, pcm.json ${findAudio("audio/web/pcm.json") ? "found" : "missing"}, fm.json ${findAudio("audio/web/fm.json") ? "found" : "missing"}`,
+    ],
+  };
+}
