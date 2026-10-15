@@ -67,3 +67,64 @@ Method: `scenario2.py scenarios/intro_real.json --match ../oracle/out/refs` (eve
      the offsets, see "Shooting" below.
 - Gotcha: a libretro option that is not set reads as NULL; `genesis_plus_gx_gun_input` NULL selects *touchscreen*. `build.sh` therefore generates `build/o2_defaults.h` from the core's own option table
   (declared defaults). Declared defaults include a 4 Mbit RAM cartridge; `Machine2` sets `cart_size = disabled`.
+
+## Phase 3: open questions settled with oracle2 evidence
+Tools (all in `re/oracle2/`, run from `re/oracle` with the venv; `ORACLE=2` switches the old fid/shoot tools): `fid_play.py`/`o2_replay.py` (adaptive play / replay of a recorded pad script), `o2_syncplay.py`
+(replay synchronised to the game state: same inputs in game terms on both oracles), `o2_cmpq.py` (queue alignment of two traces), `o2_seqlog.py` (per sequencer command durations),
+`o2_voice.py`, `o2_sndstall.py`, `o2_fmcap.py`, `shoot_gunscan.py` (`GUNCAL=00,E5` for the oracle2 calibration). Logs: `re/oracle/out/fid2/*.{story.txt,json,trace.jsonl}`, `out/replay_o2taxi/` (PNG).
+
+### 1. GAME OVER (fidelity.md item 4, a2_taxi)
+Run: `ORACLE=2 fid_session.py o2_a2_taxi SP01:250 36000` (jump = "TIKADO TO TAXI", SP01 node 0x24d; pad script `out/fid2/o2_a2_taxi.json`).
+Evidence (oracle2 absolute frames; `out/replay_o2taxi/r23100..r24300.png`): the failed stage shows the GAME OVER picture (gold title background) with the menu CONTINUE / QUIT INVESTIGATION; after QUIT the queue
+`07[FF] 10[56] 0D[30] 0A` runs (trace `seq_start` at rel 23285), the GAME OVER picture stays until the queue ends (rel 23944), then the screen goes black, `$9808` = 4 (VM state 4, S:0x1670C) and the SP
+reloads SUBCODE (`$7840` 4 at +36 frames, 5 at +44, 6 at +124), `$7842` = 0 and the game **restarts**: Konami laser line, Konami logo, title with NEW GAME / CONTINUE (CD track 2 at abs frame 30532).
+Verdict: **the engine is right to show the GAME OVER module; the HLE oracle is wrong** (it never re-runs the SP reload and stays black). The engine had a second defect found here: it stayed on the GAME OVER
+picture forever (VM state 4 stopped the VM thread) - the original returns to the title. **Fixed** (`Engine::reset_to_title`, `VmPhase::ExitSp`, test `state4_restarts_at_the_title` in
+`engine/tests/player_path.rs`, fails without the fix): queue [02] (black-out), `SP_RELOAD_FRAMES` = 90, soft reset keeping files/saves/audio manifests, then the title chain restarts.
+(The 36-frame black-out and 88-frame SP reload are real-BIOS numbers; HLE cannot give them.)
+
+### 2. Shooting: white flash, sound stalls, gun Y bias
+- **Trigger flash (M:0xFF1A44)**: real BIOS, stage 0, blaster drawn (`$7970`/`$E057` = 1): the frame in which the trigger edge is seen is **100 % white** (all CRAM entries 0x0EEE, `fraction of white pixels = 1.0`), the next
+  frame is normal again (0.02); without the second button first (blaster not drawn) no flash (0.01). So it is a full-screen one-frame flash for the gun's sensor, exactly as read from the code; the engine does not draw it
+  (a mouse needs none). `re/oracle2` t18-style check: trigger at frame N -> white at N, normal N+1..N+5.
+- **Stalls when a sound starts**: `o2_sndstall.py 0 0 2400 1` (stage 0, policy seed 1): handler runs per frame {1: 1981, 0: 416, 2: 3} on the real BIOS vs {1: 2025, 0: 368, 2: 7} on the HLE; handler-less frames in the 8 frames
+  from a PCM effect start: **2.62 (oracle2) vs 2.68 (HLE)**, same patterns (`[1,0,1,0,0,1]` ...). The sample-copy stalls are real; the HLE model of them was right. Still unmodelled in the engine (lost presses while a sound plays).
+- **Gun Y calibration bias (`GUN_CAL_BIAS_Y` = 31)**: still a HYPOTHESIS, but the evidence changed: with the real BIOS and the game's own calibration screen (`ORACLE=2 shoot_gunscan.py cal`) the bullseye (128,101) gives raw (0x80,0x65),
+  calibration `$7988/9 = 00/E5`, value (0x80,0x80); aiming (100,80) gives value (0x64,0x6B) = (x, y+27), the crosshair object is drawn at (value-11, value-35) = on the aim point, and the cell scan
+  (`GUNCAL=00,E5 shoot_gunscan.py cells`) switches rows at y = 21 / 61 (rows 0/1/2 for y <= 16 / 24..56 / >= 64), exactly like the HLE scan. GPGX latches the aimed pixel with no offset (raw = (x, y), the HLE model gave (x-66, y+1))
+  and the algebra is the same, so the 31-line discrepancy is **not an artefact of the HLE gun model**: it comes from the game's calibration (value = y + 27) versus its cell thresholds. Whether a real Justifier reports a V counter
+  about 31 lines different from the beam position cannot be decided by an emulator whose latch is idealised; it needs a real light gun. The engine's bias stays as is.
+
+### 3. Timing drift: real-BIOS load times and voice start stall
+Method: `o2_seqlog.py` (hook on seq_run S:0xFFC4: frames each sequencer command takes), `o2_voice.py` (hook S:0x154F8), `o2_syncplay.py`; CD events in `trace.jsonl` (`cd_read`, `cd_sectors`).
+- **CD model of the core** (`cdd.c`): a read is a drive command + `latency = 2 + 10` CDD interrupts (75 Hz = 9.6 frames) + seek `distance * 120 / 270000` interrupts, 75 sectors/s. Measured (trace of an Act 1 session, 81 reads): command -> first sector
+  12.0 frames for seeks < 10000 sectors, 29-30 frames for seeks of about 50000 sectors; 1.30 sectors/frame (nominal 75/s = 1.2517/frame). The core's own comment calls the seek time "a rough approximation" tuned for compatibility (Sonic CD, Switch...).
+- **File loads (sequencer cmd 11)**, Act 1 session, 14 loads: HLE 3 frames each (engine: instant), real BIOS **12 + sectors/1.2517 + 7.4 frames** (e.g. DATA_H02 16 sectors 32 frames, DATA_H07 27 sectors 41, SP29 9 sectors 27, DATA_Q3 47 sectors 57);
+  +20 frames when the head has to come back from far away (the first DATA_H01 load after a PCM read: 45/43 instead of 25).
+- **Voice start**: request (`pcm_play_voice`) -> stream playing: **37.8 frames mean (21..61)** on the real BIOS vs 4.0 (3..7) on the HLE (engine: 2); playing time = manifest + 1.1 frames (HLE +0.9): the stream length is right,
+  the start is the CD seek + prime. Handler-less frames in the 80 frames after a start: 5.25 vs 6.55 (the stalls come from the stream refills, not from the start).
+- **Whole-session effect**: the same recorded Act 1 session (503 presses, `o2_syncplay.py`, identical game inputs on both oracles, 106 queues, all identical) takes **39771 frames on the real BIOS vs 36773 on the HLE (+8.2 %)**;
+  engine vs HLE was -0.3..-0.7 %, so the engine is about 8 % faster than the real console model. Sources by size: voice starts (about 34 frames each, 37-42 per session), file loads (about 28 frames each, 14), boot (+209), the rest are CD-DA/shorter stalls.
+- **Can the numbers be modelled?** The sector rate and the minimum latency are hardware-grounded (75 sectors/s; BIOS timeouts need ~10 interrupts); the seek part is a linear heuristic, real drives vary (0.2-1.5 s). The core is therefore
+  trustworthy for relative speed (loads are 1x CD, not instant) but not for exact seek frames. Suggestion if the engine should feel like the console: `load_frames = 20 + sectors * 0.8` (+ 20 when the previous read was > 10000 sectors away) and
+  `voice_start = 12 or 30 frames` (head near / far); expect the same game events, only later. Not done: it would encode a heuristic, and nothing checks game logic against it.
+
+### 4. SP29 turbocycle chase
+`o2_c_boso1` (SP01:868 = "Turbocycle boso zenhan", SP29, 40000 frames, 165 queues): all 165 queues of the engine equal the real-BIOS ones (engine vs oracle2 report; HLE: 183/184). Per iteration of the same pass the engine is faster than the
+real BIOS by 36 frames per 502 (voice-heavy loop `0008 0002 4009`) and 140 per 1745; the loop's looping voice 0x3D (manifest 236.6 frames) lasts 237.5 (HLE) / **278.5 frames (oracle2: +41 = CD seek + prime before the stream plays)**. So the old
+"18 frames per iteration" is not the main error: against the real BIOS the engine is about 41 frames per voice start (and about 7 % overall) too fast; against the HLE it was 0.4 %. Same cause as 3 (voice-start CD seek).
+
+### 5. FM timbre (`o2_fmcap.py`, Nuked YM2612 ym2612 mode)
+Original driver run from the idle title screen (F2 first: the music stops, silence measured = exactly 0), id injected like `audio_inject.py`, 44.1 kHz stereo WAV in `re/oracle2/out/fm/o2_<id>.wav`, compared with `assets/audio/fm/*.wav` (engine renders):
+| id | peak eng/o2 dBFS | RMS eng/o2 | envelope corr | note |
+|---|---|---|---|---|
+| song 3F | -7.0 / -6.1 | -23.5 / -23.3 | 0.96 | tonal bands within 1 dB, o2 +10..20 dB above 3 kHz |
+| song 45 | -18.6 / -16.6 | -33.4 / -31.7 | 0.99 | |
+| song 7A | -18.7 / -18.3 | -29.2 / -27.8 | 0.95 | |
+| song 6F (noise ambience) | -23.4 / -22.7 | -34.8 / -33.6 | 0.999 | o2 +25 dB noise floor above 760 Hz |
+| songs 4F, 40, 50 (23-30 s, drums) | -8.2/-6.9, -7.2/-4.3, -15.4/-8.2 | -25.9/-24.5, -22.6/-18.9, -26.3/-27.4 | 0.44, 0.50, 0.36 | lag of first/last 5 s <= 20 ms (no tempo drift); correlation falls with length (PCM drum phase, noise patches) |
+| sfx 01, 0B, 0A, 20, 1D | -12.7/-14.1, -12.0/-11.0, -12.1/-12.4, -16.9/-15.5, -19.6/-18.7 | -28.8/-30.0, ... | 0.94-0.998 | band means within 0.1..1.4 dB (1D: +5 dB) |
+| sfx 33, 02 | -18.7/-18.5, -26.3/-24.9 | -29.1/-28.1 | 0.95, 0.66 | 33: o2 +10 dB above 2.4 kHz |
+Differences: (1) levels agree within about 2 dB peak / 1.7 dB RMS for 12 of 14 ids (the engine's "unity" mixing is close to the core's), (2) tonal content and envelopes agree, so driver + YM translation are right, (3) the real chip model adds a
+**broadband noise floor / DAC ladder distortion** (high bands 10-30 dB above the engine in quiet or noisy sounds) which the engine's chip model (no ladder effect, documented) does not have, (4) song 40 has +10 dB below 100 Hz
+(PCM drum kit at 60 Hz band: +13 dB; engine drum level vs the real RF5C164 path, unverified). Nothing was retuned: (3) is a property of the real chip that a web port arguably should not copy.
