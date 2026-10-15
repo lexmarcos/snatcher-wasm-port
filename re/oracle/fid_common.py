@@ -16,6 +16,7 @@ def oracle_jump(m, spec, wait=300, zero_save=True):
     data = open(os.path.join(RAW, 'SP%02d.BIN' % n), 'rb').read()
     s.write(0x1A800, data[:0xD000])
     if zero_save: s.write(0x9C00, bytes(0x1C0))
+    if os.environ.get('O2_ZERO_VARS'): s.write(0x9DC0, bytes(0xA0))   # test: VM variables $9DC0..$9E5F (beyond the save block) zero like the HLE oracle's RAM
     s.write(0x79EA, bytes(4))      # play time (the engine starts at 0)
     s.w16(0x15120, 0xFFFF)         # last PCM voice id (S:0x16656 init)
     s.w16(0x1511E, 0)              # PCM busy bits: the Junker HQ conversation's voice may still play (a following cmd 0A would wait for it)

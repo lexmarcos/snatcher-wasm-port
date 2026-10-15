@@ -53,6 +53,7 @@ shots = sorted(set([int(x) for x in a.shots.split(',') if x] + (list(range(0, fr
 shots = [s for s in shots if s > 0]
 PY = os.path.join(HERE, '.venv', 'bin', 'python')
 
+ANCHOR = 4500
 # ---------------- oracle (in-process, same loop as fid_play.py)
 if not a.skip_oracle:
     sys.path.insert(0, HERE)
@@ -72,6 +73,7 @@ if not a.skip_oracle:
     else:
         m = Machine(trace_path=os.path.join(out, 'oracle', 'trace.jsonl'))
         m.load_state(os.path.join(HERE, 'states', a.load + '.pkl'))
+        ANCHOR = m.frame
         m.inputs = []
         if a.jump:
             from fid_common import oracle_jump
@@ -90,7 +92,7 @@ if not a.skip_oracle:
             if m.main.halted or m.sub.halted: print('HALT'); break
 
 def oracle_passes():
-    base = 4500 + a.owait if not a.oracle_jump else 0
+    base = ANCHOR + a.owait if not a.oracle_jump else 0   # ANCHOR = frame number of the anchor state (4500 for the HLE junker_hq.pkl)
     res = []
     p = os.path.join(out, 'oracle', 'trace.jsonl')
     for l in open(p):

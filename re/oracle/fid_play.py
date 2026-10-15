@@ -22,11 +22,12 @@ ap.add_argument('--jump', default='', help='start at SPnn:pc (hex pc) instead of
 ap.add_argument('--save-state', default='', help='write the machine state (pkl) at rel 0')
 ap.add_argument('--stall', type=int, default=6000, help='stop after this many frames without a new queue / press / script change')
 ap.add_argument('--out', default=''); ap.add_argument('--quiet', action='store_true')
+ap.add_argument('--trace', default='', help='trace.jsonl path (default out/fid_play_trace.jsonl, shared by all runs)')
 ap.add_argument('--stop-script', default='', help='stop when script id ($980C) equals this hex value')
 a = ap.parse_args()
 choices = [int(x) for x in a.choices.split(',') if x]
 RAW = os.path.join(HERE, '..', '..', 'assets', 'raw', 'files')
-m = Machine(trace_path=os.path.join(HERE, 'out', 'fid_play_trace.jsonl'))
+m = Machine(trace_path=a.trace or os.path.join(HERE, 'out', 'fid_play_trace.jsonl'))
 m.load_state(os.path.join(HERE, 'states', a.load + '.pkl'))
 m.inputs = []
 if a.jump:

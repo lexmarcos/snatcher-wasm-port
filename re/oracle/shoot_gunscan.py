@@ -36,7 +36,8 @@ def raw():
 
 def cells():
     m = gun_stage(); s = m.sub
-    s.w8(0x7988, 0xC0); s.w8(0x7989, 0xE6)       # what the calibration at the bullseye stores (see `cal`)
+    import os
+    cal = os.environ.get("GUNCAL", "C0,E6").split(","); s.w8(0x7988, int(cal[0], 16)); s.w8(0x7989, int(cal[1], 16))       # what the calibration at the bullseye stores (see `cal`; HLE C0/E6, oracle2 00/E5)
     ready(m)
 
     def cell_at(x, y):

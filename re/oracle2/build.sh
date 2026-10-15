@@ -7,10 +7,19 @@ G="$HERE/third_party/Genesis-Plus-GX"
 cd "$G"
 make -f Makefile.libretro platform=unix -j"$(nproc)" >/dev/null 2>&1 || make -f Makefile.libretro platform=unix -j"$(nproc)" 2>&1 | tail -5
 mkdir -p "$HERE/build"
+# declared option defaults of the core (what a libretro frontend passes): an unset option must not read as NULL (e.g. gun_input NULL = touchscreen)
+python3 - "$G/libretro/libretro_core_options.h" "$HERE/build/o2_defaults.h" <<'PYEOF'
+import re, sys
+t = open(sys.argv[1]).read(); d = {}
+for m in re.finditer(r'\{\s*"(genesis_plus_gx_[a-z0-9_]+)",(.*?)\n   \},', t, re.S):
+    mm = re.findall(r'\n\s+"([^"\n]*)"\s*$', m.group(2))
+    d.setdefault(m.group(1), mm[-1] if mm else '')
+open(sys.argv[2], 'w').write('static const char *o2_defaults[][2] = {\n' + ''.join('  {"%s", "%s"},\n' % kv for kv in d.items()) + '  {0, 0}\n};\n')
+PYEOF
 # flags = the ones Makefile.libretro uses for the core objects (so struct layouts and #defines match)
 INC="-I./libretro/deps/libchdr/include -I./libretro/deps/lzma-19.00/include -I./libretro/deps/zlib-1.2.11 -I./libretro/deps/zstd/lib -I./core -I./core/z80 -I./core/m68k -I./core/ntsc -I./core/sound -I./core/sound/minimp3 -I./core/input_hw -I./core/cd_hw -I./core/cart_hw -I./core/cart_hw/svp -I./libretro -I./libretro/libretro-common/include"
 DEF="-DUSE_LIBTREMOR -DUSE_LIBCHDR -DUSE_PER_SOUND_CHANNELS_CONFIG -D_7ZIP_ST -DZSTD_DISABLE_ASM -DHAVE_CDROM -DUSE_16BPP_RENDERING -DFRONTEND_SUPPORTS_RGB565 -DLSB_FIRST -DBYTE_ORDER=LITTLE_ENDIAN -DHAVE_ZLIB -D__LIBRETRO__ -DUSE_LIBRETRO_VFS -DM68K_OVERCLOCK_SHIFT=20 -DZ80_OVERCLOCK_SHIFT=20 -DHAVE_YM3438_CORE -DHAVE_OPLL_CORE -DMAXROMSIZE=33554432"
-cc -fPIC -O2 -w $INC $DEF -DINLINE="static inline" -c "$HERE/o2.c" -o "$HERE/build/o2.o"
+cc -fPIC -O2 -w $INC $DEF -DINLINE="static inline" -I "$HERE/build" -c "$HERE/o2.c" -o "$HERE/build/o2.o"
 OBJS=$(find . -name '*.o' | sort)
-cc -shared -o "$HERE/build/liboracle2.so" -Wl,--wrap=cdd_process -Wl,--wrap=cdd_read_data $OBJS "$HERE/build/o2.o" -lm
+cc -shared -o "$HERE/build/liboracle2.so" -Wl,--wrap=cdd_process -Wl,--wrap=cdd_read_data -Wl,--wrap=s68k_run -Wl,--wrap=m68k_run $OBJS "$HERE/build/o2.o" -lm
 echo "built $HERE/build/liboracle2.so ($(git rev-parse HEAD))"

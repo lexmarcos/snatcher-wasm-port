@@ -27,6 +27,8 @@ def main():
     ap.add_argument('--gun', action='store_true')
     ap.add_argument('--ym', default='nuked (ym2612)')
     ap.add_argument('--cd-latency', default=None, help='enabled|disabled')
+    ap.add_argument('--match', help='directory of reference PNGs (HLE oracle shots): report, for each, the frame with the fewest differing pixels (normalised colours)')
+    ap.add_argument('--match-every', type=int, default=2)
     ap.add_argument('--audio', help='write the audio of the whole run to this WAV file')
     a = ap.parse_args()
     sc = json.load(open(a.scenario))
@@ -54,6 +56,22 @@ def main():
             Image.fromarray(m.frame_rgb()).save(os.path.join(a.out, n + '.png'))
         for n in states.get(sfr, []):
             m.save_state(os.path.join(HERE, 'states', n + '.state'))
+    refs = {}
+    best = {}
+    if a.match:
+        import numpy as np
+        for fn in sorted(os.listdir(a.match)):
+            if fn.endswith('.png'): refs[fn[:-4]] = np.array(Image.open(os.path.join(a.match, fn)).convert('RGB'))
+        best = {k: [10**9, None] for k in refs}
+    def match_step():
+        import numpy as np
+        from o2lib import normalize_levels
+        img = None
+        for k, ref in refs.items():
+            if img is None: img = normalize_levels(m.frame_rgb())
+            if img.shape != ref.shape: continue
+            d = int((img != ref).any(axis=2).sum())
+            if d < best[k][0]: best[k] = [d, m.frame - t0]
     last = {}
     def cond(k, v):
         if ':' in k:
@@ -82,6 +100,7 @@ def main():
             wait['left'] -= 1
             m.inputs = [[1, wait.get('hold', 0)]]
             last = m.step_frame()
+            if refs and m.frame % a.match_every == 0: match_step()
             continue
         if cur is not None:
             m.inputs = [[1, cur[1]]]; cur[0] -= 1
@@ -90,6 +109,7 @@ def main():
             m.inputs = []
         last = m.step_frame()
         sf += 1
+        if refs and m.frame % a.match_every == 0: match_step()
         snap(sf)
         if sf % 1000 == 0: print('scenario frame', sf, 'oracle2 frame', m.frame, flush=True)
     if a.audio:
@@ -97,6 +117,7 @@ def main():
         pcm = np.concatenate(m.audio) if m.audio else np.zeros((0, 2), np.int16)
         with wave.open(a.audio, 'wb') as w:
             w.setnchannels(2); w.setsampwidth(2); w.setframerate(int(m.srate)); w.writeframes(pcm.tobytes())
+    for k, (d, f) in best.items(): print('match %-16s best %6d px at game frame %s' % (k, d, f))
     print('done: scenario frame', sf, 'oracle2 frame', m.frame, 't0', t0)
 
 main()

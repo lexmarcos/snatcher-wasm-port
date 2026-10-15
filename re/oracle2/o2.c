@@ -16,6 +16,7 @@
 #include "ym2612.h"
 #include "input.h"
 
+#include "o2_defaults.h"
 #define API __attribute__((visibility("default")))
 
 /* libretro entry points (libretro.c) */
@@ -84,6 +85,7 @@ static bool env_cb(unsigned cmd, void *data)
     {
       struct retro_variable *v = data; int i;
       for (i = 0; i < g_nopts; i++) if (!strcmp(g_opts[i].key, v->key)) { v->value = g_opts[i].val; return true; }
+      for (i = 0; o2_defaults[i][0]; i++) if (!strcmp(o2_defaults[i][0], v->key)) { v->value = o2_defaults[i][1]; return true; }
       v->value = NULL; return false;
     }
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool *)data = g_vopt_changed; g_vopt_changed = 0; return true;
@@ -201,6 +203,59 @@ API void o2_cdd_state(int *status, int *index, int *lba, int *latency, int *audi
   *status = cdd.status; *index = cdd.index; *lba = cdd.lba; *latency = cdd.latency; *audio = cdd.toc.tracks[cdd.index].type == 0;
 }
 
+/* ---- PC hooks (like the HLE oracle's core_add_hook): when a hook is set the CPU is stepped one instruction at a time (--wrap of m68k_run / s68k_run) ---- */
+typedef struct { int cpu; unsigned pc; unsigned r[10]; uint8_t snap[0x240]; int has_snap; } hkev_t;   /* r: d0 d1 d2 d3 a0 a1 a2 a7; snap = 128 bytes of sub PRG-RAM at the snap address */
+static unsigned g_snap_addr = 0x9940;
+static uint8_t g_smap[2][0x100000];
+static hkev_t *g_hk; static int g_hk_n, g_hk_cap;
+static uint8_t g_hmap[2][0x100000];   /* bit map over (pc & 0xFFFFFF) >> 1, indexed [pc >> 4] bit ((pc >> 1) & 7) */
+static int g_hk_active[2];
+extern void __real_m68k_run(unsigned int cycles);
+extern void __real_s68k_run(unsigned int cycles);
+static void hk_record(int cpu, unsigned pc)
+{
+  hkev_t *e;
+  if (g_hk_n == g_hk_cap) { g_hk_cap = g_hk_cap ? g_hk_cap * 2 : 1024; g_hk = realloc(g_hk, g_hk_cap * sizeof(hkev_t)); }
+  e = &g_hk[g_hk_n++]; e->cpu = cpu; e->pc = pc; e->has_snap = 0;
+  if (cpu && (g_smap[1][pc >> 4] & (1 << ((pc >> 1) & 7)))) { unsigned i; for (i = 0; i < 0x240; i++) e->snap[i] = scd.prg_ram[(g_snap_addr + i) ^ 1]; e->has_snap = 1; }
+  if (cpu) { e->r[0] = s68k.dar[0]; e->r[1] = s68k.dar[1]; e->r[2] = s68k.dar[2]; e->r[3] = s68k.dar[3]; e->r[4] = s68k.dar[8]; e->r[5] = s68k.dar[9]; e->r[6] = s68k.dar[10]; e->r[7] = s68k.dar[15]; }
+  else { e->r[0] = m68k.dar[0]; e->r[1] = m68k.dar[1]; e->r[2] = m68k.dar[2]; e->r[3] = m68k.dar[3]; e->r[4] = m68k.dar[8]; e->r[5] = m68k.dar[9]; e->r[6] = m68k.dar[10]; e->r[7] = m68k.dar[15]; }
+}
+void __wrap_s68k_run(unsigned int cycles)
+{
+  if (!g_hk_active[1]) { __real_s68k_run(cycles); return; }
+  while (s68k.cycles < cycles)
+  {
+    unsigned pc = s68k.pc & 0xFFFFFF;
+    if (s68k.stopped) { __real_s68k_run(cycles); return; }
+    if (g_hmap[1][pc >> 4] & (1 << ((pc >> 1) & 7))) hk_record(1, pc);
+    __real_s68k_run(s68k.cycles + 1);
+  }
+}
+void __wrap_m68k_run(unsigned int cycles)
+{
+  if (!g_hk_active[0]) { __real_m68k_run(cycles); return; }
+  while (m68k.cycles < cycles)
+  {
+    unsigned pc = m68k.pc & 0xFFFFFF;
+    if (m68k.stopped) { __real_m68k_run(cycles); return; }
+    if (g_hmap[0][pc >> 4] & (1 << ((pc >> 1) & 7))) hk_record(0, pc);
+    __real_m68k_run(m68k.cycles + 1);
+  }
+}
+API void o2_hook_set(int cpu, unsigned pc, int on)
+{
+  int i, n = 0; pc &= 0xFFFFFF;
+  if (on) g_hmap[cpu][pc >> 4] |= (1 << ((pc >> 1) & 7)); else g_hmap[cpu][pc >> 4] &= ~(1 << ((pc >> 1) & 7));
+  for (i = 0; i < 0x100000; i++) if (g_hmap[cpu][i]) { n = 1; break; }
+  g_hk_active[cpu] = n;
+}
+API void o2_hook_snap(int cpu, unsigned pc, int on) { pc &= 0xFFFFFF; if (on) g_smap[cpu][pc >> 4] |= (1 << ((pc >> 1) & 7)); else g_smap[cpu][pc >> 4] &= ~(1 << ((pc >> 1) & 7)); }
+API void o2_hook_snap_addr(unsigned a) { g_snap_addr = a; }
+API int o2_hook_snapshot(int i, uint8_t *dst) { if (!g_hk[i].has_snap) return 0; memcpy(dst, g_hk[i].snap, 0x240); return 1; }
+API int o2_hook_count(void) { return g_hk_n; }
+API void o2_hook_get(int i, int *cpu, unsigned *pc, unsigned *regs) { *cpu = g_hk[i].cpu; *pc = g_hk[i].pc; memcpy(regs, g_hk[i].r, 8 * sizeof(unsigned)); }
+
 /* ---- API ---- */
 API int o2_init(const char *sysdir, const char *savedir, const char *content, int verbose)
 {
@@ -231,7 +286,7 @@ API void o2_set_gun(int port, int x, int y, int off, int trig, int aux_a, int au
   g_gun[port][0] = x; g_gun[port][1] = y; g_gun_off[port] = off;
   g_gun[port][2] = trig; g_gun[port][3] = aux_a; g_gun[port][4] = aux_b; g_gun[port][5] = start;
 }
-API int o2_run(void) { g_ym_n = 0; g_cdev_n = 0; ym_install(); retro_run(); g_frames++; return g_frames; }
+API int o2_run(void) { g_ym_n = 0; g_cdev_n = 0; g_hk_n = 0; ym_install(); retro_run(); g_frames++; return g_frames; }
 API void o2_reset(void) { retro_reset(); }
 API double o2_sample_rate(void) { return g_srate; }
 
@@ -298,6 +353,9 @@ API unsigned o2_sub_sr(void) { return s68k_get_reg(M68K_REG_SR); }
 API int o2_system_hw(void) { return system_hw; }
 API int o2_region(void) { return region_code; }
 API int o2_cd_type(void) { return scd.type; }
+
+/* DEBUG ONLY (perturbs the emulation, never used by the oracle runs): run the sub CPU for n more cycles, returns PC before/after */
+API unsigned o2_dbg_sub_step(unsigned n) { unsigned pc = s68k_get_reg(M68K_REG_PC); s68k_run(s68k.cycles + n); return pc; }
 
 /* write into sub PRG-RAM / main RAM (canonical addresses), used by the scenario tools to inject state */
 API void o2_write_prg(unsigned addr, const uint8_t *src, unsigned n) { unsigned i; for (i = 0; i < n; i++) scd.prg_ram[(addr + i) ^ 1] = src[i]; }

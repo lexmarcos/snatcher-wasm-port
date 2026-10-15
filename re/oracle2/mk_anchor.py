@@ -11,12 +11,13 @@ from PIL import Image
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--out', default=os.path.join(HERE, 'out', 'anchor'))
-ap.add_argument('--gun', action='store_true')
+ap.add_argument('--port2', default=None, help='pad | justifier | (default: core autodetect = Justifier for Snatcher)')
+ap.add_argument('--name', default='junker_hq')
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True); os.makedirs(os.path.join(HERE, 'states'), exist_ok=True)
 
 def run(save_at=None):
-    m = Machine2(trace_path=os.path.join(a.out, 'trace.jsonl') if save_at is not None else None, gun=a.gun)
+    m = Machine2(trace_path=os.path.join(a.out, 'trace.jsonl') if save_at is not None else None, port2=a.port2)
     t0 = m.boot()
     s = m.sub
     st = {'last_c': 0, 'phase': 0, 'last_press': -100, 'since': 0, 'mod_f': None, 'ready': {}}
@@ -51,7 +52,7 @@ def run(save_at=None):
             elif rd['msg'] is not None and f - rd['msg'] >= 12 and f - st['last_press'] > 8:
                 pressed(32); st['last_press'] = f; st['last_c'] = m.frame + 1
         if save_at is not None and m.frame + 1 == save_at:
-            m.save_state(os.path.join(HERE, 'states', 'junker_hq.state'))
+            m.save_state(os.path.join(HERE, 'states', a.name + '.state'))
             return m.frame, marks
         m.step_frame()
         if f > 20000: raise RuntimeError('no menu')
@@ -63,4 +64,4 @@ save_at = mf - 12 - 250 - 50      # menu_ready is first true ~12 frames before t
 first = mf - 12
 save_at = max(first - 250, marks['last_c'] + 3)   # after the last C (the message that precedes the menu must be dismissed)
 f2, _ = run(save_at)
-print('saved states/junker_hq.state at frame', f2, '(menu first ready at', first, ')')
+print('saved states/' + a.name + '.state at frame', f2, '(menu first ready at', first, ')')

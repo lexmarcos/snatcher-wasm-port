@@ -4,6 +4,8 @@ Dev-only test oracle. Machine2 mirrors the part of re/oracle/machine.py's Machin
 import ctypes, json, os, struct, sys, tempfile, time
 import numpy as np
 
+SEQ_RUN = 0xFFC4                                     # S: sequencer entry (seq_run)
+SEQ_CLEAR = (0x608C, 0xD522, 0xD540, 0xDED0, 0x10046)  # S: the `clr.b seq_busy` sites
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 LIB = os.path.join(HERE, 'build', 'liboracle2.so')
@@ -70,9 +72,29 @@ class Mem:
     def a(self, n): return (self.m.L.o2_sub_reg if self.kind == 'sub' else self.m.L.o2_main_reg)(8 + n)
 
 
+def _level_tables():
+    # core output (RGB565 from 3-bit levels L, see vdp_render.c MAKE_PIXEL with r = 2L): back to L, then to the HLE renderer's L * 36
+    def inv(vals):
+        t = np.zeros(256, np.uint8)
+        for v in range(256):
+            t[v] = min(range(8), key=lambda L: abs(vals[L] - v))
+        return t
+    r = [((((2 * L) << 1) | ((2 * L) >> 3)) * 255) // 31 for L in range(8)]
+    g = [((((2 * L) << 2) | ((2 * L) >> 2)) * 255) // 63 for L in range(8)]
+    return inv(r), inv(g), inv(r)
+_LT = None
+def normalize_levels(img):
+    """core RGB (levels 0..238) -> the HLE oracle / engine palette (L*36, white = 252) so that PNGs compare 1:1."""
+    global _LT
+    if _LT is None: _LT = _level_tables()
+    out = np.empty_like(img)
+    for c in range(3): out[..., c] = _LT[c][img[..., c]] * 36
+    return out
+
+
 class Vdp2:
     def __init__(self, m): self.m = m
-    def frame_image(self): return self.m.frame_rgb()
+    def frame_image(self): return normalize_levels(self.m.frame_rgb())
     def vram(self): return self.m.vram()
     def cram(self): return self.m.cram()
     def vsram(self): return self.m.vsram()
@@ -81,7 +103,7 @@ class Vdp2:
 
 class Machine2:
     def __init__(self, trace_path=None, verbose=False, bios=None, ym='nuked (ym2612)', cd_latency=None, opts=None,
-                 content=CUE, savedir=None, gun=False):
+                 content=CUE, savedir=None, gun=False, port2=None, seq_trace=True):
         self.L = L = lib()
         self.trace = open(trace_path, 'w') if trace_path else None
         self.frame = 0
@@ -110,11 +132,19 @@ class Machine2:
         # The core detects "SNATCHER" in the disc header and forces a Konami Justifier in port 2 (core/loadrom.c, input.system[1]), so the
         # game sees a gun at power-up (A12013 = 1) without any option; `gun` is kept for compatibility. Aiming = m.gun = {'x','y','trig','aux'}.
         self.gunmode = True
+        if port2 == 'pad':        # plain control pad in port 2 (the game then finds no gun at power-up)
+            L.o2_set_port_device(1, RETRO_DEVICE_JOYPAD); self.gunmode = False
+        elif port2 == 'justifier':
+            L.o2_set_port_device(1, RETRO_DEVICE_JUSTIFIERS)
         self.srate = L.o2_sample_rate()
         self._last_script = None
         self._music_track = 0
+        self.hits = []
         self._run = None
-        self._last_busy = 0
+        self._seq_armed = True
+        if seq_trace:
+            self.add_snap_hook('sub', SEQ_RUN)
+            for _pc in SEQ_CLEAR: self.add_hook('sub', _pc)
         self.cd_state = (0, 0, 0, 0)
         self.shot_w = self.shot_h = 0
 
@@ -150,6 +180,7 @@ class Machine2:
         return np.ctypeslib.as_array(p, shape=(h.value, w.value, 3)).copy()
 
     def log(self, e):
+        e.setdefault('f', self.frame)      # the HLE oracle stamps every event with the frame index
         self.events.append(e)
 
     def set_pad(self, bits):
@@ -166,6 +197,16 @@ class Machine2:
         vx = int((g['x'] + 0.5) * 0xfffe / w) - 0x7fff
         vy = int((g['y'] + 0.5) * 0xfffe / h) - 0x7fff
         self.L.o2_set_gun(1, vx, vy, 0, int(bool(g.get('trig'))), 0, 0, int(bool(g.get('aux'))))   # Justifier: D0 = trigger (INPUT_A), D1 = second button (START)
+
+    def add_hook(self, cpu, pc):
+        """PC hook (cpu 'sub'/'main'): from then on the CPU is stepped instruction by instruction (slower) and every execution of `pc` is
+        reported in self.hits after each step_frame as (cpu, pc, regs) with regs = dict d0..d3 a0..a2 a7."""
+        self.L.o2_hook_set(1 if cpu == 'sub' else 0, pc, 1)
+    def add_snap_hook(self, cpu, pc):
+        """hook that also keeps 0x240 bytes of sub PRG-RAM at S:$9940 (the sequencer queue and its index/busy words) as seen when the instruction is reached; hits get regs['snap'] (0x240 bytes from S:$9940: queue at +0, seq_index $9B40 at +0x200, seq_busy $9B44 at +0x204)."""
+        self.L.o2_hook_snap(1 if cpu == 'sub' else 0, pc, 1); self.add_hook(cpu, pc)
+    def del_hook(self, cpu, pc):
+        self.L.o2_hook_set(1 if cpu == 'sub' else 0, pc, 0)
 
     def step_frame(self, capture=False):
         while self.inputs and self.inputs[0][0] <= 0:
@@ -192,6 +233,15 @@ class Machine2:
             # same format as the HLE oracle: [part, reg, val] for data writes (addr 1 / 3); address writes (0 / 2) select part+reg
             if ad & 1 == 0: part, reg = ad >> 1, dv
             else: ym.append([part, reg, dv])
+        self.hits = []
+        nh = L.o2_hook_count()
+        if nh:
+            hc = ctypes.c_int(); hp = ctypes.c_uint(); hr = (ctypes.c_uint * 8)(); snapbuf = (ctypes.c_uint8 * 0x240)()
+            for i in range(nh):
+                L.o2_hook_get(i, ctypes.byref(hc), ctypes.byref(hp), hr)
+                regs = dict(zip(('d0', 'd1', 'd2', 'd3', 'a0', 'a1', 'a2', 'a7'), list(hr)))
+                if L.o2_hook_snapshot(i, snapbuf): regs['snap'] = bytes(snapbuf)
+                self.hits.append(('sub' if hc.value else 'main', hp.value, regs))
         self._cd_events(ym)
         if self.record_audio:
             m = L.o2_audio_take(None, 0)
@@ -209,10 +259,18 @@ class Machine2:
                'comcmd': [self.asic(0x10 + 2 * i) for i in range(8)], 'comstat': [self.asic(0x20 + 2 * i) for i in range(8)],
                'flags': [self.asic(0x0E) >> 8, self.asic(0x0E) & 0xFF], 'main_pc': self.main.pc(), 'sub_pc': self.sub.pc()}
         if ym: rec['ym'] = ym
-        busy = self._prg()[0x9B44]
-        if busy and not self._last_busy:      # sequencer queue start (polled once per frame; the HLE oracle logs the exact instant)
-            self.log({'t': 'seq_start', 'queue': bytes(self._prg()[0x9940:0x9940 + 0x80]).rstrip(b'\0').hex(), 'sub_pc': rec['sub_pc']})
-        self._last_busy = busy
+        # sequencer queue start (exact, like the HLE oracle's rising edge of S:$9B44): the first run of seq_run (S:0xFFC4) after the busy flag was cleared
+        # (hooks on the `clr.b seq_busy` sites) -> the queue as it is at that instant
+        for _, pc, r in self.hits:
+            if pc in SEQ_CLEAR: self._seq_armed = True
+            elif pc == SEQ_RUN and 'snap' in r:
+                sn = r['snap']
+                idx = (sn[0x200] << 8) | sn[0x201]                      # seq_index $9B40
+                cmd = (sn[idx] << 8) | sn[idx + 1] if idx < 0x80 else 1
+                if self._seq_armed:
+                    self._seq_armed = False
+                    self.log({'t': 'seq_start', 'queue': sn[:0x80].rstrip(b'\0').hex(), 'sub_pc': 0})
+                if cmd == 0: self._seq_armed = True                     # terminator reached: the next run is a new queue
         if rec['script'] != self._last_script:
             self.log({'t': 'script_file', 'id': rec['script']}); self._last_script = rec['script']
         if self.trace:
