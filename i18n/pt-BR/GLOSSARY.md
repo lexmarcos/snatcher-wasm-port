@@ -92,3 +92,9 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * "alamid" = "aramida". "The Catastrophe" no meio da frase = "a Catástrofe" (artigo minúsculo; maiúscula só entre aspas/títulos). Anos escritos '47 ficam "'47".
 * Rótulos "QUIT X" = "SAIR DO/DA X" com o objeto (SAIR DO JORDAN, SAIR DO RETRATO, SAIR DO ARQUIVO). "POSSIBLE MATCH" = "POSSÍVEL CORRESPONDÊNCIA". "Half-Year War" = "Guerra dos Seis Meses".
 * "bylaws" = "estatutos" (menu e título no plural). "Immigrant problem" = "problema imigratório". "lymph nodes" = "linfonodos". "cut-rate prices" = "preços baixíssimos".
+
+## Regras acrescentadas pela revisão de SP05 (4/5)
+* Fichas de pessoal (SP05): rótulos fixos: Aniversário, Signo, Tipo sanguíneo, Personalidade, Apelido, Jogo favorito, Mensagem, Número do videofone, Idade, Alt./Altura, Peso, Estado civil, Histórico, Família, Endereço; "KIA" = "morto em ação"; "Class N ID" = "identidade de Classe N".
+  Personalidade e apelido concordam com o gênero da pessoa (Taeko, Kathleen, Kathy, Kimberley, Marlyse, Eiko, Xyla = feminino). "anti-SNATCHER" com hífen.
+* Nos arquivos de SP05 os nomes aparecem como no texto original: "Jean Jack" (sem hífen) e "Chin Sho Oh". Erros de digitação do inglês ("Dormitore") não se reproduzem.
+* Citações da cultura pop usam a versão brasileira conhecida (Sailor Moon: "Em nome da Lua, eu vou castigar você!"). "contrary" = "do contra".
