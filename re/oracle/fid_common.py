@@ -18,6 +18,8 @@ def oracle_jump(m, spec, wait=300, zero_save=True):
     if zero_save: s.write(0x9C00, bytes(0x1C0))
     s.write(0x79EA, bytes(4))      # play time (the engine starts at 0)
     s.w16(0x15120, 0xFFFF)         # last PCM voice id (S:0x16656 init)
+    s.w16(0x1511E, 0)              # PCM busy bits: the Junker HQ conversation's voice may still play (a following cmd 0A would wait for it)
+    s.w8(0x980E, 0); s.w8(0x980F, 0)   # FM done flags / current music (the engine starts with none)
     s.w16(0x980C, 57 + n)
     s.w16(0x9800, pc); s.w16(0x9802, 0xFFFF)
     for base in (0x9840, 0x9852, 0x9892, 0x98B2, 0x98D8, 0x98E0): s.w8(base + 1, 0)   # all VM stacks empty (Vm::blank)
