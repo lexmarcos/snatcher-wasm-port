@@ -1,4 +1,11 @@
-# FIDELITY workstream – engine vs ORIGINAL (oracle) through Act 1
+# FIDELITY workstream – engine vs ORIGINAL (oracle): Act 1, Acts 2-3, ending
+
+## Status (FIDELITY2, Acts 2-3; updated at each commit)
+- Harness: `fid_session.py NAME SPnn:pc FRAMES` (play adaptively in the oracle from a script entry point, replay both, report), `run_batch.sh`, `fid_summary.py`, `fid_drift.py`,
+  `fid_save.py` (save block compare), `fid_cont.py` (CONTINUE round trip), `fid_fmlen.py` (FM done-flag durations). Entry points = SP01 CHOICE leaves (pc = CHOICE address + 3).
+- Results so far (pass queues identical / total): Act 2 opening SP20 (a2_new) 137/137, Alton plaza (a2_alton) 194/194, Act 3 start SP36 (a3_new) 61/61, NAZO TOKETA 100/100, KYOUKAI 127/127,
+  JEMMIE 26/26, endings (SP38) zenhan 77/77 + kohan 3/3 incl. DATA_Y16 staff roll pixel-identical for 31000 frames and START at the end; open items: napoleon 136/182, oleen 161/195, gh 214/217,
+  katrina 195/197 (see "Acts 2-3 findings / open").
 
 ## Status
 - **Result**: a 58,000-frame (16 min) oracle session through Act 1 – Junker HQ lobby (all LOOK/INVESTIGATE/TALK/ASK branches, Mika), the guided tour (Chief's office, engineering, detective's room,
