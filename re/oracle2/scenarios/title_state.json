@@ -1,0 +1,23 @@
+{
+ "description": "boot -> title ready (S:$7896 = 9) -> save states/title.state (idle title screen, FM music 3F playing)",
+ "frames": 100,
+ "inputs": [
+  {
+   "until": {
+    "s16:7896": 9
+   },
+   "max": 4000
+  },
+  [
+   20,
+   0
+  ],
+  {
+   "save": "title"
+  },
+  [
+   1,
+   0
+  ]
+ ]
+}

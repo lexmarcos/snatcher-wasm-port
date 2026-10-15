@@ -69,7 +69,10 @@ pub enum Top { Title, Intro, Game, Ending, Stopped }
 
 /// Where the VM thread is (S:0x16814 loop).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VmPhase { Pass, Draining, Menu, MenuOpen, MenuClose, Stopped }
+pub enum VmPhase { Pass, Draining, Menu, MenuOpen, MenuClose, Stopped, /** VM state 4 (S:0x1670C): the black-out queue [02] runs, then the game restarts at the title */ ExitSp }
+
+/// Frames the SP needs to reload SUBCODE after VM state 4 before the title chain restarts (oracle2: S:$7840 4 -> 6 took 88 frames after the 36-frame black-out).
+pub const SP_RELOAD_FRAMES: u32 = 90;
 
 /// Output events for the front end (audio, saves).
 #[derive(Debug, Clone, PartialEq)]
@@ -157,6 +160,8 @@ pub struct Engine {
     pub module_factory: Option<fn(Top, u8) -> Option<Box<dyn Module>>>,
     /// menus/shooting/light-gun state (engine/src/menus.rs, engine/src/shoot.rs)
     pub ix: crate::menus::Ix,
+    /// frames until the game restarts at the title after VM state 4 (0 = not pending)
+    pub reboot_in: u32,
 }
 
 fn rd16(a: &[u16], i: usize) -> u16 { a.get(i).copied().unwrap_or(0) }
@@ -172,7 +177,7 @@ impl Engine {
             text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, mod_delay: 0, voice_age: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
-            top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(),
+            top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(), reboot_in: 0,
         }
     }
 
@@ -195,6 +200,24 @@ impl Engine {
     pub fn boot(&mut self) {
         self.top = Top::Title;
         self.enter_module(Top::Title, 4);
+    }
+
+    /// Soft reset to power-on state (the SP's state 4 reload, S:0x6162 table): everything except the loaded disc files, saves, fonts,
+    /// audio manifests and the front end's input / gun settings is re-created, then the title chain (copyright, logo, title) starts.
+    pub fn reset_to_title(&mut self) {
+        let mut e = Engine::new();
+        std::mem::swap(&mut e.files, &mut self.files);
+        e.font = self.font.take(); e.names = std::mem::take(&mut self.names); e.input = self.input.take(); e.prompt = std::mem::take(&mut self.prompt);
+        e.saves = std::mem::take(&mut self.saves); e.voice_len = std::mem::take(&mut self.voice_len); e.fm_len = std::mem::take(&mut self.fm_len);
+        e.trace = self.trace; e.fid_rng = self.fid_rng; e.module_factory = self.module_factory; e.frame = self.frame;
+        e.out = std::mem::take(&mut self.out);
+        e.ix.sfx_len = std::mem::take(&mut self.ix.sfx_len);
+        e.ix.gun_present = self.ix.gun_present; e.ix.gun_x = self.ix.gun_x; e.ix.gun_y = self.ix.gun_y; e.ix.gun_buttons = self.ix.gun_buttons;
+        e.ix.gun_cal_done = self.ix.gun_cal_done;
+        *self = e;
+        self.out.push(Out::MusicStop);
+        self.out.push(Out::Log("restart at the title".into()));
+        self.boot();
     }
 
     /// Map the module's DATA file at 0x28000 and create its module (if implemented).
@@ -335,6 +358,11 @@ impl Engine {
 
     pub fn tick(&mut self, pad: u8) {
         self.frame += 1;
+        if self.reboot_in > 0 {
+            // SP state 4 -> 6: SUBCODE and the boot data are reloaded from the disc, then the title chain starts again
+            self.reboot_in -= 1;
+            if self.reboot_in == 0 { self.reset_to_title(); }
+        }
         if self.fid_rng { self.disp.sub.rng = [0; 4]; } // harness: the oracle pokes $786A..D = 0 before every frame
         if self.voice_left > 0 {
             self.voice_left -= 1;
@@ -477,8 +505,19 @@ impl Engine {
     fn vm_thread(&mut self) {
         match self.phase {
             VmPhase::Stopped => {}
+            VmPhase::ExitSp => { self.phase = VmPhase::Stopped; self.reboot_in = SP_RELOAD_FRAMES; }
             VmPhase::Draining => {
                 // queue finished (sequencer command 00 / end of list)
+                if self.vm.state == 4 {
+                    // S:0x1670C vmstate4_exit (SETSTATE(2): QUIT INVESTIGATION, game over, FINISH): queue [02] (pause objects, fade to black), then `st $78AE`
+                    // hands over to the SP, which reloads SUBCODE (S:$7840 4 -> 5 -> 6) and restarts at the copyright/logo/title modules.
+                    // Real BIOS (oracle2, a2_taxi): GAME OVER screen + `07[FF] 10[56] 0D[30] 0A`, black ~36 frames later, S:$7840 = 4 at +36, = 6 at +124,
+                    // the copyright module runs at +127 (the HLE oracle never restarts: it stays black).
+                    self.out.push(Out::Log("vm state 4: exit to SP".into()));
+                    self.start_queue(vec![Action { cmd: 0x02, args: vec![] }]);
+                    self.phase = VmPhase::ExitSp;
+                    return;
+                }
                 if self.vm.state != 2 { self.phase = VmPhase::Stopped; self.out.push(Out::Log(format!("vm state {}", self.vm.state))); return; }
                 // S:0x16892 vm_apply_jump: an applied jump clears the remembered menu cursor `$9716`
                 if self.vm.pending != 0xFFFF { self.regs.set_b(0x9716, 0); }

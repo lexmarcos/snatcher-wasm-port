@@ -205,3 +205,26 @@ fn skipping_intro_at_several_points_stops_cd_track() {
         assert!(leaked.is_none(), "skip at +{delay}: CD-DA still playing: {log:?}");
     }
 }
+
+/// VM state 4 (SETSTATE(2): QUIT INVESTIGATION, game over paths, S:0x1670C): the original runs the black-out queue [02], hands over to the SP, which
+/// reloads SUBCODE and restarts at the copyright / Konami logo / title chain (oracle2 = real Sega CD BIOS, a2_taxi, docs/re/oracle2.md; the HLE oracle
+/// stays black and the engine used to stay on the GAME OVER picture forever).
+#[test]
+fn state4_restarts_at_the_title() {
+    let Some(mut e) = engine() else { return };
+    e.jump(57 + 7, 0x1A07); // SP07 L_1a07 `sys.SETSTATE(2)`
+    let (mut s4, mut back) = (None, None);
+    for f in 0..3000u64 {
+        e.tick(0);
+        if e.vm.state == 4 && s4.is_none() { s4 = Some(f); }
+        if s4.is_some() && e.top == snengine::game::Top::Title { back = Some(f); break; }
+        e.out.clear();
+    }
+    let (s4, back) = (s4.expect("vm state 4 reached"), back.expect("title chain restarted"));
+    // black-out [02] (~50 frames in the port, 36 in the original) + SP reload (90): about 127-150 frames in the original, never instantly
+    assert!((100..=260).contains(&(back - s4)), "restart {} frames after state 4", back - s4);
+    assert!(e.module.is_some(), "title module (copyright / logo / title) is running");
+    assert!(e.menu.is_none() && e.msg.is_none(), "game state was reset");
+    for _ in 0..1500 { e.tick(0); e.out.clear(); } // runs through the copyright and logo screens without panicking
+    assert_eq!(e.top, snengine::game::Top::Title);
+}
