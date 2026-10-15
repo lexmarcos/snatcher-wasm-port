@@ -1167,23 +1167,6 @@ fn greedy_lines(seg: &[u8], spk: u8, widths: &[u8]) -> Vec<Vec<u8>> {
     lines
 }
 
-/// The author's own line structure (a list, a title, a sentence per line) rather than a width-driven wrap: a line break after which the first word
-/// of the next line would still have fitted on the line, and that follows a sentence / label ending (`. ? ! : ;`) or precedes a line that starts
-/// with a colour token, a dash, a bracket or a digit. A greedy re-wrap must not merge such lines.
-fn structural_breaks(lines: &[&[u8]], spk: u8, widths: &[u8]) -> bool {
-    let (x0, right) = if spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) };
-    let limit = right - x0;
-    let w = |b: &[u8]| -> u32 { b.iter().map(|&c| i::advance(widths, c)).sum() };
-    lines.windows(2).any(|p| {
-        let first = p[1].split(|&c| c == b' ').next().unwrap_or(&[]);
-        if w(p[0]) + i::advance(widths, b' ') + w(first) > limit { return false; } // forced by the width: not a choice of the author
-        let mut t = p[0];
-        while let Some(&c) = t.last() { if matches!(c, 0xF8..=0xFE | i::AUTO | b'"' | b'\'' | b')' | b' ') { t = &t[..t.len() - 1]; } else { break; } }
-        matches!(t.last(), Some(b'.' | b'?' | b'!' | b':' | b';'))
-            || matches!(p[1].first(), Some(0xF8..=0xFE | b'-' | b'(' | b'0'..=b'9'))
-    })
-}
-
 /// Cost of a page break by `break_severity`: a sentence end is free, a comma costs a little, the middle of a clause a lot.
 const BREAK_WEIGHT: [u32; 6] = [0, 2, 4, 12, 20, 40];
 /// Cost of a one-line page (small: a short last sentence on its own page is better than a break inside a sentence).
@@ -1261,43 +1244,55 @@ pub fn repaginate(raw: &[u8], spk: u8, widths: &[u8]) -> Repaged {
             out.text.extend_from_slice(&greedy.join(&i::NL));
             continue;
         }
-        let words: Vec<Vec<u8>> = seg.split(|&c| c == b' ' || c == i::NL).filter(|w| !w.is_empty()).map(|w| w.to_vec()).collect();
+        // words, and the author's own line breaks that the width did not force (a title, a list, a sentence per line): those stay line breaks
+        let mut words: Vec<Vec<u8>> = vec![];
+        let mut hard: Vec<bool> = vec![];
+        let wsum = |w: &[u8]| -> u32 { w.iter().map(|&c| i::advance(widths, c)).sum() };
+        let mut prev: Option<(u32, usize)> = None; // width and glyph count of the previous author line
+        for line in author.iter() {
+            let lw: Vec<&[u8]> = line.split(|&c| c == b' ').filter(|w| !w.is_empty()).collect();
+            if lw.is_empty() { continue; }
+            if let Some((pw, pc)) = prev {
+                let (fw, fc) = (wsum(lw[0]), glyph_count(lw[0]));
+                hard.push(pw + space + fw <= limit && pc + 1 + fc <= MAX_LINE_CHARS);
+            } else { hard.push(false); }
+            for (k, w) in lw.iter().enumerate() { words.push(w.to_vec()); if k > 0 { hard.push(false); } }
+            prev = Some((wsum(line), glyph_count(line)));
+        }
+        let n = words.len();
         let sev = word_severities(&words);
-        let wd: Vec<(u32, usize)> = words.iter().map(|w| (w.iter().map(|&c| i::advance(widths, c)).sum(), glyph_count(w))).collect();
-        let structural = structural_breaks(&author, spk, widths);
-        // free mode: pages are filled from the words; `ranges` are word ranges of the pages
-        let free: Option<Vec<(usize, usize)>> = if structural { None } else {
-            let n = words.len();
-            let fit: Vec<Vec<u32>> = (0..n).map(|s| {
-                let (mut cw, mut cc, mut lines, mut empty, mut v) = (0u32, 0usize, 1u32, true, vec![]);
-                for j in s..n {
-                    let (ww, wc) = wd[j];
-                    if !empty && (cw + space + ww > limit || cc + 1 + wc > MAX_LINE_CHARS) { lines += 1; cw = 0; cc = 0; empty = true; }
-                    if lines as usize > cap { break; }
-                    if !empty { cw += space; cc += 1; }
-                    cw += ww; cc += wc; empty = false;
-                    v.push(lines);
-                }
-                v
-            }).collect();
-            let extra: Vec<u32> = sev.iter().map(|&v| BREAK_WEIGHT[v as usize]).collect();
-            dp_pages(n, &fit, &extra, &sev).map(|ends| { let mut s = 0; ends.iter().map(|&e| { let r = (s, e); s = e; r }).collect() })
-        };
-        let pages: Vec<Vec<Vec<u8>>> = match free {
-            Some(ranges) => ranges.iter().map(|&(a, b)| greedy_lines(&words[a..b].join(&b' '), spk, widths)).collect(),
-            None => {
-                // the author's lines are atomic: the first word of each line gives the severity of a break in front of it
-                let mut first_word = vec![]; let mut k = 0;
-                for l in &author { first_word.push(k); k += l.split(|&c| c == b' ').filter(|w| !w.is_empty()).count(); }
-                let n = author.len();
-                let fit: Vec<Vec<u32>> = (0..n).map(|s| (1..=cap.min(n - s) as u32).collect()).collect();
-                let lsev: Vec<u8> = (0..n).map(|l| if l == 0 { 0 } else { sev.get(first_word[l]).copied().unwrap_or(3) }).collect();
-                let extra: Vec<u32> = (0..n).map(|l| BREAK_WEIGHT[lsev[l] as usize] + if l > 0 && author[l].iter().find(|&&c| !matches!(c, 0xF8..=0xFE)) == Some(&b'-') { 6 } else { 0 }).collect();
-                let ends = dp_pages(n, &fit, &extra, &lsev).unwrap_or_else(|| (1..=(n + cap - 1) / cap).map(|k| (k * cap).min(n)).collect());
-                let mut s = 0;
-                ends.iter().map(|&e| { let r = author[s..e].iter().map(|l| l.to_vec()).collect(); s = e; r }).collect()
+        let wd: Vec<(u32, usize)> = words.iter().map(|w| (wsum(w), glyph_count(w))).collect();
+        // the lines of the words a..b of one page: greedy fill with the forced breaks
+        let lines_of = |a: usize, b: usize| -> Vec<Vec<u8>> {
+            let mut lines: Vec<Vec<u8>> = vec![];
+            let (mut cw, mut cc) = (0u32, 0usize);
+            for j in a..b {
+                let (ww, wc) = wd[j];
+                if !lines.is_empty() && (j > a && hard[j] || cw + space + ww > limit || cc + 1 + wc > MAX_LINE_CHARS) { lines.push(vec![]); cw = 0; cc = 0; }
+                if lines.is_empty() { lines.push(vec![]); }
+                let l = lines.last_mut().unwrap();
+                if !l.is_empty() { l.push(b' '); cw += space; cc += 1; }
+                l.extend_from_slice(&words[j]); cw += ww; cc += wc;
             }
+            lines
         };
+        let fit: Vec<Vec<u32>> = (0..n).map(|s| {
+            let (mut cw, mut cc, mut lines, mut empty, mut v) = (0u32, 0usize, 1u32, true, vec![]);
+            for j in s..n {
+                let (ww, wc) = wd[j];
+                if !empty && (j > s && hard[j] || cw + space + ww > limit || cc + 1 + wc > MAX_LINE_CHARS) { lines += 1; cw = 0; cc = 0; empty = true; }
+                if lines as usize > cap { break; }
+                if !empty { cw += space; cc += 1; }
+                cw += ww; cc += wc; empty = false;
+                v.push(lines);
+            }
+            v
+        }).collect();
+        // a break in front of a line that starts with `- ` splits a list item
+        let extra: Vec<u32> = (0..n).map(|k| BREAK_WEIGHT[sev[k] as usize] + if k > 0 && hard[k] && words[k].iter().find(|&&c| !matches!(c, 0xF8..=0xFE)) == Some(&b'-') { 6 } else { 0 }).collect();
+        let ends = dp_pages(n, &fit, &extra, &sev).unwrap_or_else(|| (1..=(n + cap - 1) / cap).map(|k| (k * cap).min(n)).collect());
+        let mut st = 0;
+        let pages: Vec<Vec<Vec<u8>>> = ends.iter().map(|&e| { let l = lines_of(st, e); st = e; l }).collect();
         let flat: Vec<&[u8]> = pages.iter().flatten().map(|l| l.as_slice()).collect();
         if flat.ne(&author) { out.rewrapped += 1; }
         for (pi, pg) in pages.iter().enumerate() {
@@ -1396,13 +1391,13 @@ const ABBREVIATIONS: &[&str] = &["sr.", "sra.", "srta.", "dr.", "dra.", "prof.",
 /// Strip trailing closing punctuation / spaces so that `x." ` and `x.` look the same.
 fn core_end(s: &str) -> &str { s.trim_end_matches(|c: char| matches!(c, '"' | '\'' | ')' | ' ' | '»')) }
 
-const CONJUNCTIONS: &[&str] = &["e", "mas", "ou", "porque", "pois", "que", "quando", "onde", "se", "como", "enquanto", "embora", "então", "porém", "senão", "caso", "quem", "quanto", "portanto"];
+const CONJUNCTIONS: &[&str] = &["e", "mas", "ou", "porque", "pois", "que", "quando", "onde", "como", "enquanto", "embora", "então", "porém", "senão", "caso", "quem", "quanto", "portanto"];
 
 /// How badly a page break reads, from the text just before it and just after it (`plain_page` form; a window of a few words each is enough).
 /// 5 = after an abbreviation (`Sr.` / page / `Seed`), 4 = after a function word (article, preposition, conjunction, pronoun, auxiliary),
-/// 3 = no punctuation at all (or a dangling dash), 2 = in front of a conjunction or after an ellipsis followed by a lower-case continuation
+/// 3 = no punctuation at all, a dangling dash, a colon (a label cut off from its text), 2 = in front of a conjunction or after an ellipsis followed by a lower-case continuation
 /// (a clause boundary: tolerated), 1 = after a comma / semicolon (a natural pause: tolerated), 0 = the text before ends a sentence or clause
-/// (`. ? ! … :`), the next text starts a new field (`Label:`) or a new list entry (`Name - Role`).
+/// (`. ? ! …`), the next text starts a new field (`Label:`) or a new list entry (`Name - Role`).
 pub fn break_severity(before: &str, after: &str) -> (u8, &'static str) {
     let b = core_end(before);
     let last = b.rsplit(' ').next().unwrap_or("");
@@ -1418,8 +1413,13 @@ pub fn break_severity(before: &str, after: &str) -> (u8, &'static str) {
         if let Some(d) = aw.iter().take(4).position(|w| *w == "-") { if d >= 1 && aw[..d].iter().all(|w| upper(w)) { return (0, "next list entry"); } }
     }
     match lastc {
-        '.' | '?' | '!' | ':' | '…' => if lastc == '.' && b.ends_with("...") && next_lower { (2, "ellipsis + lower-case continuation") } else { (0, "") },
-        ',' | ';' => (1, "comma"),
+        ':' => (3, "colon: the label is cut off from its text"),
+        '.' | '?' | '!' | '…' => if lastc == '.' && b.ends_with("...") && next_lower { (2, "ellipsis + lower-case continuation") } else { (0, "") },
+        ',' | ';' => {
+            // a short opener ("Depois,", "Hoje,", "Ao mesmo tempo,") is not a clause of its own: its sentence goes on after the break
+            let since = b.rsplit(|c: char| matches!(c, '.' | '?' | '!' | ':' | '…')).next().unwrap_or(b);
+            if lastc == ',' && since.trim().split(' ').count() <= 3 && b.len() > since.len() { (2, "short opener before the comma") } else { (1, "comma") }
+        }
         '-' if b.ends_with(" -") => (3, "dangling dash"),
         '-' => (1, "dash"),
         _ => {
