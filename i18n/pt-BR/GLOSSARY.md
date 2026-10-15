@@ -155,3 +155,9 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * Metal Gear: "Não há como ..." (nunca "Não tem como"). Salas: "Sala do Chefe", "Sala dos Detetives", "sala do computador" (igual aos rótulos do menu).
 * "Outer Heaven" é masculino: "do Outer Heaven", "o Outer Heaven" (após "para/a" fica sem artigo). Mensagem de arquivo: "salvamento anterior"; "Posso sobrescrevê-lo com os novos dados?" em todos os arquivos.
 * "SOB A MESA PRÓXIMA / SOB A MESA AO FUNDO" (rótulos de esconderijo); "patient record" = "ficha do paciente" sempre.
+
+## Regras acrescentadas pelas revisões de SP22, SP23, SP24 e SP25 (4/5 cada)
+* "Alton Plaza" é feminino ("a Alton Plaza", "na/à/da Alton Plaza"). "Não admira que" é lusitano: usar "Não é à toa que". GET FORTUNE TOLD = CONSULTAR A VIDENTE em todos os arquivos. NEARBY PEOPLE = PESSOAS PRÓXIMAS. "insurance" = "seguro".
+* O quadro "Face to face" da sala do Chefe é "quadro"; a foto escondida da Praça Vermelha é "foto". Mensagens de memorando: "o segredo do quadro no escritório do Chefe". Nas descrições de itens vale "escritório do Chefe"; o rótulo de menu da sala é "Sala do Chefe".
+* "CALL" (gritar o nome de alguém na casa do Gibson, SP25) = CHAMAR; "CALL" ao telefone = LIGAR. Listas de números de telefone mantêm um item por linha, como no inglês (usar quebras forçadas).
+* Gillian sempre põe o pronome depois do verbo ("procurar ela", "encontrar ela", "vejo ele") e chama a Katrina com imperativo coloquial ("Responde"). "Time is of the essence" = "Não temos tempo a perder". "Yeah. Open it!" (dublada) = "Sim. Abre!".
