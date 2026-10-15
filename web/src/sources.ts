@@ -87,11 +87,12 @@ export function pickedSource(list: File[]): Source {
     const low = x.parts.map((s) => s.toLowerCase());
     for (let i = 0; i < low.length; i++) { const k = low.slice(i).join("/"); if (!idx.has(k)) idx.set(k, x.f); }
   }
+  const flat = files.every((x) => x.parts.length === 1); // no directory information at all (rare): match by file name
   const findAudio = (path: string): File | null => {
     const q = path.toLowerCase().split("/");
     const isJson = q[q.length - 1].endsWith(".json");
     // json manifests need at least "web/name.json" (assets/audio/fm.json is the unrelated raw table)
-    for (let i = 0; i < q.length - (isJson ? 1 : 0); i++) { const f = idx.get(q.slice(i).join("/")); if (f) return f; }
+    for (let i = 0; i < q.length - (isJson && !flat ? 1 : 0); i++) { const f = idx.get(q.slice(i).join("/")); if (f) return f; }
     return null;
   };
 

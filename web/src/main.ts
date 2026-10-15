@@ -265,7 +265,7 @@ async function start(src: Source) {
     else g.boot();
 
     memory = wasm.memory; game = g; audio = out; input = new Input(canvas); input.game = g;
-    (window as any).snatcher = { game, audio, input, store, notes };
+    (window as any).snatcher = { game, audio, input, store, notes, handleEvent };
     overlayOpen = false; overlay.hidden = true;
     note("wasm", "ok", null);
     canvas.focus();

@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "build": "bun build src/main.ts --outdir dist --target browser --sourcemap=linked --external /pkg/snengine.js",
-    "serve": "bun server.ts"
+    "serve": "bun server.ts",
+    "test": "bun test test/",
+    "test:ui": "bun test/ui.ts"
   },
   "devDependencies": {
     "puppeteer-core": "24"

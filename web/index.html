@@ -17,6 +17,7 @@
   #wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; gap: 8px; padding: 4px 16px; }
   canvas { image-rendering: pixelated; background: #000; display: block; max-width: 100%; }
   canvas.smooth { image-rendering: auto; }
+  canvas:focus { outline: none; }
   #bar { display: flex; gap: 8px; align-items: center; color: var(--dim); flex-wrap: wrap; justify-content: center; }
   #bar button { padding: 3px 8px; }
   #msg { color: var(--accent); }
@@ -89,6 +90,8 @@
   <div class="card">
     <h1 id="pnTitle">Menu <span class="dim">(game paused)</span></h1>
     <div class="row"><button id="pnResume" class="primary" type="button">Resume</button></div>
+    <h2>Status</h2>
+    <ul id="pnNotes" class="notes"></ul>
     <h2>Volume</h2>
     <div class="sl"><label for="volMusic">Music</label><input id="volMusic" type="range" min="0" max="100" step="1"><output id="volMusicO"></output></div>
     <div class="sl"><label for="volVoice">Voice</label><input id="volVoice" type="range" min="0" max="100" step="1"><output id="volVoiceO"></output></div>
@@ -107,8 +110,6 @@
     <input id="importFile" type="file" accept="application/json,.json" hidden>
     <h2>Controls</h2>
     <div class="controls"></div>
-    <h2>Status</h2>
-    <ul id="pnNotes" class="notes"></ul>
   </div>
 </div>
 <script type="module" src="/dist/main.js"></script>
