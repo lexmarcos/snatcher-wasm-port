@@ -142,3 +142,9 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * "Turbocycle" sempre com maiúscula e feminino ("a Turbocycle", "as Turbocycles"). "system bath" = "banheira/unidade de banho modular". "GO OUT FRONT" = "SAIR DO PRÉDIO". INVESTIGATE X é sempre INVESTIGAR X (nunca EXAMINAR). "desde cedo" (nunca "desde de manhã").
 * Civis (Lisa) tratam Gillian e Metal Gear por "o senhor/os senhores"; Gillian responde "a senhora" durante toda a cena de SP15. "Dormitory Okamoto" = "Dormitório Okamoto" na fala dublada (SP05 mantém o texto da ficha).
 * Mensagens de salvamento: "salvamento anterior", "dados salvos"; "sobrescrevê-lo" com o pronome. "sistemas de prevenção ao crime" (não "antiassalto"). "Que tal...?" termina com interrogação.
+
+## Regras acrescentadas pelas revisões de SP18, SP19 e SP20 (4/5, 4/5, 4/5)
+* Metal Gear só usa imperativos formais ("Pare de", "Faça", "Controle-se", "Olhe"), nunca "Para de", "Faz", "Olha" (varredura feita em SP00-SP20). Gillian trata Metal Gear por "você", nunca "o senhor".
+* Napoleon (rude, informal): "tem" em vez de "há", "a gente" em vez de -mos, "pra". Jamie (informal): pronome depois do verbo ("atacar ele"), sem "o/lhe".
+* "tissues" = "lenços de papel". "mumbling" = "murmurar/resmungar". "trigger happy" = "dedo nervoso". "human-type SNATCHERS" = "SNATCHERS de tipo humano". "put the machine back on intermediate" = "colocar a máquina de volta no nível intermediário". "rapid fire" = "tiro rápido". "wasted shots" = "tiros desperdiçados". "no cigar" = "não foi dessa vez".
+* Senhas digitadas do Napoleon ("The hundred days reign", "The revolution is ended") ficam em inglês entre aspas; as respostas do menu ficam em inglês; as reações dele traduzem o sentido (ortografia, tempo verbal).
