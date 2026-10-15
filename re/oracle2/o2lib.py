@@ -113,6 +113,10 @@ class Machine2:
             L.o2_set_port_device(1, RETRO_DEVICE_JUSTIFIERS)
         self.srate = L.o2_sample_rate()
         self._last_script = None
+        self._music_track = 0
+        self._run = None
+        self._last_busy = 0
+        self.cd_state = (0, 0, 0, 0)
         self.shot_w = self.shot_h = 0
 
     # --- memory snapshots (cached per frame) ---
@@ -189,6 +193,7 @@ class Machine2:
             # same format as the HLE oracle: [part, reg, val] for data writes (addr 1 / 3); address writes (0 / 2) select part+reg
             if ad & 1 == 0: part, reg = ad >> 1, dv
             else: ym.append([part, reg, dv])
+        self._cd_events(ym)
         if self.record_audio:
             m = L.o2_audio_take(None, 0)
             buf = np.zeros((m, 2), np.int16)
@@ -205,6 +210,10 @@ class Machine2:
                'comcmd': [self.asic(0x10 + 2 * i) for i in range(8)], 'comstat': [self.asic(0x20 + 2 * i) for i in range(8)],
                'flags': [self.asic(0x0E) >> 8, self.asic(0x0E) & 0xFF], 'main_pc': self.main.pc(), 'sub_pc': self.sub.pc()}
         if ym: rec['ym'] = ym
+        busy = self._prg()[0x9B44]
+        if busy and not self._last_busy:      # sequencer queue start (polled once per frame; the HLE oracle logs the exact instant)
+            self.log({'t': 'seq_start', 'queue': bytes(self._prg()[0x9940:0x9940 + 0x80]).rstrip(b'\0').hex(), 'sub_pc': rec['sub_pc']})
+        self._last_busy = busy
         if rec['script'] != self._last_script:
             self.log({'t': 'script_file', 'id': rec['script']}); self._last_script = rec['script']
         if self.trace:
@@ -212,6 +221,56 @@ class Machine2:
             self.trace.write(json.dumps(rec) + '\n'); self.trace.flush()
         self.events = []
         return rec
+
+    def _flush_run(self):
+        r = self._run
+        if r: self.log({'t': 'cd_sectors', 'lba': r[0], 'count': r[1], 'f': r[2], 'f_end': r[3]}); self._run = None
+
+    def _cd_events(self, ym):
+        """CD drive events of this frame: CDD commands (cmd 3 play / 4 seek carry the target MSF -> cd_read), data sectors decoded by the
+        CDC (runs -> cd_sectors), CD-DA start/stop (music) from the drive state."""
+        L = self.L
+        n = L.o2_cdev_count()
+        kind = ctypes.c_int(); v = (ctypes.c_int * 8)()
+        for i in range(n):
+            L.o2_cdev_get(i, ctypes.byref(kind), v)
+            if kind.value == 2:
+                lba, r = v[0], self._run
+                if r and lba == r[0] + r[1] and self.frame - r[3] <= 3: r[1] += 1; r[3] = self.frame
+                else: self._flush_run(); self._run = [lba, 1, self.frame, self.frame]
+            else:
+                cmd = v[0]
+                if cmd in (3, 4):
+                    self._flush_run()
+                    # args are BCD digit pairs: reg 0x44 / 0x46 / 0x48 = M / S / F (high byte tens, low byte units)
+                    d = lambda w: ((w >> 8) & 0xF) * 10 + (w & 0xF)
+                    lba = (d(v[1]) * 60 + d(v[2])) * 75 + d(v[3]) - 150
+                    self.log({'t': 'cd_read', 'fn': 'CDD_PLAY' if cmd == 3 else 'CDD_SEEK', 'lba': lba, 'count': -1, 'file': None, 'f': self.frame,
+                              'from_lba': v[7]})
+                elif cmd != 2:      # cmd 2 = TOC / status requests, polled constantly
+                    self.log({'t': 'cdd', 'cmd': cmd, 'f': self.frame})
+        if self._run and self.frame - self._run[3] > 3: self._flush_run()
+        st = ctypes.c_int(); ix = ctypes.c_int(); lb = ctypes.c_int(); la = ctypes.c_int(); au = ctypes.c_int()
+        L.o2_cdd_state(ctypes.byref(st), ctypes.byref(ix), ctypes.byref(lb), ctypes.byref(la), ctypes.byref(au))
+        playing_audio = au.value and st.value in (1, 3)       # CD_PLAY / CD_SCAN on an audio track
+        key = (ix.value + 1) if playing_audio else 0
+        if key != self._music_track:
+            if key: self.log({'t': 'music', 'fn': 'MSCPLAY', 'track': key, 'f': self.frame})
+            else: self.log({'t': 'music', 'fn': 'MSCSTOP', 'f': self.frame})
+            self._music_track = key
+        self.cd_state = (st.value, ix.value, lb.value, la.value)
+
+    def boot(self, start_at=300, max_frames=3000):
+        """Run the real BIOS from power-on: press START on its 'Press the START BUTTON' screen and return t0 = the first frame in which
+        the game's main program (IP in Work RAM at M:0xFF0584) runs. Scenario frame N of the HLE oracle ~ t0 + N."""
+        press = start_at
+        for i in range(max_frames):
+            self.inputs = [[3, 128]] if self.frame + 1 == press else []
+            r = self.step_frame()
+            if r['main_pc'] >= 0xFF0000:
+                self.log({'t': 'boot', 'f': self.frame}); self.t0 = self.frame
+                return self.frame
+        raise RuntimeError('game did not start')
 
     def _drop_audio(self, m):
         buf = np.zeros((m, 2), np.int16)

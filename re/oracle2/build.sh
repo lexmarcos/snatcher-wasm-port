@@ -12,5 +12,5 @@ INC="-I./libretro/deps/libchdr/include -I./libretro/deps/lzma-19.00/include -I./
 DEF="-DUSE_LIBTREMOR -DUSE_LIBCHDR -DUSE_PER_SOUND_CHANNELS_CONFIG -D_7ZIP_ST -DZSTD_DISABLE_ASM -DHAVE_CDROM -DUSE_16BPP_RENDERING -DFRONTEND_SUPPORTS_RGB565 -DLSB_FIRST -DBYTE_ORDER=LITTLE_ENDIAN -DHAVE_ZLIB -D__LIBRETRO__ -DUSE_LIBRETRO_VFS -DM68K_OVERCLOCK_SHIFT=20 -DZ80_OVERCLOCK_SHIFT=20 -DHAVE_YM3438_CORE -DHAVE_OPLL_CORE -DMAXROMSIZE=33554432"
 cc -fPIC -O2 -w $INC $DEF -DINLINE="static inline" -c "$HERE/o2.c" -o "$HERE/build/o2.o"
 OBJS=$(find . -name '*.o' | sort)
-cc -shared -o "$HERE/build/liboracle2.so" $OBJS "$HERE/build/o2.o" -lm
+cc -shared -o "$HERE/build/liboracle2.so" -Wl,--wrap=cdd_process -Wl,--wrap=cdd_read_data $OBJS "$HERE/build/o2.o" -lm
 echo "built $HERE/build/liboracle2.so ($(git rev-parse HEAD))"

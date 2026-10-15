@@ -169,6 +169,38 @@ static void ym_install(void)
   if (fm_write != fm_spy) { g_fm_orig = fm_write; fm_write = fm_spy; }
 }
 
+/* ---- CD drive events via the linker (--wrap): every CDD command and every data sector the CDC decodes ---- */
+typedef struct { int kind; int v[8]; } cdev_t;   /* kind 1 = CDD command (v: cmd, regs 0x44..0x4E, status, lba), 2 = data sector (v: lba) */
+static cdev_t *g_cdev; static int g_cdev_n, g_cdev_cap;
+static void cdev_add(int kind, int a, int b, int c, int d, int e, int f, int g, int h)
+{
+  cdev_t *e_;
+  if (g_cdev_n == g_cdev_cap) { g_cdev_cap = g_cdev_cap ? g_cdev_cap * 2 : 1024; g_cdev = realloc(g_cdev, g_cdev_cap * sizeof(cdev_t)); }
+  e_ = &g_cdev[g_cdev_n++]; e_->kind = kind;
+  e_->v[0] = a; e_->v[1] = b; e_->v[2] = c; e_->v[3] = d; e_->v[4] = e; e_->v[5] = f; e_->v[6] = g; e_->v[7] = h;
+}
+extern void __real_cdd_process(void);
+extern void __real_cdd_read_data(uint8 *dst, uint8 *subheader);
+void __wrap_cdd_process(void)
+{
+  int cmd = scd.regs[0x42 >> 1].byte.h & 0x0f;
+  if (cmd) cdev_add(1, cmd, scd.regs[0x44 >> 1].w, scd.regs[0x46 >> 1].w, scd.regs[0x48 >> 1].w, scd.regs[0x4a >> 1].w, scd.regs[0x4c >> 1].w, cdd.status, cdd.lba);
+  __real_cdd_process();
+}
+void __wrap_cdd_read_data(uint8 *dst, uint8 *subheader)
+{
+  cdev_add(2, cdd.lba, 0, 0, 0, 0, 0, 0, 0);
+  __real_cdd_read_data(dst, subheader);
+}
+API int o2_cdev_count(void) { return g_cdev_n; }
+API void o2_cdev_get(int i, int *kind, int *v) { *kind = g_cdev[i].kind; memcpy(v, g_cdev[i].v, 8 * sizeof(int)); }
+API void o2_cdev_clear(void) { g_cdev_n = 0; }
+/* drive state: status (CD_PLAY=1..), track index (0-based), lba, latency counter, audio=1 when the current track is CD-DA */
+API void o2_cdd_state(int *status, int *index, int *lba, int *latency, int *audio)
+{
+  *status = cdd.status; *index = cdd.index; *lba = cdd.lba; *latency = cdd.latency; *audio = cdd.toc.tracks[cdd.index].type == 0;
+}
+
 /* ---- API ---- */
 API int o2_init(const char *sysdir, const char *savedir, const char *content, int verbose)
 {
@@ -199,7 +231,7 @@ API void o2_set_gun(int port, int x, int y, int off, int trig, int aux_a, int au
   g_gun[port][0] = x; g_gun[port][1] = y; g_gun_off[port] = off;
   g_gun[port][2] = trig; g_gun[port][3] = aux_a; g_gun[port][4] = aux_b; g_gun[port][5] = start;
 }
-API int o2_run(void) { g_ym_n = 0; ym_install(); retro_run(); g_frames++; return g_frames; }
+API int o2_run(void) { g_ym_n = 0; g_cdev_n = 0; ym_install(); retro_run(); g_frames++; return g_frames; }
 API void o2_reset(void) { retro_reset(); }
 API double o2_sample_rate(void) { return g_srate; }
 
