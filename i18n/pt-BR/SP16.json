@@ -13,6 +13,8 @@
     "02a3": {"h": "19ad05d9", "t": "Este arquivo contém dados de um{nl}save anterior."},
     "02d1": {"h": "3b76ada6", "t": "Posso {c3}sobrescrever{c1} com os novos{nl}dados?"},
     "0308": {"h": "a4413f9f", "t": "Nesse caso, não vou salvar os{nl}novos dados aí."},
-    "0338": {"h": "58f5b2a0", "t": "Salvamento concluído!"}
+    "0338": {"h": "58f5b2a0", "t": "Salvamento concluído!"},
+    "03ec": {"h": "aa5371dc", "t": "Certo, encerrando a investigação{nl}agora."},
+    "0442": {"h": "aa5371dc", "t": "Certo, encerrando a investigação{nl}agora."}
   }
 }

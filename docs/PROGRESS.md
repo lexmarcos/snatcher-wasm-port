@@ -50,7 +50,7 @@ Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style,
 Workflow per batch: `snt i18n-ctx` (dump, work/ only) -> write a patch `SPnn@off | ~text` (`~` = auto line breaks, `|` = forced break) -> `snt i18n-import` + `snt i18n-check` (0 failures) ->
 `snt i18n-preview` screenshots -> review subagent (sonnet, prompt in work/i18n/review_prompt.txt, not committed) -> apply fixes -> commit `i18n: SPxx translated + reviewed (score n/5)` -> add the file to `i18n/pt-BR/reviews.tsv`.
 Shared menu labels: `i18n/pt-BR/menu.json` (`snt i18n-learn-menu`, `snt i18n-apply-menu`).
-NEXT: SP13 (translating), then SP14 ... in file order; SP01 (developer debug menu) last.
+NEXT: SP14 (review running), SP15 translated (needs review), then SP16 ... in file order; SP01 (developer debug menu) last.
 Warning: never re-import an old whole patch file after fixes were applied (it overwrites the fixes); edit the patch source or import a small fix patch.
 
 ## Controllers (Xbox / PlayStation / Switch, button icons) – status 2026-10-15
@@ -73,7 +73,7 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | file | strings | translated | not translatable (typed entries / kept) | reviewed | score |
 |---|---|---|---|---|---|
 | SP00 | 8 | 8 |  | yes | 4 |
-| SP01 | 126 | 6 |  | no |  |
+| SP01 | 126 | 7 |  | no |  |
 | SP02 | 259 | 251 |  | yes | 4 |
 | SP03 | 316 | 316 |  | yes | 4 |
 | SP04 | 289 | 289 |  | yes | 4 |
@@ -85,31 +85,31 @@ Next steps: (1) verify with real pads (checklist in web.md 6.7), especially the 
 | SP10 | 430 | 430 |  | yes | 4 |
 | SP11 | 333 | 333 |  | yes | 4 |
 | SP12 | 280 | 280 |  | yes | 4 |
-| SP13 | 534 | 97 |  | no |  |
-| SP14 | 411 | 107 |  | no |  |
-| SP15 | 382 | 104 |  | no |  |
-| SP16 | 34 | 12 | 9 | no |  |
+| SP13 | 534 | 534 |  | yes | 4 |
+| SP14 | 411 | 411 |  | no |  |
+| SP15 | 382 | 382 |  | no |  |
+| SP16 | 34 | 14 | 9 | no |  |
 | SP17 | 28 | 0 | 18 | no |  |
-| SP18 | 472 | 32 | 42 | no |  |
+| SP18 | 472 | 38 | 42 | no |  |
 | SP19 | 122 | 0 |  | no |  |
 | SP20 | 150 | 0 |  | no |  |
-| SP21 | 645 | 78 |  | no |  |
+| SP21 | 645 | 81 |  | no |  |
 | SP22 | 165 | 43 |  | no |  |
 | SP23 | 270 | 56 |  | no |  |
-| SP24 | 190 | 53 |  | no |  |
-| SP25 | 212 | 69 |  | no |  |
+| SP24 | 190 | 54 |  | no |  |
+| SP25 | 212 | 70 |  | no |  |
 | SP26 | 426 | 74 |  | no |  |
-| SP27 | 220 | 51 | 9 | no |  |
-| SP28 | 321 | 62 | 11 | no |  |
+| SP27 | 220 | 53 | 9 | no |  |
+| SP28 | 321 | 63 | 11 | no |  |
 | SP29 | 68 | 2 |  | no |  |
-| SP30 | 278 | 38 |  | no |  |
+| SP30 | 278 | 40 |  | no |  |
 | SP31 | 0 | 0 |  | no |  |
-| SP32 | 275 | 64 |  | no |  |
+| SP32 | 275 | 65 |  | no |  |
 | SP33 | 221 | 53 | 9 | no |  |
 | SP34 | 53 | 3 |  | no |  |
-| SP35 | 404 | 25 | 42 | no |  |
+| SP35 | 404 | 27 | 42 | no |  |
 | SP36 | 68 | 3 |  | no |  |
-| SP37 | 199 | 47 |  | no |  |
+| SP37 | 199 | 48 |  | no |  |
 | SP38 | 58 | 6 |  | no |  |
-| **total** | **10728** | **5278** | | | |
+| **total** | **10728** | **6320** | | | |
 <!-- i18n-table-end -->

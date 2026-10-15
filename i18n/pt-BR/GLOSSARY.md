@@ -124,3 +124,10 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * Porteiro: trata por "você" (usa "senhor" só onde o inglês diz "sir"); porteiro hostil ou irritado usa imperativos coloquiais ("Some", "Desiste", "Põe").
 * "looks great on you" (objeto) = "caiu muito bem em você". "special effects shop" = "estúdio de efeitos especiais". "every hour" = "a cada hora" ("toda hora" significa sempre). "report on" = "fazer relatórios sobre".
 * Metal Gear nunca diz "tá?" nem "tá bom": fecha com "está bem?" (varredura feita em SP00-SP12).
+
+## Regras acrescentadas pela revisão de SP13 (4/5)
+* "Nope"/"Nah" = "Não" ou "Que nada", nunca "Nada". "Watch it!" (aviso) = "Cuidado aí!". "pulse rate" = "batimentos". "simple" (ingênuo, em provocação) = "simplório".
+* Mulheres informais e paqueradoras (Isabella, Katrina) usam imperativos coloquiais ("não fica", "não deixa", "me poupa") e pronome depois do verbo ("vi ele").
+* Menu "SOBRE X" nunca leva artigo (SOBRE ISABELLA, SOBRE MIKA), exceto o rótulo fixo SOBRE OS CAÇA-RECOMPENSAS.
+* Quando um personagem cita uma fala anterior (SP13@407c cita @1f13 e @22ca), as falas originais devem ter exatamente a mesma redação.
+* O gerente do clube trata Gillian por "o senhor" em todas as falas.
