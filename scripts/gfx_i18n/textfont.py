@@ -9,13 +9,13 @@ SERIF_BOLD = '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf'
 S = 8
 
 class Face:
-    def __init__(self, path, size, xscale=1.0, baseline=None):
-        self.size = size; self.xscale = xscale
+    def __init__(self, path, size, xscale=1.0, baseline=None, track=0.0):
+        self.size = size; self.xscale = xscale; self.track = track
         self.font = ImageFont.truetype(path, size * S)
         self.baseline = baseline
         self._cache = {}
     def adv(self, ch):
-        return self.font.getlength(ch) * self.xscale / S
+        return self.font.getlength(ch) * self.xscale / S + self.track
     def glyph(self, ch, subx=0.0):
         """coverage array (0..255) of ch with its pen origin at pixel column PAD + subx; returns (array, left, top): left/top relative to the pen/baseline"""
         key = (ch, round(subx * 4))
@@ -85,4 +85,22 @@ def draw_text(canvas, face, text, x, baseline, levels, floor=0.06, gamma=1.0, al
     q = quantize_levels(cov, levels, floor)
     m = q > 0
     canvas[m] = q[m]
+    return x, x + int(total)
+
+def draw_text_thr(canvas, face, text, x, baseline, thresholds, align='left'):
+    """like draw_text, colours by coverage thresholds: ((min coverage 0..255, palette index), ...) ascending"""
+    lay, total = face.layout(text)
+    if align == 'center': x = int(round(x - total / 2))
+    elif align == 'right': x = int(round(x - total))
+    cov = np.zeros(canvas.shape, dtype=np.uint8)
+    for ch, px in lay:
+        g = face.glyph(ch)
+        if g is None: continue
+        a, left, top = g
+        y0 = baseline + top; x0 = x + px + left
+        ys0 = max(0, -y0); xs0 = max(0, -x0)
+        sub = cov[y0 + ys0:y0 + a.shape[0], x0 + xs0:x0 + a.shape[1]]
+        np.maximum(sub, a[ys0:ys0 + sub.shape[0], xs0:xs0 + sub.shape[1]], out=sub)
+    for t, idx in thresholds:
+        canvas[cov > t] = idx
     return x, x + int(total)

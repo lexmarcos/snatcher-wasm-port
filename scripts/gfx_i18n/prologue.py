@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from planes import *
 from textfont import *
 
+MONO = '/usr/share/fonts/opentype/urw-base35/NimbusMonoPS-Regular.otf'
 LV = ((1, .14), (2, .29), (3, .57), (4, .71), (5, 1.0))     # palette 0 of scenes 3 and 6: 0x222 0x444 0x888 0xAAA 0xEEE
 F_BIG = lambda: Face(SERIF_BOLD, 30, 0.957)
 F_MID = lambda: Face(SERIF_BOLD, 24, 1.04)
@@ -23,5 +24,16 @@ def years_later(P):
     draw_text(e.im, F_MID(), 'anos depois', 92, 120, LV)
     return e.commit(P, 'DATA_D1.BIN', 'prologue: "50 anos depois" (tiles)', 'prologue: 50 years later nametable')
 
+
+# ---- RSS credit (DATA_D1 scene 1): the logo and the RSS (Roland Sound Space) line stay, the sentence around them is translated
+THR_RSS = ((25, 2), (60, 3), (110, 7))      # palette 0xEEE = 7, thin AA 3 / 2
+def rss(P):
+    d = Data('DATA_D1'); e = PlaneEdit(d, 1)
+    f = Face(MONO, 20, 0.7, track=1.0)   # Courier-like, 9 px pitch as the original
+    e.im[118:140, :] = 0; e.im[166:188, :] = 0
+    draw_text_thr(e.im, f, 'Este jogo utiliza o', 126.5, 134, THR_RSS, align='center')
+    draw_text_thr(e.im, f, 'em algumas partes.', 129, 182, THR_RSS, align='center')
+    return e.commit(P, 'DATA_D1.BIN', 'prologue: RSS credit sentence (tiles)', 'prologue: RSS credit nametable')
+
 def apply(P):
-    print('moscow', moscow(P)); print('50 years', years_later(P))
+    print('moscow', moscow(P)); print('50 years', years_later(P)); print('rss', rss(P))

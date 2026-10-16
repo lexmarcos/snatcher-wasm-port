@@ -73,8 +73,8 @@ class PlaneEdit(Plane):
                 (used_by_changed if (cx, cy) in ch_set else used_by_unchanged).add(t)
         free = sorted(used_by_changed - used_by_unchanged)
         content_to_id = {}
-        for t in range(ntiles):
-            content_to_id.setdefault(tile_blob[t * 32:t * 32 + 32], t)
+        for t in sorted(used_by_unchanged):     # only tiles that stay: a freed tile may be overwritten below
+            if t < ntiles: content_to_id.setdefault(tile_blob[t * 32:t * 32 + 32], t)
         new_tiles = {}; nxt = ntiles; name = bytearray(self.name)
         for (cx, cy) in changed:
             c = self.cell(cx, cy)
@@ -85,7 +85,7 @@ class PlaneEdit(Plane):
                 else: tid = nxt; nxt += 1
                 new_tiles[tid] = data; content_to_id[data] = tid
             e = (name[(cy * self.w + cx) * 2] << 8) | name[(cy * self.w + cx) * 2 + 1]
-            e = (e & ~0x7FF & 0xFFFF) | tid
+            e = (e & ~0x7FF & ~0x1800 & 0xFFFF) | tid     # flips off: the new tile is drawn as is
             name[(cy * self.w + cx) * 2] = e >> 8; name[(cy * self.w + cx) * 2 + 1] = e & 0xFF
         nb = bytearray(tile_blob) + bytes(max(0, (nxt - ntiles) * 32))
         for t, b in new_tiles.items(): nb[t * 32:t * 32 + 32] = b
