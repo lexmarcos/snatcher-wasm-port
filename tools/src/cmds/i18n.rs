@@ -1190,7 +1190,7 @@ fn glyph_count(word: &[u8]) -> usize { word.iter().filter(|&&c| !matches!(c, 0xF
 const MAX_LINE_CHARS: usize = i::LINE_MAX_CHARS - 1;
 
 /// Greedy fill of the real box width (colour / button / auto tokens stay attached to their word because words are split at spaces only).
-fn greedy_lines(seg: &[u8], spk: u8, widths: &[u8]) -> Vec<Vec<u8>> {
+pub(crate) fn greedy_lines(seg: &[u8], spk: u8, widths: &[u8]) -> Vec<Vec<u8>> {
     let (x0, right) = if spk == 1 { (i::X_NARRATION, i::RIGHT_NARRATION) } else { (i::X_SPEECH, i::RIGHT_SPEECH) };
     let limit = right - x0;
     let space = i::advance(widths, b' ');
@@ -1217,7 +1217,7 @@ const BREAK_WEIGHT: [u32; 6] = [0, 2, 4, 12, 20, 40];
 const ORPHAN_WEIGHT: u32 = 1;
 
 /// Severity of the break in front of each word (index 0 = 0): see `break_severity`, judged on a window of 4 words each side.
-fn word_severities(words: &[Vec<u8>]) -> Vec<u8> {
+pub(crate) fn word_severities(words: &[Vec<u8>]) -> Vec<u8> {
     let txt: Vec<String> = words.iter().map(|w| plain_page(w)).collect();
     (0..words.len()).map(|k| {
         if k == 0 { return 0; }

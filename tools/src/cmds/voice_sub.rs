@@ -95,28 +95,29 @@ fn speaker_arg(s: &str, names: &[String]) -> Result<u8, String> {
     names.iter().position(|n| n.eq_ignore_ascii_case(s)).map(|p| p as u8 + 1).ok_or(format!("unknown speaker {s:?} (see snt i18n-names)"))
 }
 
-/// Wrap a subtitle to the box width and split it into pages of at most `WRAP_LINES` lines at the best break (sentence ends first).
-/// `{page}` written by the author are kept; `|` forces a line break.
+/// Wrap a subtitle to the box width and split it into pages of at most `WRAP_LINES` lines. The page ends are chosen first (sentence ends and pauses
+/// before the middle of a clause: `break_severity`), then every page is wrapped on its own. `{page}` written by the author are kept; a `|` in the text
+/// forces a line break (that segment is flowed with `reflow` and cut between lines).
 pub fn wrap(text: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
     let mut out: Vec<String> = vec![];
     for seg in text.split("{page}") {
-        let flowed = ti::reflow(seg.trim(), spk, widths)?;
-        let bytes = i::markup_to_bytes(&flowed)?;
-        let lines: Vec<&[u8]> = bytes.split(|&c| c == i::NL).collect();
-        let n = lines.len();
-        if n <= WRAP_LINES { out.push(flowed); continue; }
-        let plain = |a: usize, b: usize| ti::plain_page(&lines[a..b].join(&i::NL));
-        // best[j] = cheapest paging of the first j lines
-        let pages_min = n.div_ceil(WRAP_LINES);
-        let ideal = n as f64 / pages_min as f64;
+        let seg = seg.trim();
+        if seg.contains('|') || seg.contains("{nl}") { out.push(wrap_lines(seg, spk, widths)?); continue; }
+        let bytes = i::markup_to_bytes(seg)?;
+        let words: Vec<Vec<u8>> = bytes.split(|&c| c == b' ').filter(|w| !w.is_empty()).map(|w| w.to_vec()).collect();
+        let n = words.len();
+        if n == 0 { continue; }
+        let sev = ti::word_severities(&words);
+        let lines_of = |a: usize, b: usize| ti::greedy_lines(&words[a..b].join(&b' '), spk, widths);
         let mut best: Vec<(f64, usize)> = vec![(f64::INFINITY, 0); n + 1];
         best[0] = (0.0, 0);
         for j in 1..=n {
-            for k in 1..=WRAP_LINES.min(j) {
-                let a = j - k;
+            for a in (0..j).rev() {
+                let nl = lines_of(a, j).len();
+                if nl > WRAP_LINES { break; }
                 if best[a].0.is_infinite() { continue; }
-                let mut c = best[a].0 + 30.0 + 4.0 * (k as f64 - ideal).abs();
-                if a > 0 { c += 10.0 * ti::page_break_severity(&plain(0, a), &plain(a, n)).0 as f64; }
+                let mut c = best[a].0 + 30.0 + (WRAP_LINES - nl) as f64;
+                if a > 0 { c += 10.0 * sev[a] as f64; }
                 if c < best[j].0 { best[j] = (c, a); }
             }
         }
@@ -125,11 +126,19 @@ pub fn wrap(text: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
         while j > 0 { cuts.push(j); j = best[j].1; }
         cuts.reverse();
         let mut a = 0;
-        let mut parts = vec![];
-        for b in cuts { parts.push(i::bytes_to_markup(&lines[a..b].join(&i::NL))); a = b; }
-        out.push(parts.join("{page}"));
+        let mut pages = vec![];
+        for b in cuts { pages.push(i::bytes_to_markup(&lines_of(a, b).join(&i::NL))); a = b; }
+        out.push(pages.join("{page}"));
     }
     Ok(out.join("{page}"))
+}
+
+/// Segment with forced line breaks (`|`, `{nl}`): flow each part, then cut the lines into pages between lines.
+fn wrap_lines(seg: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
+    let flowed = ti::reflow(seg, spk, widths)?;
+    let bytes = i::markup_to_bytes(&flowed)?;
+    let lines: Vec<&[u8]> = bytes.split(|&c| c == i::NL).collect();
+    Ok(lines.chunks(WRAP_LINES).map(|c| i::bytes_to_markup(&c.join(&i::NL))).collect::<Vec<_>>().join("{page}"))
 }
 
 pub fn import(lang: &str, dir: &str, patch: &str) -> Result<(), String> {
