@@ -1,0 +1,2 @@
+# flags root (engine/examples/vsub_sweep.rs syntax: SPnn:pc[:menu path[:scene]])
+ones SP06:0b6e::0a00

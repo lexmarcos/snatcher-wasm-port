@@ -40,7 +40,13 @@ pub struct VoiceSubs {
     win: Option<TextWindow>,
     /// what the last frame drew (tests, debugging)
     pub last: Option<VsubInfo>,
+    /// why the last subtitle ended before its time (tests, `vsub_sweep`): the command number, or `END_*`
+    pub ended_by: u16,
 }
+/// `VoiceSubs::ended_by`: the time was up / a menu, message or another screen came up / the next clip has no subtitle.
+pub const END_TIME: u16 = 0x1000;
+pub const END_SCREEN: u16 = 0x1001;
+pub const END_REPLACED: u16 = 0x1002;
 
 /// What the overlay drew in the last frame: the layout, the page, the occupied strip columns it saw, and the rectangle it painted
 /// (text and backing, screen pixels, x0 y0 x1 y1 with x1 / y1 exclusive).
@@ -67,6 +73,8 @@ struct Active {
     text: Vec<u8>,
     /// frames the subtitle stays up: the clip (`voice_left` at the start) plus the hold
     total: u32,
+    /// the clip itself (`voice_left` at the start): until then only a message, a menu or another clip ends the subtitle
+    play: u32,
     t: u32,
     /// first frame the subtitle is drawn (`SETTLE` when the clip loads a portrait scene)
     delay: u32,
@@ -77,18 +85,27 @@ struct Active {
 impl Engine {
     /// A voice clip starts (sequencer command 0x0D, `id` >= 36): look the subtitle up and start it.
     pub(crate) fn vsub_start(&mut self, id: u16, play: u32) {
-        self.vsub.cur = None;
+        if self.vsub.cur.take().is_some() { self.vsub.ended_by = END_REPLACED; }
         if !self.vsub.on || !self.i18n.pt { return; }
         let Some(v) = self.i18n.pack.voice.get(&id) else { return };
         let delay = if self.portrait_scene(id).is_some() { SETTLE } else { 0 };
         // the reading time counts from the first frame the text is on screen
         let (_, hold) = display_frames(play.saturating_sub(delay), glyph_count(&v.text));
-        self.vsub.cur = Some(Active { id, speaker: v.speaker, text: v.text.clone(), total: play + hold, t: 0, delay, placed: None, drawn: None });
+        self.vsub.cur = Some(Active { id, speaker: v.speaker, text: v.text.clone(), total: play + hold, play, t: 0, delay, placed: None, drawn: None });
     }
 
-    /// The sequencer is about to run command `cmd`: commands that change the picture or draw a message end the subtitle.
+    /// The sequencer is about to run command `cmd`. A command that draws a message ends the subtitle. A command that changes the picture ends it
+    /// only once the clip is over (the reading hold): while the clip still plays the player is listening to it, so the subtitle stays (the layout
+    /// follows the strip, see `conflicts`). This includes command 0x15, which only puts an inset picture (the Junker ID card, an item) into the
+    /// scene: the Chief's clip 96 starts and the very next command shows the card, which used to end its subtitle before it was drawn.
     pub(crate) fn vsub_on_command(&mut self, cmd: u16) {
-        if self.vsub.cur.is_some() && matches!(cmd, 0x02 | 0x08 | 0x0F | 0x11 | 0x12 | 0x15 | 0x16 | 0x18 | 0x1E | 0x1F | 0x20) { self.vsub.cur = None; self.vsub.last = None; }
+        let Some(a) = self.vsub.cur.as_ref() else { return };
+        let ends = match cmd {
+            0x08 | 0x16 => true,
+            0x02 | 0x0F | 0x11 | 0x12 | 0x15 | 0x18 | 0x1E | 0x1F | 0x20 => a.t >= a.play,
+            _ => false,
+        };
+        if ends { self.vsub.cur = None; self.vsub.last = None; self.vsub.ended_by = cmd; }
     }
 
     /// Number of subtitles in the installed pack (tests).
@@ -103,7 +120,11 @@ impl Engine {
     /// One frame of subtitle time (called once per `tick`).
     pub(crate) fn vsub_step(&mut self) {
         let end = match self.vsub.cur.as_mut() { Some(a) => { a.t += 1; a.t > a.total } None => return };
-        if end || self.menu.is_some() || self.msg.is_some() || self.top != crate::game::Top::Game { self.vsub.cur = None; self.vsub.last = None; }
+        if end || self.menu.is_some() || self.msg.is_some() || self.top != crate::game::Top::Game {
+            self.vsub.cur = None;
+            self.vsub.last = None;
+            self.vsub.ended_by = if end { END_TIME } else { END_SCREEN };
+        }
     }
 
     /// Draw the subtitle onto the finished frame `fb` (RGBA, W x H).

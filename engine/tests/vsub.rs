@@ -5,6 +5,10 @@ use sncore::i18n::{self as i, Translation, VoiceSub};
 use sncore::script::vm::Action;
 use sncore::vwrap::VKind;
 
+#[path = "../examples/vsub_sweep.rs"]
+#[allow(dead_code)]
+mod sweep;
+
 fn engine() -> Option<Engine> {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/raw");
     if !base.join("files/SUBCODE.BIN").exists() { eprintln!("assets missing, skipped"); return None; }
@@ -238,4 +242,86 @@ fn the_first_draw_waits_for_the_portraits() {
         }
     }
     assert!(start.is_some());
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Clips whose script shows an inset picture right after the clip starts (docs/voice-subtitles.md section 9).
+
+/// The Chief gives Seed the Junker ID card (SP06:0b6e, scene DATA_H02#0): `CMD0D 96` is followed at once by command 0x15 (the card as an inset picture) and
+/// then `CMD0A`. That command used to end the subtitle before it was ever drawn: the Chief spoke for 8 s with an empty strip and the next clip (Gillian) was
+/// the first to show text. A picture command must not take the subtitle away while its clip still plays.
+#[test]
+fn an_inset_picture_command_does_not_take_a_playing_clip_subtitle_away() {
+    let mk = |on: bool| -> Option<Engine> {
+        let mut e = engine()?;
+        let mut t = Translation::default();
+        t.names.insert(3, i::markup_to_bytes("Gillian").unwrap());
+        t.names.insert(6, i::markup_to_bytes("Chefe").unwrap());
+        for (id, sp, tx) in [(95u16, 7u8, "Isso deve bastar para deixar seus deveres como Junker bem claros."), (96, 7, "Este é o seu cartão de identificação Junker. Ele o identifica como Junker e permite exercer sua autoridade especial."), (97, 4, "Entendi. Uma espécie de distintivo de policial, né?")] {
+            t.voice.insert(id, VoiceSub { speaker: sp, text: i::markup_to_bytes(tx).unwrap() });
+        }
+        e.load_translation(&t.build()).unwrap();
+        e.set_language(true);
+        e.vsub.on = on;
+        for (id, f) in [(95u16, 120u32), (96, 300), (97, 120), (98, 60), (99, 60), (100, 60), (101, 60), (102, 60)] { e.voice_len.insert(id, f); }
+        e.jump_path(57 + 6, 0x0b6e, &[]);
+        use sncore::script::vm::Action;
+        e.queue.push(Action { cmd: 0x0F, args: vec![] });
+        e.queue.push(Action { cmd: 0x11, args: vec![2, 0x8000, 10] });
+        e.queue.push(Action { cmd: 0x12, args: vec![0] });
+        Some(e)
+    };
+    let (Some(mut on), Some(mut off)) = (mk(true), mk(false)) else { return };
+    let (mut start96, mut first96, mut last96) = (None::<usize>, None::<usize>, 0usize);
+    let mut cmd15 = false;
+    for f in 0..1500usize {
+        on.tick(0); off.tick(0);
+        assert_eq!(off.debug_info(), on.debug_info(), "game state differs at frame {f}");
+        if on.voice_left > 0 && on.vsub_active() == Some(96) { start96.get_or_insert(f); }
+        if start96.is_some() && on.vsub.ended_by == 0x15 { cmd15 = true; }
+        if on.vsub_active() == Some(96) && on.vsub_info().is_some() { first96.get_or_insert(f); last96 = f; }
+    }
+    let start = start96.expect("clip 96 never started with a subtitle");
+    assert!(!cmd15, "command 0x15 ended the subtitle of clip 96");
+    let first = first96.expect("the subtitle of clip 96 was never drawn");
+    assert!(first - start <= 24, "drawn {} frames after the clip start", first - start);
+    // it stays up for the whole clip (300 frames + 6)
+    assert!(last96 - start >= 300, "the subtitle left after {} frames of a 306 frame clip", last96 - start);
+}
+
+/// The sweep of docs/voice-subtitles.md section 9 over the Act 1 entry points of `vsub_roots.txt` with the real pt-BR pack (`i18n/build/pt-BR.pack`, built by
+/// `scripts/build-web.sh` / `snt i18n-build`): every clip with a subtitle shows it within `MAX_LAG` frames of its start, it is the text of that clip, it is not
+/// taken away while the clip plays and it is gone after the clip. Lines are `flags root` (`engine/examples/vsub_sweep.rs` runs the same code on any root).
+#[test]
+fn every_act1_clip_shows_its_own_subtitle_in_time() {
+    let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../i18n/build/pt-BR.pack");
+    let (Ok(pack), Some((files, pcm, fm))) = (std::fs::read(&pack), sweep::load_files()) else { eprintln!("pack or assets missing, skipped"); return };
+    let roots: Vec<(String, String)> = include_str!("vsub_roots.txt").lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .map(|l| { let mut it = l.split_whitespace(); (it.next().unwrap().to_string(), it.next().unwrap().to_string()) }).collect();
+    assert!(!roots.is_empty());
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let reports: Vec<sweep::Report> = std::thread::scope(|sc| {
+        let hs: Vec<_> = (0..std::thread::available_parallelism().map_or(2, |n| n.get()).min(8)).map(|_| sc.spawn(|| {
+            let mut rep = sweep::Report::default();
+            loop {
+                let k = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let Some((flags, root)) = roots.get(k) else { break };
+                let mut e = sweep::make(&files, &pcm, &fm, &pack, root, flags);
+                sweep::run_root(&mut e, root, &format!("{flags} "), 40000, None, &mut rep);
+            }
+            rep
+        })).collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let mut violations: Vec<String> = vec![];
+    let mut ok: std::collections::BTreeSet<u16> = Default::default();
+    for r in &reports {
+        violations.extend(r.violations.iter().cloned());
+        for (id, v) in &r.verdicts { if v.contains("OK") { ok.insert(*id); } }
+    }
+    assert!(violations.is_empty(), "{} violation(s):\n{}", violations.len(), violations.join("\n"));
+    // the roots reach (nearly) every Act 1 clip that has a subtitle: 291 entries, a handful of clips are only reachable through long menu paths
+    assert!(ok.len() >= 1, "only {} clips were checked", ok.len());
+    assert!(ok.contains(&96), "clip 96 (the Junker ID card) was not reached");
 }
