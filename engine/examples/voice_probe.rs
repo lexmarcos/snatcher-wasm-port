@@ -56,7 +56,14 @@ fn main() {
             }
             _ => {}
         }
-        let mut pending: Vec<(u64, u16)> = vec![]; // (capture frame, id)
+        // PROBE_FRACS=0.15,0.5,0.9: capture at these fractions of every clip (default 0.6); I18N_PACK + VSUB=1: pt-BR with voice subtitles
+        let fracs: Vec<f64> = std::env::var("PROBE_FRACS").ok().map(|v| v.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_else(|| vec![0.6]);
+        if let Ok(pk) = std::env::var("I18N_PACK") {
+            e.load_translation(&std::fs::read(&pk).expect("pack")).expect("valid pack");
+            e.set_language(true);
+            if std::env::var("VSUB").is_ok() { e.vsub.on = true; }
+        }
+        let mut pending: Vec<(u64, u16, usize)> = vec![]; // (capture frame, id, fraction index)
         let mut last_event = 0u64;
         let mut seen = std::collections::HashSet::new();
         for fr in 1..=max_frames {
@@ -66,14 +73,14 @@ fn main() {
                 if let Out::Voice { id } = o {
                     last_event = fr;
                     let len = e.voice_len.get(&id).copied().unwrap_or(60) as u64;
-                    pending.push((fr + ((len * 6 / 10).max(20)).min(len.saturating_sub(3)).max(4), id));
+                    for (k, f) in fracs.iter().enumerate() { pending.push((fr + (((len as f64 * f) as u64).max(4)).min(len.saturating_sub(3)).max(4), id, k)); }
                 }
             }
             let mut k = 0;
             while k < pending.len() {
                 if pending[k].0 <= fr {
-                    let (_, id) = pending.remove(k);
-                    if !seen.insert(id) { continue; }
+                    let (_, id, fi) = pending.remove(k);
+                    if !seen.insert((id, fi)) { continue; }
                     let fb = &e.fb;
                     let px = |x: usize, y: usize| -> bool { let i = (y * W + x) * 4; fb[i] != 0 || fb[i + 1] != 0 || fb[i + 2] != 0 };
                     let frac = |x0: usize, x1: usize, y0: usize, y1: usize| -> f64 {
@@ -113,7 +120,7 @@ fn main() {
                         for y in rows.0..(rows.0 + 20).min(rows.1 + 1) { for xx in x0..x1 { let i = (y * W + xx) * 4; for b in 0..3 { h ^= fb[i + b] as u64; h = h.wrapping_mul(0x100000001b3); } } }
                         icons.push(format!("{:08x}:{}x{}", h as u32, x1 - x0, rows.1 - rows.0 + 1));
                     }
-                    let name = format!("{out}/{f}_{pc}_{tag}_{id}.png");
+                    let name = format!("{out}/{f}_{pc}_{tag}_{id}{}.png", if fracs.len() > 1 { format!("_{fi}") } else { String::new() });
                     let w = BufWriter::new(std::fs::File::create(&name).unwrap());
                     let mut enc = png::Encoder::new(w, W as u32, H as u32);
                     enc.set_color(png::ColorType::Rgba);

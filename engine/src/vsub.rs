@@ -17,6 +17,8 @@ use sncore::i18n as i;
 pub use sncore::i18n::{voice_display_frames as display_frames, voice_glyph_count as glyph_count, voice_page_starts as page_starts, VOICE_HOLD_MAX as HOLD_MAX, VOICE_HOLD_MIN as HOLD_MIN, VOICE_READ_CPS as READ_CPS};
 /// Screen row where the message window (256x64) starts.
 pub const STRIP_Y: usize = 150;
+/// First row of the black backing in strip mode: the portrait icons' frames start at row 149, one row above the message window.
+pub const BACKING_Y: usize = 144;
 /// Palette of the message window (the ROM palette of the message-box channel S:0x13622): index -> Mega Drive colour word.
 const PALETTE: [u16; 8] = [0, 3822, 238, 2158, 3808, 3650, 1248, 0];
 
@@ -96,7 +98,7 @@ impl Engine {
         let (oy, by0) = if full {
             let band = (a.rows + 6).min(WIN_H);
             (H - band + 3, H - band)
-        } else { (STRIP_Y, STRIP_Y) };
+        } else { (STRIP_Y, BACKING_Y) };
         for y in by0..H { for x in 0..W { let k = (y * W + x) * 4; fb[k] = 0; fb[k + 1] = 0; fb[k + 2] = 0; fb[k + 3] = 255; } }
         for y in 0..WIN_H {
             if oy + y >= H { break; }

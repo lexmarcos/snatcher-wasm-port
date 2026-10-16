@@ -45,12 +45,13 @@ Open items, in suggested order:
 5. YM2612: the real chip model has a DAC noise floor / ladder distortion the engine lacks (high bands 10-30 dB higher in noisy sounds); levels agree, nothing retuned (oracle2 section 5).
 6. Larger engine item left: after the GAME OVER restart the title chain timing (`SP_RELOAD_FRAMES` = 90) is from one real-BIOS measurement; the copyright/logo/title phase of the real restart lasts 840 frames like a cold boot.
 
-## Resume here: voice subtitles (survey done 2026-10-15, docs/voice-inventory.md)
-Result: 1146 of the 1162 voice clips (82.8 min) are started by scripts (op 0x04 CMD0D, the only audible path); **no clip plays together with a message box string**
-(every voice is followed by CMD0A, the wait). Per clip: voice-only 1085 (77.3 min), with-text 15 (2.1 min, the SP09 file-reading pictures), partial 3 (GAME OVER and two videophone banners), unknown 43 (3.0 min, a SAY right before / after the clip, not a transcript), 16 never started.
-The screen while a clip plays is the dialogue strip with an empty message box (86 % of the minutes), a black screen (6 %) or a picture without strip (3 %): the strip is free for subtitles.
-Tool: `snt voice-inventory` (+ `engine/examples/voice_probe.rs`, `scripts/voice-inventory.sh`, `re/oracle2/o2_voicebox.py`); CSVs in `work/voice/`.
-Next if the owner wants subtitles: (1) transcribe the 1146 clips with local Whisper (estimates in the doc, nothing installed), (2) translate to pt-BR keyed by clip id, (3) show through the message-box path on `Out::Voice` for the clip length, (4) listen to the clips for speaker / non-speech effects (the 43 `unknown` ones first).
+## Resume here: voice subtitles (2026-10-16, docs/voice-subtitles.md, survey in docs/voice-inventory.md)
+Status per act: **transcribed** all 1146 clips (Whisper large-v3 on the LAN server, two passes, work/voice/transcripts, gitignored; key in work/whisper.env, never committed); **translated**: Act 1 (291 clips, i18n/pt-BR/voice.json),
+Acts 2 and 3 not yet (397 and 409 speech clips); **reviewed**: Act 1 (review subagent, score in docs/voice-subtitles.md), Acts 2 and 3 not yet.
+Engine: `engine/src/vsub.rs` draws the subtitle as an overlay on the finished frame (no game state change; English byte-identical; tests `engine/tests/vsub.rs`); option "Legendas de voz" in the web menu (default on in pt-BR).
+Tools: `snt voice-export`, `scripts/voice-transcribe.py`, `scripts/voice-script.py`, `snt voice-import`, `snt voice-check` (+ part of `i18n-check ... all`), `web/test/vsub.ts`, `voice_probe` with `VSUB=1 I18N_PACK=...`.
+Next: (1) translate Acts 2 and 3 clip by clip with `work/voice/script/SPnn.txt` as context (same workflow as Act 1: patch TSV -> `snt voice-import` -> `snt voice-check` -> review subagent -> fixes); (2) play-test the subtitles in pt-BR (timing of the hold, long clips);
+(3) optional English subtitle mode from the local transcripts; (4) the 15 SP09 file-reading clips show the English page in the picture and the pt-BR subtitle below it (compact band), check it reads well.
 
 ## Resume here: translation pt-BR (task: translate every batch, review with a subagent, apply, commit)
 Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style, adaptations), status table at the end of this file (regenerate: `python3 -I scripts/i18n-progress.py`).

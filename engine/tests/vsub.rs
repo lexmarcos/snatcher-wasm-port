@@ -93,3 +93,35 @@ fn pt_subtitle_appears_during_a_clip_and_disappears_after_it_without_touching_th
     assert!(on.vsub_active().is_none(), "the subtitle is gone at the end");
     let _ = H;
 }
+
+/// A picture that reaches the bottom of the screen (SP09 file reading, DATA_G0#14, clip 221): the text goes on a compact black band at the bottom edge and the picture above is untouched.
+#[test]
+fn a_picture_without_a_strip_gets_a_compact_band_at_the_bottom() {
+    let mk = |pack: Translation, on: bool| -> Option<Engine> {
+        let mut e = engine()?;
+        e.load_translation(&pack.build()).unwrap();
+        e.set_language(true);
+        e.vsub.on = on;
+        e.voice_len.insert(221, 150);
+        e.jump_path(57 + 9, 0x0ff4, &[]);
+        e.queue.push(Action { cmd: 0x0F, args: vec![] });
+        e.queue.push(Action { cmd: 0x11, args: vec![2, 0x8000, 7] });
+        e.queue.push(Action { cmd: 0x12, args: vec![14] });
+        Some(e)
+    };
+    let mut t = Translation::default();
+    t.voice.insert(221, VoiceSub { speaker: 0, text: i::markup_to_bytes("Arquivo de Investigação SNATCHER.").unwrap() });
+    let (Some(mut on), Some(mut off)) = (mk(t.clone(), true), mk(t, false)) else { return };
+    let mut checked = false;
+    for _ in 0..400 {
+        on.tick(0); off.tick(0);
+        if on.vsub_active() != Some(221) { continue; }
+        checked = true;
+        // the picture area is identical, the bottom rows show the subtitle on black
+        for y in 0..160 { assert_eq!(on.fb[y * W * 4..(y + 1) * W * 4], off.fb[y * W * 4..(y + 1) * W * 4], "picture row {y} changed"); }
+        let white = |e: &Engine, y0: usize, y1: usize| (y0..y1).map(|y| (0..W).filter(|&x| e.fb[(y * W + x) * 4..(y * W + x) * 4 + 3] == [252, 252, 252]).count()).sum::<usize>();
+        assert!(white(&on, H - 40, H) > 30 && white(&on, H - 40, H) > white(&off, H - 40, H), "no text in the bottom band");
+        break;
+    }
+    assert!(checked, "the clip never started");
+}

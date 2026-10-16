@@ -246,3 +246,44 @@ pub fn check_cmd(lang: &str, dir: &str) -> Result<(), String> {
     println!("voice-check: {} subtitles checked, {} failures, {} warnings", rep.checked, rep.fails.len(), rep.warns.len());
     if rep.fails.is_empty() { Ok(()) } else { Err(format!("{} failures", rep.fails.len())) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn widths() -> Vec<u8> { vec![7; 256] }
+
+    #[test]
+    fn wrap_pages_hold_at_most_three_lines_and_keep_every_word() {
+        let t = "Esta é a sua blaster, a arma oficial de um Junker. Tem circuito de feedback total, que se ajusta ao seu tempo de reação. Ou seja, é tão boa quanto você. Pode apostar, não é uma daquelas pistolas de raios do Exército.";
+        let w = wrap(t, 3, &widths()).unwrap();
+        let bytes = i::markup_to_bytes(&w).unwrap();
+        let mut words = vec![];
+        for page in bytes.split(|&c| c == i::PAGE) {
+            let lines: Vec<&[u8]> = page.split(|&c| c == i::NL).collect();
+            assert!(lines.len() <= WRAP_LINES, "page with {} lines", lines.len());
+            for l in &lines { assert!(l.iter().map(|&c| i::advance(&widths(), c)).sum::<u32>() <= i::RIGHT_SPEECH - i::X_SPEECH, "line too wide"); }
+            words.extend(page.split(|&c| c == i::NL || c == b' ').filter(|x| !x.is_empty()).map(|x| i::bytes_to_markup(x)));
+        }
+        assert_eq!(words.join(" "), t);
+        assert!(w.matches("{page}").count() >= 2, "a 200 character subtitle needs several pages: {w}");
+        // a hand-written {page} is kept, and `|` forces a line break
+        assert_eq!(wrap("Um.{page}Dois.", 0, &widths()).unwrap(), "Um.{page}Dois.");
+        assert_eq!(wrap("Um|dois", 0, &widths()).unwrap(), "Um{nl}dois");
+    }
+
+    #[test]
+    fn voice_json_round_trip_and_english_hash_ignores_spacing() {
+        let dir = std::env::temp_dir().join(format!("snt_voice_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("voice.json").to_string_lossy().to_string();
+        let mut v = VFile::new();
+        v.insert(77, VEntry { h: en_hash("Hello  there."), d: "3.501".into(), s: 3, t: "Oi{nl}\"você\"{page}Tchau".into() });
+        v.insert(5, VEntry { h: 1, d: "0.500".into(), s: 0, t: "a".into() });
+        write_voice(&p, &v).unwrap();
+        assert_eq!(read_voice(&p).unwrap(), v);
+        assert_eq!(en_hash("Hello  there."), en_hash(" Hello there. "));
+        assert_ne!(en_hash("Hello there."), en_hash("Hello there!"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

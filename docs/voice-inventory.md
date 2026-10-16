@@ -1,7 +1,6 @@
 # Voice inventory: every voice clip of Snatcher and what is on screen while it plays
 
-Survey made on 2026-10-15 to decide whether pt-BR subtitles for the voice lines are worth doing. Nothing was transcribed or translated, no engine
-behaviour was changed. No game text is quoted here: strings are referred to by offset, clips by id. Generated tables come from
+Survey made on 2026-10-15 to decide whether pt-BR subtitles for the voice lines are worth doing (the survey itself changed nothing; the follow-up is in docs/voice-subtitles.md: all clips transcribed with the local Whisper server, subtitle overlay in the engine, Act 1 translated). No game text is quoted here: strings are referred to by offset, clips by id. Generated tables come from
 `snt voice-inventory` (section 8); the per-clip CSV files are in `work/voice/` (gitignored).
 
 ## 1. Summary
