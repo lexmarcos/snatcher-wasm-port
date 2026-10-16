@@ -9,12 +9,16 @@ class PatchSet:
         self.blobs = []   # (file, addr, hash, len, [(off, bytes)], note)
         self.files = []   # (file, off, orig, new, note)
         self._d = {}
+        self._app = {}
     def data(self, name):
         if name not in self._d: self._d[name] = Data(name)
         return self._d[name]
     def blob(self, file, addr, new, note='', gap=4):
         orig = self.data(file).blob(addr)
-        assert len(orig) == len(new), 'blob patches keep the size'
+        grow = []
+        if len(new) > len(orig):   # more tiles in free VRAM after the original data: one run for the tail
+            grow = [(len(orig), bytes(new[len(orig):]))]; new = new[:len(orig)]
+        assert len(orig) == len(new), 'a blob patch never shrinks a blob'
         runs = []; i = 0; n = len(orig)
         while i < n:
             if orig[i] != new[i]:
@@ -30,11 +34,18 @@ class PatchSet:
                 while end > i and orig[end - 1] == new[end - 1]: end -= 1
                 runs.append((i, bytes(new[i:end]))); i = max(j, end)
             else: i += 1
+        runs += grow
         if runs: self.blobs.append((file, addr, fnv64(orig), len(orig), runs, note))
         return runs
     def raw(self, file, off, new, note=''):
         orig = bytes(self.data(file).b[off:off + len(new)])
         if orig != bytes(new): self.files.append((file, off, orig, bytes(new), note))
+    def append(self, file, data, note=''):
+        """append `data` to the end of the DATA file (one run per file); returns the sub-CPU address of the first byte"""
+        n0 = len(self.data(file).b)
+        cur = self._app.setdefault(file, [bytearray(), note])
+        addr = BASE + n0 + len(cur[0]); cur[0] += bytes(data)
+        return addr
     def write(self, path, header=''):
         with open(path, 'w') as f:
             f.write('# pt-BR pictures: runs of changed bytes (docs/i18n-graphics.md). Do not edit by hand: scripts/gfx_i18n/make_patch.py\n')
@@ -46,3 +57,6 @@ class PatchSet:
             for (file, off, orig, new, note) in sorted(self.files, key=lambda b: (b[0], b[1])):
                 if note: f.write('# %s\n' % note)
                 f.write('file\t%s\t%d\t%s\t%s\n' % (file, off, orig.hex(), new.hex()))
+            for file, (data, note) in sorted(self._app.items()):
+                if note: f.write('# %s\n' % note)
+                f.write('file\t%s\t%d\t\t%s\n' % (file, len(self.data(file).b), bytes(data).hex()))

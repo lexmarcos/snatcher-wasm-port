@@ -44,7 +44,7 @@ pub fn read_tsv(lang: &str) -> Result<(Vec<BlobLine>, Vec<FileLine>), String> {
             }),
             Some("file") if f.len() == 5 => {
                 let (orig, new) = (unhex(f[3]).map_err(|e| err(&e))?, unhex(f[4]).map_err(|e| err(&e))?);
-                if orig.len() != new.len() { return Err(err("orig and new differ in length")); }
+                if !orig.is_empty() && orig.len() != new.len() { return Err(err("orig and new differ in length")); }
                 files.push(FileLine { file: f[1].to_string(), off: f[2].parse().map_err(|_| err("offset"))?, orig, new });
             }
             _ => return Err(err("unknown line")),
@@ -59,7 +59,7 @@ pub fn patch_for(lang: &str) -> Result<GfxPatch, String> {
     let mut g = GfxPatch::default();
     for b in blobs {
         let runs = g.blobs.entry((b.hash, b.len)).or_default();
-        if (b.off as usize) + b.bytes.len() > b.len as usize { return Err(format!("{}: run beyond the blob", b.file)); }
+        if (b.off as usize) + b.bytes.len() > sncore::gfxpatch::MAX_GROWN { return Err(format!("{}: run beyond the largest allowed blob", b.file)); }
         runs.push((b.off, b.bytes));
     }
     for f in files { g.files.entry(f.file).or_default().push(FileRun { off: f.off, orig: f.orig, new: f.new }); }
@@ -89,12 +89,14 @@ fn check(lang: &str, raw: &Path) -> Result<(), String> {
         }
         let (h, l) = seen[&key];
         if h != b.hash || l != b.len { println!("FAIL blob {} {:#x}: decoded original is {h:016x}/{l}, patch expects {:016x}/{}", b.file, b.addr, b.hash, b.len); bad += 1; }
-        if b.off as usize + b.bytes.len() > b.len as usize { println!("FAIL blob {} {:#x}: run beyond the blob", b.file, b.addr); bad += 1; }
+        if b.off as usize + b.bytes.len() > sncore::gfxpatch::MAX_GROWN { println!("FAIL blob {} {:#x}: run beyond the largest allowed blob", b.file, b.addr); bad += 1; }
     }
     for f in &files {
         let data = fs::read(raw.join("files").join(&f.file)).map_err(|e| format!("{}: {e}", f.file))?;
         let o = f.off as usize;
-        if data.get(o..o + f.orig.len()) != Some(&f.orig[..]) { println!("FAIL file {} @{}: the bytes are not the expected ones", f.file, f.off); bad += 1; }
+        if f.orig.is_empty() {
+            if o != data.len() { println!("FAIL file {} @{}: an append must start at the end of the file ({} bytes)", f.file, f.off, data.len()); bad += 1; }
+        } else if data.get(o..o + f.orig.len()) != Some(&f.orig[..]) { println!("FAIL file {} @{}: the bytes are not the expected ones", f.file, f.off); bad += 1; }
     }
     // the pack round trip
     let g = patch_for(lang)?;
