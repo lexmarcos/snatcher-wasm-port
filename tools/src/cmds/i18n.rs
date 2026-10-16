@@ -1216,16 +1216,7 @@ const BREAK_WEIGHT: [u32; 6] = [0, 2, 4, 12, 20, 40];
 /// Cost of a one-line page (small: a short last sentence on its own page is better than a break inside a sentence).
 const ORPHAN_WEIGHT: u32 = 1;
 
-/// Severity of the break in front of each word (index 0 = 0): see `break_severity`, judged on a window of 4 words each side.
-pub(crate) fn word_severities(words: &[Vec<u8>]) -> Vec<u8> {
-    let txt: Vec<String> = words.iter().map(|w| plain_page(w)).collect();
-    (0..words.len()).map(|k| {
-        if k == 0 { return 0; }
-        let before = txt[k.saturating_sub(4)..k].iter().filter(|t| !t.is_empty()).cloned().collect::<Vec<_>>().join(" ");
-        let after = txt[k..(k + 4).min(words.len())].iter().filter(|t| !t.is_empty()).cloned().collect::<Vec<_>>().join(" ");
-        break_severity(&before, &after).0
-    }).collect()
-}
+pub use sncore::vwrap::word_severities;
 
 /// Dynamic programme over `n` units (words with re-wrapping, or whole lines): split into the fewest pages that fit, where unit `i..=i+d` makes
 /// `fit[i][d]` lines (empty when it does not fit); `extra[i]` is the cost of a break in front of unit `i`, `sev[i]` its severity. Among the splits
@@ -1408,71 +1399,7 @@ pub fn reflow_cmd(lang: &str, dir: &str, which: &[String]) -> Result<(), String>
 
 // ---------------------------------------------------------------- i18n-breaks (page breaks in the middle of a sentence)
 
-/// Plain text of one page for the break analysis: line breaks become spaces, colour / auto tokens vanish, a button placeholder is one word.
-pub(crate) fn plain_page(page: &[u8]) -> String {
-    let mut s = String::new();
-    for &c in page {
-        match c {
-            i::NL => s.push(' '),
-            0xF8..=0xFE | i::AUTO => {}
-            0xEC | 0xEE | 0xF0 => s.push('#'),
-            _ => s.push_str(&i::bytes_to_markup(&[c])),
-        }
-    }
-    s.split(' ').filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ")
-}
-
-const FUNCTION_WORDS: &[&str] = &[
-    "a", "o", "as", "os", "um", "uma", "uns", "umas", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas", "num", "numa", "por", "pelo", "pela", "pelos",
-    "pelas", "para", "pra", "pro", "com", "sem", "sob", "sobre", "ao", "aos", "à", "às", "e", "ou", "mas", "que", "se", "nem", "como", "quando", "porque", "onde", "até",
-    "entre", "contra", "seu", "sua", "seus", "suas", "meu", "minha", "meus", "minhas", "teu", "tua", "este", "esse", "esta", "essa", "esses", "essas", "estes", "estas",
-    "nosso", "nossa", "nossos", "nossas", "eu", "você", "ele", "ela", "nós", "vocês", "eles", "elas", "me", "te", "lhe", "lhes", "não", "já", "mais", "muito", "tão",
-    "todo", "toda", "todos", "todas", "cada", "qual", "quais", "quem", "cujo", "cuja", "d'água", "ser", "é", "foi", "são", "está", "estão", "vai", "vou", "vamos", "tem",
-    "ter", "tinha", "há", "faz", "fazer", "pode", "posso", "deve", "preciso", "quer", "quero", "estou", "estava", "era",
-];
-const ABBREVIATIONS: &[&str] = &["sr.", "sra.", "srta.", "dr.", "dra.", "prof.", "st.", "mr.", "mrs.", "ms.", "n.", "nº.", "vs.", "ex.", "av.", "cap."];
-
-/// Strip trailing closing punctuation / spaces so that `x." ` and `x.` look the same.
-fn core_end(s: &str) -> &str { s.trim_end_matches(|c: char| matches!(c, '"' | '\'' | ')' | ' ' | '»')) }
-
-const CONJUNCTIONS: &[&str] = &["e", "mas", "ou", "porque", "pois", "que", "quando", "onde", "como", "enquanto", "embora", "então", "porém", "senão", "caso", "quem", "quanto", "portanto"];
-
-/// How badly a page break reads, from the text just before it and just after it (`plain_page` form; a window of a few words each is enough).
-/// 5 = after an abbreviation (`Sr.` / page / `Seed`), 4 = after a function word (article, preposition, conjunction, pronoun, auxiliary),
-/// 3 = no punctuation at all, a dangling dash, a colon (a label cut off from its text), 2 = in front of a conjunction or after an ellipsis followed by a lower-case continuation
-/// (a clause boundary: tolerated), 1 = after a comma / semicolon (a natural pause: tolerated), 0 = the text before ends a sentence or clause
-/// (`. ? ! …`), the next text starts a new field (`Label:`) or a new list entry (`Name - Role`).
-pub fn break_severity(before: &str, after: &str) -> (u8, &'static str) {
-    let b = core_end(before);
-    let last = b.rsplit(' ').next().unwrap_or("");
-    let lastc = b.chars().last().unwrap_or(' ');
-    let low = last.to_lowercase();
-    let first_after = after.split(' ').next().unwrap_or("");
-    let next_lower = first_after.chars().next().map_or(false, |c| c.is_lowercase());
-    if ABBREVIATIONS.contains(&low.as_str()) { return (5, "abbreviation"); }
-    let aw: Vec<&str> = after.split(' ').take(4).collect();
-    let upper = |w: &str| w.chars().find(|c| c.is_alphabetic()).map_or(false, |c| c.is_uppercase());
-    if aw.first().map_or(false, |w| upper(w)) {
-        if aw.iter().take(3).any(|w| w.len() > 1 && w.ends_with(':')) { return (0, "next field"); }
-        if let Some(d) = aw.iter().take(4).position(|w| *w == "-") { if d >= 1 && aw[..d].iter().all(|w| upper(w)) { return (0, "next list entry"); } }
-    }
-    match lastc {
-        ':' => (3, "colon: the label is cut off from its text"),
-        '.' | '?' | '!' | '…' => if lastc == '.' && b.ends_with("...") && next_lower { (2, "ellipsis + lower-case continuation") } else { (0, "") },
-        ',' | ';' => {
-            // a short opener ("Depois,", "Hoje,", "Ao mesmo tempo,") is not a clause of its own: its sentence goes on after the break
-            let since = b.rsplit(|c: char| matches!(c, '.' | '?' | '!' | ':' | '…')).next().unwrap_or(b);
-            if lastc == ',' && since.trim().split(' ').count() <= 3 && b.len() > since.len() { (2, "short opener before the comma") } else { (1, "comma") }
-        }
-        '-' if b.ends_with(" -") => (3, "dangling dash"),
-        '-' => (1, "dash"),
-        _ => {
-            if FUNCTION_WORDS.contains(&low.trim_matches(|c: char| !c.is_alphabetic() && c != '\'').to_string().as_str()) { (4, "function word before the break") }
-            else if CONJUNCTIONS.contains(&first_after.to_lowercase().trim_matches(|c: char| !c.is_alphabetic()).to_string().as_str()) { (2, "before a conjunction") }
-            else { (3, "no punctuation") }
-        }
-    }
-}
+pub use sncore::vwrap::{break_severity, plain_page};
 
 /// `break_severity` for a whole page followed by the next one: a page that is only a quoted title (a name in quotes) is a heading, not a sentence.
 pub fn page_break_severity(before: &str, after: &str) -> (u8, &'static str) {
