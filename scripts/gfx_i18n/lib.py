@@ -79,3 +79,14 @@ def render_pieces(pieces, tiles, pal, bg=(0, 40, 0), pal_override=None, minx=Non
                         if v:
                             img[y - y0 + rr * 8 + py, x - x0 + cc * 8 + px] = pal[line][v]
     return Image.fromarray(img), (x0, y0)
+
+def vram_from(d, scene, extra=None):
+    """VRAM image (bytes) of a scene of Data `d` after its VRAM list uploads, plus the palette channel frames (list of 64-word lists)"""
+    vram = bytearray(0x10000); pals = []
+    for k, v in d.chunks(scene):
+        if k == 'vram':
+            for u in v:
+                b = d.blob(u['src']); vram[u['dst']:u['dst'] + len(b)] = b[:0x10000 - u['dst']]
+        if k == 'pal':
+            pals.append(v)
+    return bytes(vram), pals
