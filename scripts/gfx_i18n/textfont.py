@@ -57,3 +57,32 @@ def quantize_caption(cov):
     out[(cov > 105) & (cov <= 150)] = 9
     out[cov > 150] = 7
     return out
+
+def quantize_levels(cov, levels, floor=0.06):
+    """coverage 0..255 -> palette index of the nearest brightness; levels = ((index, brightness 0..1), ...) without the background"""
+    c = cov.astype(float) / 255.0
+    vals = np.array([0.0] + [l[1] for l in levels]); idx = np.array([0] + [l[0] for l in levels], dtype=np.uint8)
+    out = idx[np.argmin(np.abs(c[..., None] - vals[None, None, :]), axis=-1)]
+    out[c < floor] = 0
+    return out.astype(np.uint8)
+
+def draw_text(canvas, face, text, x, baseline, levels, floor=0.06, gamma=1.0, align='left'):
+    """draw `text` into the index image `canvas` (rows, cols); x = left (align left), centre or right of the text; baseline = row below the letters.
+    Returns the (x_left, x_right) ink extent."""
+    lay, total = face.layout(text)
+    if align == 'center': x = int(round(x - total / 2))
+    elif align == 'right': x = int(round(x - total))
+    cov = np.zeros(canvas.shape, dtype=np.uint8)
+    for ch, px in lay:
+        g = face.glyph(ch)
+        if g is None: continue
+        a, left, top = g
+        y0 = baseline + top; x0 = x + px + left
+        ys0 = max(0, -y0); xs0 = max(0, -x0)
+        sub = cov[y0 + ys0:y0 + a.shape[0], x0 + xs0:x0 + a.shape[1]]
+        np.maximum(sub, a[ys0:ys0 + sub.shape[0], xs0:xs0 + sub.shape[1]], out=sub)
+    if gamma != 1.0: cov = (255.0 * (cov / 255.0) ** gamma).astype(np.uint8)
+    q = quantize_levels(cov, levels, floor)
+    m = q > 0
+    canvas[m] = q[m]
+    return x, x + int(total)

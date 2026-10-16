@@ -3,12 +3,13 @@
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from patchset import PatchSet
-import title, cards, caption
+import title, cards, caption, prologue
 
 P = PatchSet()
 title.apply(P)
 cards.apply(P)
 caption.apply(P)
+prologue.apply(P)
 root = os.path.join(os.path.dirname(__file__), '..', '..')
 P.write(os.path.join(root, 'i18n', 'pt-BR', 'gfx.tsv'))
 print('blobs', len(P.blobs), 'raw runs', len(P.files))
