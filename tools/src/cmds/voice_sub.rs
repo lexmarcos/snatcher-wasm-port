@@ -13,6 +13,8 @@ use std::fs;
 
 /// Lines per subtitle page produced by the automatic pagination (a page may hold more, up to the window: 5 lines with a name, 6 without).
 pub const WRAP_LINES: usize = 3;
+/// A page may take a 4th line when that avoids a break inside a phrase (costs a little).
+pub const WRAP_MAX: usize = 4;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VEntry { pub h: u32, pub d: String, pub s: u8, pub t: String }
@@ -114,10 +116,10 @@ pub fn wrap(text: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
         for j in 1..=n {
             for a in (0..j).rev() {
                 let nl = lines_of(a, j).len();
-                if nl > WRAP_LINES { break; }
+                if nl > WRAP_MAX { break; }
                 if best[a].0.is_infinite() { continue; }
-                let mut c = best[a].0 + 30.0 + (WRAP_LINES - nl) as f64;
-                if a > 0 { c += 10.0 * sev[a] as f64; }
+                let mut c = best[a].0 + 30.0 + if nl > WRAP_LINES { 12.0 } else { (WRAP_LINES - nl) as f64 };
+                if a > 0 { c += 20.0 * sev[a] as f64; }
                 if c < best[j].0 { best[j] = (c, a); }
             }
         }
@@ -210,7 +212,7 @@ pub fn check_into(lang: &str, dir: &str, rep: &mut Report) -> Result<usize, Stri
             if line.full_page { rep.fails.push(format!("{t}: page {} is full ({cap} lines) and the text goes on without {{page}}", line.page + 1)); }
         }
         let per_page = (0..l.pages).map(|p| l.lines.iter().filter(|x| x.page == p).count()).max().unwrap_or(0);
-        if per_page > WRAP_LINES { rep.warns.push(format!("{t}: a page has {per_page} lines (the automatic pagination uses {WRAP_LINES})")); }
+        if per_page > WRAP_MAX { rep.warns.push(format!("{t}: a page has {per_page} lines (the automatic pagination uses {WRAP_LINES}, at most {WRAP_MAX})")); }
         pages_total += l.pages;
         // reading speed: the pages share the clip time plus the hold, in proportion to their text (engine/src/vsub.rs)
         let pages: Vec<Vec<u8>> = bytes.split(|&c| c == i::PAGE).map(|p| p.to_vec()).collect();
@@ -261,7 +263,7 @@ mod tests {
         let mut words = vec![];
         for page in bytes.split(|&c| c == i::PAGE) {
             let lines: Vec<&[u8]> = page.split(|&c| c == i::NL).collect();
-            assert!(lines.len() <= WRAP_LINES, "page with {} lines", lines.len());
+            assert!(lines.len() <= WRAP_MAX, "page with {} lines", lines.len());
             for l in &lines { assert!(l.iter().map(|&c| i::advance(&widths(), c)).sum::<u32>() <= i::RIGHT_SPEECH - i::X_SPEECH, "line too wide"); }
             words.extend(page.split(|&c| c == i::NL || c == b' ').filter(|x| !x.is_empty()).map(|x| i::bytes_to_markup(x)));
         }

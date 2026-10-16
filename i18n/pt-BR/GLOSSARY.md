@@ -24,7 +24,7 @@ O texto original em inglês não é copiado para o repositório: as adaptações
   Trechos rápidos pedem frases enxutas (cortar "bem," "então," repetições, preferir a forma curta).
 * Falas curtas e exclamações com palavra ("Cuidado!", "Evacuar!") ganham legenda; gemidos, gritos, espirros, risadas e efeitos (sem palavras) não ganham (`voice.json` não os lista).
 * Nome do falante: só quando o contexto deixa claro (a linha de nome aparece como numa mensagem); na dúvida, sem nome. Número do falante = o de `snt i18n-names`.
-* Páginas: até 3 linhas por página (o motor divide o tempo do trecho entre as páginas pelo tamanho do texto): fim de página em fim de frase sempre que possível. Quebras de linha com `{nl}` (ou `~` no importador).
+* Páginas: 3 linhas por página (4 quando isso evita quebrar no meio de uma expressão) (o motor divide o tempo do trecho entre as páginas pelo tamanho do texto): fim de página em fim de frase sempre que possível. Quebras de linha com `{nl}` (ou `~` no importador).
 * Colchetes e efeitos sonoros do roteiro não se repetem: a legenda é só a fala.
 
 ## Nomes próprios (ficam como estão)

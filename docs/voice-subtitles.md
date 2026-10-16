@@ -9,7 +9,7 @@ whole chain: transcription, subtitle data, validator, engine, front end, status 
 | act | clips with a subtitle | transcribed | translated | reviewed |
 |---|---:|---|---|---|
 | all (1146 clips started by scripts, 82.8 min) | | 1146 (Whisper large-v3, 2 passes) | | |
-| Act 1 (SP06-SP19) | 291 | yes | yes | pending (see the end of this file) |
+| Act 1 (SP06-SP19) | 291 | yes | yes | yes, 4/5 (review below) |
 | Act 2 (SP20-SP35) | 0 | yes | no | no |
 | Act 3 (SP36-SP38) | 0 | yes | no | no |
 
@@ -39,7 +39,7 @@ Keyed by clip id (one entry per clip, not per trigger). `h` = FNV-1a (the hash o
 `d` = clip duration in seconds; `s` = speaker number as printed by `snt i18n-names` (2 Metal Gear, 3 Gillian, 4 Mika ...; absent = no name, only when it is clear from the context);
 `t` = text with the usual markup (`{nl}`, `{page}`, colours; no `{auto}`, no `{btn}`). Clips without an entry get no subtitle.
 
-Authoring: write `id<TAB>speaker<TAB>~text` lines (speaker number, name or 0; `~` = wrap and paginate: pages of at most 3 lines whose ends are chosen by sentence / clause
+Authoring: write `id<TAB>speaker<TAB>~text` lines (speaker number, name or 0; `~` = wrap and paginate: pages of 3 lines (4 when that avoids a break inside a phrase) whose ends are chosen by sentence / clause
 boundaries, `{page}` written by hand are kept, `|` forces a line break) and run `snt voice-import i18n/pt-BR assets/raw/files patch.tsv` (fills `h` and `d`).
 `snt i18n-build` puts the subtitles in the pack (a voice section after the names; old packs without it still load).
 
@@ -47,7 +47,7 @@ boundaries, `{page}` written by hand are kept, `|` forces a line break) and run 
 
 `snt voice-check i18n/pt-BR assets/raw/files` (also run by `snt i18n-check i18n/pt-BR assets/raw/files all`):
 the clip exists and its duration matches; the English hash matches `work/voice/transcripts/en.tsv` (skipped with a warning when the file is absent) and the clip is not flagged non-speech;
-markup and characters; **line width** (limit 208 px: x 24..232, like a message), **lines per page** (5 with a name, 6 without; a warning above 3, the pagination default);
+markup and characters; **line width** (limit 208 px: x 24..232, like a message), **lines per page** (5 with a name, 6 without; a warning above 4; the pagination default is 3);
 **reading speed**: the pages share the display time in proportion to their text, a clip may stay up for a hold after its end (see below), and the text must be readable at
 **17 characters per second** over clip + hold (`READ_CPS`); a page must also hold that speed on its own.
 
@@ -82,3 +82,10 @@ Never started by a script (16 ids), non-speech clips (above), the GAME OVER / qu
 
 Transcripts exist for all clips (`work/voice/script/SPnn.txt` has the context); what is left is translation (Act 2: 397 speech clips, 25.6 min; Act 3: 409 clips, 34.3 min), `snt voice-check`, one review pass per act, and a play-test.
 Clips shared with Act 1 are already done. The overrides file must be kept in `work/` (copy it to the next machine with the transcripts, or run the transcription again: about 7 minutes per pass on the RTX 3080).
+
+## 8. Act 1 review (2026-10-16)
+
+One review subagent (sonnet, high effort; read-only; prompt kept in `work/voice/review/`) read all 291 subtitles against the transcripts, the script context, the glossary and four engine screenshots. Score **4/5**: faithful, natural, consistent terminology,
+conservative and correct speaker names. Findings applied (about 45 clips): awkward page breaks (fixed in the importer too: page ends are weighted by `break_severity` and a page may take a 4th line to avoid a mid-phrase break), register slips of informal speakers
+(Katrina "Não se preocupa", Gillian "Guarda o fôlego", the vendor "tira / estraga": colloquial imperatives as in the glossary), dense clips shortened, two terms ("Equipe de Limpeza Junker", "relacionamento"), capitalisation, four speaker names added where the
+conversation makes them certain (clips 132, 138, 169, 209). Not applied: naming the speaker of clip 88 (the Chief is likely but not certain), clip 293 stays without a subtitle (the words are unclear; someone should listen to it).
