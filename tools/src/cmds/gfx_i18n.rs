@@ -104,3 +104,23 @@ fn check(lang: &str, raw: &Path) -> Result<(), String> {
     println!("gfx patch: {} blob runs in {} blobs, {} raw runs, {} failures", blobs.len(), seen.len(), files.len(), bad);
     if bad > 0 { Err(format!("{bad} failures")) } else { Ok(()) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tsv_round_trips_into_the_pack_patch() {
+        let dir = std::env::temp_dir().join(format!("gfx_tsv_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("gfx.tsv"), "# comment\nblob\tDATA_X.BIN\t0x2d8ac\t00000000000000ff\t64\t4\t0a0b\nblob\tDATA_X.BIN\t0x2d8ac\t00000000000000ff\t64\t60\t01020304050607\nfile\tDATA_X.BIN\t10\t0102\t0304\nfile\tDATA_X.BIN\t100\t\taabb\n").unwrap();
+        let g = patch_for(dir.to_str().unwrap()).unwrap();
+        assert_eq!(g.blobs[&(0xff, 64)], vec![(4, vec![0x0a, 0x0b]), (60, vec![1, 2, 3, 4, 5, 6, 7])], "runs in order, the second one grows the blob");
+        assert_eq!(g.files["DATA_X.BIN"].len(), 2);
+        assert!(g.files["DATA_X.BIN"][1].orig.is_empty(), "an empty original is an append");
+        assert_eq!(GfxPatch::parse(&g.build()).unwrap(), g);
+        fs::write(dir.join("gfx.tsv"), "blob\tDATA_X.BIN\n").unwrap();
+        assert!(patch_for(dir.to_str().unwrap()).is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
