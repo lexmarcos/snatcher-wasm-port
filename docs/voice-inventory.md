@@ -140,7 +140,7 @@ The label is the top-level script node that contains the voice (a chain of such 
 
 ## 5. What the picture can show with a clip, and the weak points
 
-* **Subtitle room.** Where the strip exists the message box is empty, as in the real game (checked on the real BIOS). `cmd_message` (engine) switches the portrait objects 5..14 off when a message starts (`MsgEvent::Begin`, S:0x13604),
+* **Subtitle room.** (Superseded: the subtitle no longer replaces the portrait icons; it is placed around them, docs/voice-subtitles.md section 4.) Where the strip exists the message box is empty, as in the real game (checked on the real BIOS). `cmd_message` (engine) switches the portrait objects 5..14 off when a message starts (`MsgEvent::Begin`, S:0x13604),
   so a subtitle sent through the same path replaces the icons exactly as a normal line does. A clip is a few seconds (median 3.5 s, max 35.9 s) and `CMD0A` holds the script until it ends, so the subtitle can stay for the clip length (+6 frames, the engine's voice model).
   For the 20 `no strip` clips (2.4 min) the subtitle would be drawn over the picture.
 * **Text before / after (`unknown`).** adjacent text (class unknown): 57 triggers, 40 with the text after the wait, 17 with the text before the voice

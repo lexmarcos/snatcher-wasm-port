@@ -46,11 +46,19 @@ impl Game {
     pub fn set_save(&mut self, slot: usize, data: Vec<u8>) { if (1..=4).contains(&slot) { self.e.saves[slot - 1] = Some(data); } }
     /// Debug scene jump, e.g. "SP01:0" (developer scene-select script) or "SP06:0".
     pub fn debug_jump(&mut self, spec: &str) -> bool {
-        let Some((f, pc)) = spec.split_once(':') else { return false };
+        let Some((f, rest)) = spec.split_once(':') else { return false };
+        // optional third part `:rrrr` (hex): show the scene resource (DATA file index and image, like the SCENE node) before the script runs
+        let (pc, scene) = match rest.split_once(':') { Some((pc, sc)) => (pc, u16::from_str_radix(sc.trim(), 16).ok()), None => (rest, None) };
         let f = f.trim().to_ascii_uppercase();
         let Some(num) = f.strip_prefix("SP").and_then(|n| n.parse::<u16>().ok()) else { return false };
         let Ok(pc) = u16::from_str_radix(pc.trim(), 16) else { return false };
         self.e.jump(57 + num, pc);
+        if let Some(r) = scene {
+            use sncore::script::vm::Action;
+            self.e.queue.push(Action { cmd: 0x0F, args: vec![] });
+            self.e.queue.push(Action { cmd: 0x11, args: vec![2, 0x8000, r >> 8] });
+            self.e.queue.push(Action { cmd: 0x12, args: vec![r & 0xFF] });
+        }
         true
     }
     /// Voice clip lengths in frames (from the audio manifest), so waits match the audio.
