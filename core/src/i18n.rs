@@ -298,13 +298,50 @@ pub fn menu_width(raw: &[u8], widths: &[u8]) -> (u32, usize) {
 pub struct Translation {
     pub files: HashMap<u8, HashMap<u16, Vec<u8>>>,
     pub names: HashMap<u8, Vec<u8>>,
+    /// subtitles of the voice clips by clip id (docs/voice-subtitles.md); absent in packs made before the feature
+    pub voice: HashMap<u16, VoiceSub>,
 }
+
+// ---- voice subtitle timing (shared by the engine overlay and the validator `snt voice-check`)
+
+/// Reading speed the subtitle hold is computed for, characters per second.
+pub const VOICE_READ_CPS: f64 = 17.0;
+/// Longest hold after the end of the clip, frames (1.5 s).
+pub const VOICE_HOLD_MAX: u32 = 90;
+/// Hold after every clip (frames) so the backing does not flicker between two clips of a dialogue.
+pub const VOICE_HOLD_MIN: u32 = 15;
+
+/// Number of visible characters of a markup text (control codes and button placeholders do not count).
+pub fn voice_glyph_count(text: &[u8]) -> usize {
+    text.iter().filter(|&&c| (0x20..0xF0).contains(&c) && !matches!(c, 0xEC | 0xEE)).count()
+}
+
+/// (frames the clip plays, hold frames) of a subtitle of `chars` visible characters for a clip of `play` frames: the hold gives the reading
+/// time the clip does not have, at least `VOICE_HOLD_MIN` and at most `VOICE_HOLD_MAX`.
+pub fn voice_display_frames(play: u32, chars: usize) -> (u32, u32) {
+    let need = (chars as f64 / VOICE_READ_CPS * 60.0).ceil() as u32;
+    (play, need.saturating_sub(play).clamp(VOICE_HOLD_MIN, VOICE_HOLD_MAX))
+}
+
+/// Start frame of every page when `total` frames are shared in proportion to the characters of the pages.
+pub fn voice_page_starts(pages: &[Vec<u8>], total: u32) -> Vec<u32> {
+    let w: Vec<usize> = pages.iter().map(|p| voice_glyph_count(p).max(1)).collect();
+    let sum: usize = w.iter().sum();
+    let mut acc = 0usize;
+    w.iter().map(|&x| { let s = (total as u64 * acc as u64 / sum as u64) as u32; acc += x; s }).collect()
+}
+
+/// Subtitle of one voice clip: markup bytes (`NL`, `PAGE`, colour codes, no terminator) and the speaker number as printed by `snt i18n-names`
+/// (0 = no speaker: the text uses the layout of a message without a name; >= 2 = the name is drawn as in a message box).
+#[derive(Clone, Debug, PartialEq)]
+pub struct VoiceSub { pub speaker: u8, pub text: Vec<u8> }
 
 const MAGIC: &[u8; 5] = b"SNTR\x01";
 
 impl Translation {
     /// Pack layout (big endian): "SNTR" 1, u8 nfiles, per file { u8 sp, u16 n, n x { u16 off, u16 len, bytes } },
-    /// u8 nnames, nnames x { u8 index, u8 len, bytes }.
+    /// u8 nnames, nnames x { u8 index, u8 len, bytes }, then optionally (packs with voice subtitles)
+    /// u16 nvoice, nvoice x { u16 clip id, u8 speaker, u16 len, bytes }.
     pub fn parse(b: &[u8]) -> Result<Translation, String> {
         let mut p = 0usize;
         let rd = |p: &mut usize, n: usize| -> Result<&[u8], String> {
@@ -328,6 +365,14 @@ impl Translation {
             let h = rd(&mut p, 2)?;
             t.names.insert(h[0], rd(&mut p, h[1] as usize)?.to_vec());
         }
+        if p < b.len() {
+            let h = rd(&mut p, 2)?; let nv = u16::from_be_bytes([h[0], h[1]]);
+            for _ in 0..nv {
+                let h = rd(&mut p, 5)?;
+                let len = u16::from_be_bytes([h[3], h[4]]) as usize;
+                t.voice.insert(u16::from_be_bytes([h[0], h[1]]), VoiceSub { speaker: h[2], text: rd(&mut p, len)?.to_vec() });
+            }
+        }
         Ok(t)
     }
 
@@ -347,6 +392,14 @@ impl Translation {
         let mut ns: Vec<_> = self.names.keys().copied().collect(); ns.sort();
         o.push(ns.len() as u8);
         for n in ns { let v = &self.names[&n]; o.push(n); o.push(v.len() as u8); o.extend_from_slice(v); }
+        if !self.voice.is_empty() {
+            let mut ids: Vec<_> = self.voice.keys().copied().collect(); ids.sort();
+            o.extend_from_slice(&(ids.len() as u16).to_be_bytes());
+            for id in ids {
+                let v = &self.voice[&id];
+                o.extend_from_slice(&id.to_be_bytes()); o.push(v.speaker); o.extend_from_slice(&(v.text.len() as u16).to_be_bytes()); o.extend_from_slice(&v.text);
+            }
+        }
         o
     }
 
@@ -373,6 +426,35 @@ impl Translation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pack_round_trip_with_voice_subtitles_and_old_packs_without() {
+        let mut t = Translation::default();
+        t.files.entry(6).or_default().insert(0x0320, markup_to_bytes("Oi{nl}mundo").unwrap());
+        t.names.insert(3, b"Mika".to_vec());
+        let old = t.build();
+        assert!(Translation::parse(&old).unwrap().voice.is_empty(), "a pack without the voice section still parses");
+        t.voice.insert(77, VoiceSub { speaker: 3, text: markup_to_bytes("Sou Gillian.{page}Prazer.").unwrap() });
+        t.voice.insert(1197, VoiceSub { speaker: 0, text: markup_to_bytes("{c3}Fim{c1}").unwrap() });
+        let p = Translation::parse(&t.build()).unwrap();
+        assert_eq!(p.voice, t.voice);
+        assert_eq!(p.files, t.files);
+        assert_eq!(p.names, t.names);
+    }
+
+    #[test]
+    fn voice_timing_hold_and_pages() {
+        // a 2 s clip (126 frames with the engine's +6) with 20 characters needs 71 frames of reading: no extra hold beyond the minimum
+        assert_eq!(voice_display_frames(126, 20), (126, VOICE_HOLD_MIN));
+        // 60 characters need 212 frames: hold of 86 frames
+        assert_eq!(voice_display_frames(126, 60), (126, 86));
+        // never longer than the maximum
+        assert_eq!(voice_display_frames(60, 400).1, VOICE_HOLD_MAX);
+        assert_eq!(voice_glyph_count(&markup_to_bytes("{c3}ab{nl}c d{page}e").unwrap()), 6);
+        let pages = vec![vec![b'a'; 30], vec![b'b'; 10]];
+        assert_eq!(voice_page_starts(&pages, 400), vec![0, 300]);
+    }
+
 
     #[test]
     fn markup_round_trip_of_every_byte() {

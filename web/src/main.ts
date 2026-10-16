@@ -216,10 +216,23 @@ async function ensurePack(g: any): Promise<boolean> {
     return true;
   } catch { return false; }
 }
+// Voice subtitles (docs/voice-subtitles.md): the pt-BR pack carries a subtitle per voice clip, drawn in the empty message box while the clip plays.
+// Default: on in pt-BR, off in English (there is no English subtitle data); an explicit choice is kept in localStorage (`snatcher.vsub` 1/0), ?vsub=0|1 overrides it for the visit.
+const vsubBox = $<HTMLInputElement>("vsub");
+const flag = (v: string | null): boolean | null => (v === "1" ? true : v === "0" ? false : null);
+let vsubPref: boolean | null = flag(params.get("vsub")) ?? flag(ls.get("snatcher.vsub"));
+function applyVsub() {
+  const pt = wantLang === "pt-BR";
+  vsubBox.disabled = !pt;
+  vsubBox.checked = pt && (vsubPref ?? true);
+  if (game) game.set_voice_subtitles(vsubBox.checked);
+}
+vsubBox.onchange = () => { vsubPref = vsubBox.checked; ls.set("snatcher.vsub", vsubPref ? "1" : "0"); applyVsub(); };
 async function syncEngineLanguage(g: any) {
   let pt = wantLang === "pt-BR";
   if (pt) { pt = await ensurePack(g); note("pack", pt ? "ok" : "warn", pt ? null : T("note.nopack")); } else note("pack", "ok", null);
   g.set_language(pt ? "pt-BR" : "en");
+  g.set_voice_subtitles(pt && vsubBox.checked);
 }
 function renderDynamic() {
   applyMute(); refreshSaves(); renderControls(); renderPadMap(); renderNotes(); updateSoundMode();
@@ -232,6 +245,7 @@ async function applyLanguage(l: Lang, persist = true) {
   if (persist) ls.set("snatcher.lang", l);
   setUiDict(l, l === "pt-BR" ? await fetchUi() : null);
   langOv.value = l; langPn.value = l;
+  applyVsub();
   applyStatic();
   renderDynamic();
   if (game) await syncEngineLanguage(game);
@@ -395,6 +409,7 @@ async function start(src: Source) {
     let boots = 0;
     for (const name of ["HEADER.BIN", "IP.BIN"]) { const b = await src.boot(name); if (b) { g.load_file(name, new Uint8Array(b)); boots++; } }
     note("boot", "warn", boots < 2 ? T("note.noboot") : null);
+    applyVsub();
     await syncEngineLanguage(g);
     // saves → CONTINUE slots
     for (const n of SLOTS) { const b = store.bytes(n); if (b) g.set_save(n, b); }

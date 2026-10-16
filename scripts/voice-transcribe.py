@@ -76,6 +76,27 @@ def one(cid, url, key, redo):
     return cid, f"FAILED {last}"
 
 
+import re
+VOCAL = re.compile(r"^(?:(?:a+h+|o+h+|u+h+|u+g+h+|a+w+|o+o+h+|w+h*o+a+h*|h+m+|m+|h+u+h+|a+r+g+h+|o+f+|e+h+|a+a+h+)[\s.,!?-]*)+$", re.I)
+HALLU = re.compile(r"^(?:thank(?:s| you)(?: (?:very much|for watching|for listening))?|bye)[.! ]*$|^thanks for watching", re.I)
+
+
+def classify(text, seconds, nsp, lp):
+    """(speech, flag): a clip gets a subtitle only when speech is true."""
+    t = text.strip()
+    if not t:
+        return False, "empty"
+    if VOCAL.match(t):
+        return False, "vocal"
+    if HALLU.match(t):
+        return False, "hallucination?"
+    if (nsp or 0) > 0.3:
+        return False, "no_speech_prob"
+    if (lp if lp is not None else 0) < -0.8:
+        return False, "low_confidence"
+    return True, None
+
+
 def merge():
     idx = json.load(open(os.path.join(WAV, "index.json")))
     out = {}
@@ -95,7 +116,22 @@ def merge():
                     "avg_logprob": min([s["avg_logprob"] for s in segs if s["avg_logprob"] is not None], default=None),
                     "no_speech_prob": max([s["no_speech_prob"] for s in segs if s["no_speech_prob"] is not None], default=None),
                     "elapsed": j.get("_elapsed"), "noprompt": bool(j.get("_noprompt"))}
+    ovp = os.path.join(OUT, "overrides.json")
+    ov = json.load(open(ovp)) if os.path.exists(ovp) else {}
+    for cid, e in out.items():
+        e["speech"], e["flag"] = classify(e["text"], e["seconds"], e["no_speech_prob"], e["avg_logprob"])
+        o = ov.get(cid)
+        if o:  # manual decision (work/voice/transcripts/overrides.json): {"text": corrected English, "speech": bool, "why": ""}
+            e["whisper_text"] = e["text"]
+            e["text"] = o.get("text", e["text"])
+            e["speech"] = o.get("speech", e["speech"])
+            e["flag"] = "override: " + o.get("why", "") if o.get("why") else "override"
     json.dump(out, open(os.path.join(OUT, "en.json"), "w"), indent=1, sort_keys=False)
+    # flat copy for the Rust tools (snt voice-import / voice-check): id <TAB> seconds <TAB> speech 0/1 <TAB> flag <TAB> text
+    with open(os.path.join(OUT, "en.tsv"), "w") as f:
+        for cid, e in sorted(out.items(), key=lambda x: int(x[0])):
+            f.write("\t".join([cid, "%.3f" % e["seconds"], "1" if e["speech"] else "0", (e["flag"] or "").replace("\t", " "),
+                               " ".join(e["text"].split())]) + "\n")
     return len(out), len(idx)
 
 

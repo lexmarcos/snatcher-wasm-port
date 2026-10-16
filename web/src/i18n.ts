@@ -35,6 +35,7 @@ export const UI_EN = {
   // settings panel
   "pn.title": "Menu", "pn.paused": "(game paused)", "pn.resume": "Resume", "pn.status": "Status", "pn.volume": "Volume",
   "pn.music": "Music", "pn.voice": "Voice", "pn.fx": "Effects", "pn.display": "Display", "pn.smooth": "Smooth scaling",
+  "pn.vsub": "Voice subtitles", "pn.vsub.title": "Show the translated text of the voice clips in the message box (Brazilian Portuguese only)",
   "pn.debug": "Debug overlay (F1)", "pn.gamepad": "Gamepad", "pn.buttonsfor": "Buttons for", "pn.reset": "Reset to defaults",
   "pn.promptlabel": "Button names in game text", "pn.prompt.auto": "Icons of the last used device", "pn.prompt.letters": "Original letters (A B C)",
   "pn.saves": "Saves", "pn.controls": "Controls", "pn.language": "Language",

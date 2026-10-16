@@ -4,6 +4,7 @@ mod script;
 mod audio;
 mod actions;
 mod voice;
+mod voice_sub;
 pub mod i18n;
 
 pub fn dispatch(args: &[String]) -> Result<(), String> {

@@ -5,6 +5,8 @@
 //!       [--probes list.txt] [--probe-results file ...] [--icons docs/voice-icons.tsv] [--graphics-text docs/voice-graphics-text.tsv]
 //!   snt voice-export <files-dir> <out-dir> [--clips-csv work/voice/voice-clips.csv] [--rate 16000] [--all]
 //!       WAV (16-bit mono) of every script-started clip + <out-dir>/index.json (id -> seconds, samples, rate); for the Whisper pass
+//!   snt voice-import <lang-dir> <files-dir> <patch.tsv>   merge `id<TAB>speaker<TAB>text` lines into <lang-dir>/voice.json (`~text` = wrap + paginate; hash and duration filled in)
+//!   snt voice-check  <lang-dir> <files-dir>               validate <lang-dir>/voice.json (also run by `i18n-check ... all`): characters, widths, lines per page, reading speed
 //!   (`--probes` writes the entry points for engine/examples/voice_probe.rs, `--probe-results` reads its output; see docs/voice-inventory.md)
 //!
 //! Static analysis of the 39 script files (SPnn.BIN): each `CMD0D #id` node (script op 0x04, the only path that starts a
@@ -17,10 +19,14 @@ use sncore::script::{self as sc, Node, Operand};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 
+use super::voice_sub as sub;
+
 pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
     match args[0].as_str() {
         "voice-inventory" if args.len() >= 2 => Some(inventory(&args[1], &args[2..])),
         "voice-export" if args.len() >= 3 => Some(export(&args[1], &args[2], &args[3..])),
+        "voice-import" if args.len() == 4 => Some(sub::import(&args[1], &args[2], &args[3])),
+        "voice-check" if args.len() == 3 => Some(sub::check_cmd(&args[1], &args[2])),
         _ => None,
     }
 }

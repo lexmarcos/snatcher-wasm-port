@@ -164,6 +164,8 @@ pub struct Engine {
     pub reboot_in: u32,
     /// translation state (docs/i18n.md); English is the default and leaves every output unchanged
     pub i18n: I18n,
+    /// voice subtitles (engine/src/vsub.rs): a drawing overlay, never part of the game state
+    pub vsub: crate::vsub::VoiceSubs,
 }
 
 /// Language state: when `pt` is set and a translation pack is loaded, message and menu text come from the pack (per string,
@@ -174,7 +176,7 @@ pub struct I18n {
     pub pt: bool,
     pub pack: sncore::i18n::Translation,
     /// speaker names with the translation applied (same indices as `Engine::names`)
-    names: Vec<(u8, Vec<u8>)>,
+    pub(crate) names: Vec<(u8, Vec<u8>)>,
     /// text area (from 0x3800) of the current script followed by the translated strings, and original offset -> translated offset
     area: Vec<u8>,
     map: HashMap<u16, u16>,
@@ -199,7 +201,7 @@ impl Engine {
             text: TextWindow::new(), menu: None, menu_close: None, menu_open_t: 0, sub_stall: 0, fid_rng: false, mod_delay: 0, voice_age: 0, menu_open_ready: 0, menu_mv: None, e06e_hist: [0; 2], menu_in: (0, 0, 0), menu_in_cur: (0, 0, 0), e061_hist: [0; 2], regs: Regs::default(), data_file: None, frame: 0, out: vec![],
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
-            top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(), reboot_in: 0, i18n: I18n::default(),
+            top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(), reboot_in: 0, i18n: I18n::default(), vsub: Default::default(),
         }
     }
 
@@ -231,6 +233,7 @@ impl Engine {
         let mut e = Engine::new();
         std::mem::swap(&mut e.files, &mut self.files);
         e.i18n = std::mem::take(&mut self.i18n);
+        e.vsub.on = self.vsub.on;
         e.font = self.font.take(); e.names = std::mem::take(&mut self.names); e.input = self.input.take(); e.prompt = std::mem::take(&mut self.prompt);
         e.saves = std::mem::take(&mut self.saves); e.voice_len = std::mem::take(&mut self.voice_len); e.fm_len = std::mem::take(&mut self.fm_len);
         e.trace = self.trace; e.fid_rng = self.fid_rng; e.module_factory = self.module_factory; e.frame = self.frame;
@@ -382,6 +385,7 @@ impl Engine {
 
     pub fn tick(&mut self, pad: u8) {
         self.frame += 1;
+        self.vsub_step();
         if self.reboot_in > 0 {
             // SP state 4 -> 6: SUBCODE and the boot data are reloaded from the disc, then the title chain starts again
             self.reboot_in -= 1;
@@ -411,6 +415,7 @@ impl Engine {
             self.disp.frame_stalled();
             let mut fb = std::mem::take(&mut self.fb);
             self.disp.render(&mut fb);
+            self.vsub_overlay(&mut fb);
             self.fb = fb;
             return;
         }
@@ -491,6 +496,7 @@ impl Engine {
         if self.text_dirty { self.upload_text(); self.text_dirty = false; }
         let mut fb = std::mem::take(&mut self.fb);
         self.disp.render(&mut fb);
+        self.vsub_overlay(&mut fb);
         self.fb = fb;
     }
 
@@ -858,6 +864,7 @@ impl Engine {
     /// Returns true when the command completed this frame.
     fn seq_cmd(&mut self, a: &Action) -> bool {
         let w = |i: usize| rd16(&a.args, i);
+        self.vsub_on_command(a.cmd);
         match a.cmd {
             0x00 | 0x06 | 0x14 | 0x1A => true,
             0x01 => { // create objects from list (S:0x1004E)
@@ -916,6 +923,7 @@ impl Engine {
                         if (1..=35).contains(&n) { self.pcm_bank = n; } else {
                             self.voice_left = *self.voice_len.get(&n).unwrap_or(&90) + 6; // +6: oracle voice intervals are 5-7 frames longer than the decoded length (fid_cmp, play4)
                             self.out.push(Out::Voice { id: n });
+                            self.vsub_start(n, self.voice_left);
                         }
                         self.seq_step = 1;
                         false

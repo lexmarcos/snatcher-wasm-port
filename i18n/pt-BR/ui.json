@@ -58,6 +58,8 @@
     "pn.fx": "Efeitos",
     "pn.display": "Tela",
     "pn.smooth": "Suavizar a imagem",
+    "pn.vsub": "Legendas de voz",
+    "pn.vsub.title": "Mostra o texto traduzido das falas dubladas na caixa de mensagem (só em português do Brasil)",
     "pn.debug": "Sobreposição de depuração (F1)",
     "pn.gamepad": "Controle",
     "pn.buttonsfor": "Botões de",

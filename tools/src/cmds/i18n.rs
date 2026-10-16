@@ -116,7 +116,7 @@ pub fn json_parse(s: &str) -> Result<J, String> {
     Ok(v)
 }
 
-fn jstr(s: &str) -> String {
+pub(crate) fn jstr(s: &str) -> String {
     let mut o = String::from("\"");
     for c in s.chars() {
         match c { '"' => o.push_str("\\\""), '\\' => o.push_str("\\\\"), '\n' => o.push_str("\\n"), '\t' => o.push_str("\\t"), c => o.push(c) }
@@ -133,7 +133,7 @@ pub struct Entry { pub hash: u32, pub text: String }
 
 pub type FileTr = BTreeMap<u16, Entry>;
 
-fn lang_path(dir: &str, name: &str) -> String { format!("{dir}/{name}.json") }
+pub(crate) fn lang_path(dir: &str, name: &str) -> String { format!("{dir}/{name}.json") }
 
 fn read_entries(path: &str) -> Result<FileTr, String> {
     let Ok(txt) = fs::read_to_string(path) else { return Ok(FileTr::new()) };
@@ -284,14 +284,14 @@ pub fn load_file(dir: &str, spn: u8) -> Result<FileData, String> {
     Ok(FileData { sp: spn, strings: s.strings, items })
 }
 
-fn font_widths(dir: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn font_widths(dir: &str) -> Result<Vec<u8>, String> {
     let p = format!("{dir}/SUBCODE.BIN");
     let sub = fs::read(&p).map_err(|e| format!("{p}: {e}"))?;
     let font = sncore::actions::Font::from_subcode(&sub);
     Ok(font.widths)
 }
 
-fn spk_names(dir: &str) -> Vec<String> {
+pub(crate) fn spk_names(dir: &str) -> Vec<String> {
     let sub = fs::read(format!("{dir}/SUBCODE.BIN")).unwrap_or_default();
     if sub.is_empty() { return vec![]; }
     sncore::actions::speaker_names(&sub).into_iter().map(|(_, n)| String::from_utf8_lossy(&n).to_string()).collect()
@@ -437,7 +437,7 @@ pub fn reflow(text: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
     Ok(i::bytes_to_markup(&out))
 }
 
-fn read_names(path: &str) -> Result<BTreeMap<u8, String>, String> {
+pub(crate) fn read_names(path: &str) -> Result<BTreeMap<u8, String>, String> {
     let Ok(txt) = fs::read_to_string(path) else { return Ok(BTreeMap::new()) };
     let J::Obj(top) = json_parse(&txt)? else { return Err("names: not an object".into()) };
     let mut m = BTreeMap::new();
@@ -466,9 +466,9 @@ fn names_dump(dir: &str) -> Result<(), String> {
 /// Validation limits (documented in docs/i18n.md, measured with `i18n-stats`).
 
 #[derive(Default)]
-struct Report { fails: Vec<String>, warns: Vec<String>, checked: usize }
+pub(crate) struct Report { pub fails: Vec<String>, pub warns: Vec<String>, pub checked: usize }
 
-fn tokens(raw: &[u8]) -> (Vec<u8>, Vec<u8>, usize, usize) {
+pub(crate) fn tokens(raw: &[u8]) -> (Vec<u8>, Vec<u8>, usize, usize) {
     // (colour sequence, button placeholders, auto count, page count)
     let mut col = vec![]; let mut btn = vec![]; let (mut auto, mut page) = (0, 0);
     for &c in raw {
@@ -545,6 +545,8 @@ fn check(lang: &str, dir: &str, which: &[String]) -> Result<(), String> {
         let (a, b) = check_file(dir, lang, n, &widths, &names, &mut rep)?;
         tr += a; tot += b;
     }
+    // voice subtitles (docs/voice-subtitles.md): checked with the whole translation
+    if which.is_empty() || which[0] == "all" { super::voice_sub::check_into(lang, dir, &mut rep)?; }
     // names
     for (idx, t) in read_names(&lang_path(lang, "names"))? {
         match i::markup_to_bytes(&t) {
@@ -576,10 +578,11 @@ fn build(lang: &str, out: &str) -> Result<(), String> {
         // keys in names.json are speaker numbers (spk), as printed by `snt i18n-names`; the pack uses table indices (spk - 1)
         t.names.insert(idx.checked_sub(1).ok_or("name 0")?, i::markup_to_bytes(&s)?);
     }
+    t.voice = super::voice_sub::pack_voice(lang)?;
     let b = t.build();
     if let Some(p) = Path::new(out).parent() { fs::create_dir_all(p).map_err(|e| e.to_string())?; }
     fs::write(out, &b).map_err(|e| format!("{out}: {e}"))?;
-    println!("pack: {n} strings, {} names, {} bytes -> {out}", t.names.len(), b.len());
+    println!("pack: {n} strings, {} names, {} voice subtitles, {} bytes -> {out}", t.names.len(), t.voice.len(), b.len());
     Ok(())
 }
 
@@ -1406,7 +1409,7 @@ pub fn reflow_cmd(lang: &str, dir: &str, which: &[String]) -> Result<(), String>
 // ---------------------------------------------------------------- i18n-breaks (page breaks in the middle of a sentence)
 
 /// Plain text of one page for the break analysis: line breaks become spaces, colour / auto tokens vanish, a button placeholder is one word.
-fn plain_page(page: &[u8]) -> String {
+pub(crate) fn plain_page(page: &[u8]) -> String {
     let mut s = String::new();
     for &c in page {
         match c {
@@ -1566,5 +1569,5 @@ pub fn breaks_cmd(lang: &str, dir: &str, args: &[String]) -> Result<(), String> 
     Ok(())
 }
 
-fn tail_words(s: &str, n: usize) -> String { let w: Vec<&str> = s.split(' ').collect(); w[w.len().saturating_sub(n)..].join(" ") }
-fn head_words(s: &str, n: usize) -> String { s.split(' ').take(n).collect::<Vec<_>>().join(" ") }
+pub(crate) fn tail_words(s: &str, n: usize) -> String { let w: Vec<&str> = s.split(' ').collect(); w[w.len().saturating_sub(n)..].join(" ") }
+pub(crate) fn head_words(s: &str, n: usize) -> String { s.split(' ').take(n).collect::<Vec<_>>().join(" ") }

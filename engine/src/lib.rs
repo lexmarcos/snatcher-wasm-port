@@ -9,6 +9,7 @@ pub mod game;
 pub mod modules;
 pub mod menus;
 pub mod shoot;
+pub mod vsub;
 
 pub use game::{Engine, Out, H, W};
 
@@ -75,6 +76,13 @@ impl Game {
     pub fn set_language(&mut self, lang: &str) { self.e.set_language(lang.eq_ignore_ascii_case("pt-br") || lang.eq_ignore_ascii_case("pt")); }
     /// Install the pt-BR translation pack (`snt i18n-build`, served as /i18n/pt-BR.pack). Returns the number of strings, or -1 if the pack is invalid.
     pub fn load_translation(&mut self, pack: Vec<u8>) -> i32 { self.e.load_translation(&pack).map(|n| n as i32).unwrap_or(-1) }
+    /// Voice subtitles (docs/voice-subtitles.md): draw the pt-BR subtitle of a voice clip in the message box while it plays. Only has an effect in pt-BR
+    /// with a pack that holds subtitles (`voice_subtitle_count`); English output is never changed. Applies from the next clip.
+    pub fn set_voice_subtitles(&mut self, on: bool) { self.e.vsub.on = on; }
+    /// Number of voice subtitles in the installed pack.
+    pub fn voice_subtitle_count(&self) -> u32 { self.e.i18n.pack.voice.len() as u32 }
+    /// Clip id whose subtitle is on screen now, -1 when there is none (debugging, screenshot tests).
+    pub fn voice_subtitle_active(&self) -> i32 { self.e.vsub_active().map(|x| x as i32).unwrap_or(-1) }
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).
     pub fn tick(&mut self, pad: u16) {
         self.e.tick(pad as u8);

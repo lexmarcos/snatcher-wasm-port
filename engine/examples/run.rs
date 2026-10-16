@@ -2,7 +2,7 @@
 //! usage: cargo run --release -p snengine --example run -- <frames> <shot-every> <outdir> [inputs] [jump]
 //!   inputs: comma list of "frame:bits" (bits held for 1 frame), e.g. "200:32,300:32"
 //!           or "auto" = press C (confirm) every 40 frames
-//!   jump:   e.g. SP01:0, `boot` (copyright → title → …) or `ending` (DATA_Y16 staff roll)
+//!   jump:   e.g. SP01:0, SPnn:pc[:menu path[:scene]] (scene = file<<8|index in hex), `boot` (copyright → title → …) or `ending` (DATA_Y16 staff roll)
 //!   env: SHOTAT=f1,f2,.. (shots at these frames), SAVES=0:blk.hex,2:blk.hex (CONTINUE slots), SCROLLDBG=1
 use snengine::game::{Engine, FILE_NAMES, H, W};
 use std::io::BufWriter;
@@ -49,6 +49,8 @@ fn main() {
         e.set_language(true);
         println!("translation pack: {n} strings");
     }
+    // VSUB=1: voice subtitles on (pt-BR pack with a voice section, docs/voice-subtitles.md)
+    if std::env::var("VSUB").is_ok() { e.vsub.on = true; }
     // main-CPU boot screens need the IP image (HEADER.BIN + IP.BIN of the disc, assets/raw/{header,ip}.bin)
     for (n, f) in [("HEADER.BIN", "header.bin"), ("IP.BIN", "ip.bin")] {
         if let Ok(d) = std::fs::read(raw.join("..").join(f)) { e.load_file(n, d); }
@@ -71,6 +73,13 @@ fn main() {
             let (f, pc) = (it.next().unwrap(), it.next().unwrap());
             let path: Vec<u16> = it.next().map(|p| p.split(',').filter_map(|x| u16::from_str_radix(x, 16).ok()).collect()).unwrap_or_default();
             e.jump_path(57 + f[2..].parse::<u16>().unwrap(), u16::from_str_radix(pc, 16).unwrap(), &path);
+            // optional 4th field: scene resource (`file << 8 | index`, hex) shown before the script runs, as an earlier SCENE node would (docs/voice-inventory.md)
+            if let Some(r) = it.next().and_then(|x| u16::from_str_radix(x, 16).ok()) {
+                use sncore::script::vm::Action;
+                e.queue.push(Action { cmd: 0x0F, args: vec![] });
+                e.queue.push(Action { cmd: 0x11, args: vec![2, 0x8000, r >> 8] });
+                e.queue.push(Action { cmd: 0x12, args: vec![r & 0xFF] });
+            }
         }
         None => e.new_game(),
     }
