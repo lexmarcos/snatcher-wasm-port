@@ -175,6 +175,8 @@ pub struct Engine {
 pub struct I18n {
     pub pt: bool,
     pub pack: sncore::i18n::Translation,
+    /// the pictures redrawn for pt-BR, shared with `Engine::mem` while the language is pt-BR (docs/i18n-graphics.md)
+    gfx: Option<std::rc::Rc<sncore::gfxpatch::GfxPatch>>,
     /// speaker names with the translation applied (same indices as `Engine::names`)
     pub(crate) names: Vec<(u8, Vec<u8>)>,
     /// text area (from 0x3800) of the current script followed by the translated strings, and original offset -> translated offset
@@ -242,6 +244,7 @@ impl Engine {
         e.ix.gun_present = self.ix.gun_present; e.ix.gun_x = self.ix.gun_x; e.ix.gun_y = self.ix.gun_y; e.ix.gun_buttons = self.ix.gun_buttons;
         e.ix.gun_cal_done = self.ix.gun_cal_done;
         *self = e;
+        self.sync_gfx();
         self.out.push(Out::MusicStop);
         self.out.push(Out::Log("restart at the title".into()));
         self.boot();
@@ -697,12 +700,20 @@ impl Engine {
     /// Switch the language (true = pt-BR). Takes effect for the next message / menu drawn.
     pub fn set_language(&mut self, pt: bool) {
         self.i18n.pt = pt;
+        self.sync_gfx();
         self.i18n_refresh(sncore::script::sp_number(self.vm.script_id));
+    }
+
+    /// The picture patch is active in pt-BR only (a scene already on screen keeps its pictures until it is loaded again).
+    pub(crate) fn sync_gfx(&mut self) {
+        self.mem.gfx = if self.i18n.pt { self.i18n.gfx.clone() } else { None };
     }
 
     /// Install a translation pack (`snt i18n-build`). Returns the number of translated strings.
     pub fn load_translation(&mut self, pack: &[u8]) -> Result<usize, String> {
         self.i18n.pack = sncore::i18n::Translation::parse(pack)?;
+        self.i18n.gfx = if self.i18n.pack.gfx.is_empty() { None } else { Some(std::rc::Rc::new(self.i18n.pack.gfx.clone())) };
+        self.sync_gfx();
         self.i18n.rebuild_names(&self.names);
         self.i18n_refresh(sncore::script::sp_number(self.vm.script_id));
         Ok(self.i18n.pack.files.values().map(|m| m.len()).sum())
@@ -1053,7 +1064,12 @@ impl Engine {
         };
         match addr {
             0x1A800 => { self.script = data; self.i18n_refresh(sncore::script::sp_number(file)); }
-            0x28000 => { self.mem.map(gfx::DATA_BASE, data); self.data_file = Some(file); }
+            0x28000 => {
+                let mut data = data;
+                // pt-BR: raw patches of the DATA file (sprite frames of the redrawn pictures, docs/i18n-graphics.md)
+                if let (Some(g), Some(name)) = (&self.mem.gfx, FILE_NAMES.get(file as usize)) { g.apply_file(name, &mut data); }
+                self.mem.map(gfx::DATA_BASE, data); self.data_file = Some(file);
+            }
             _ => {}
         }
     }

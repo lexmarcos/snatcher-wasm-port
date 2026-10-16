@@ -5,6 +5,7 @@ mod audio;
 mod actions;
 mod voice;
 mod voice_sub;
+pub mod gfx_i18n;
 pub mod i18n;
 
 pub fn dispatch(args: &[String]) -> Result<(), String> {
@@ -13,6 +14,7 @@ pub fn dispatch(args: &[String]) -> Result<(), String> {
     if let Some(r) = audio::dispatch(args) { return r }
     if let Some(r) = actions::dispatch(args) { return r }
     if let Some(r) = i18n::dispatch(args) { return r }
+    if let Some(r) = gfx_i18n::dispatch(args) { return r }
     if let Some(r) = voice::dispatch(args) { return r }
     Err(format!("unknown command {:?}", args[0]))
 }

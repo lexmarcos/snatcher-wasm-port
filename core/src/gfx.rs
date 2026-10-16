@@ -33,6 +33,21 @@ pub fn md_rgba(w: u16) -> [u8; 4] {
 #[derive(Default, Clone)]
 pub struct SubMem {
     regions: Vec<(u32, Vec<u8>)>,
+    /// pt-BR picture patch (docs/i18n-graphics.md); `None` = the original pictures
+    pub gfx: Option<std::rc::Rc<crate::gfxpatch::GfxPatch>>,
+    /// debug trace of every blob decoded through [`SubMem::decomp`] (sub address, hash of the original, length, patched); off by default
+    pub trace: Option<std::cell::RefCell<Vec<TraceEv>>>,
+}
+
+/// One event of the debug trace of [`SubMem`] (blob decoded / written to VRAM / tile-channel DMA).
+#[derive(Clone, Debug)]
+pub enum TraceEv {
+    /// blob decoded at sub address `src` (hash and length of the original decoded data)
+    Blob { src: u32, hash: u64, len: usize, patched: bool },
+    /// the last blob was written to VRAM at `dst` by a scene VRAM list
+    VramUp { dst: u16, len: usize },
+    /// tile channel: staging buffer `buf` bytes `off..off+len` DMA'd to VRAM `vram`
+    TileSend { buf: usize, vram: u16, off: usize, len: usize },
 }
 
 impl SubMem {
@@ -42,6 +57,16 @@ impl SubMem {
         self.regions.retain(|r| r.0 != base);
         self.regions.push((base, bytes));
     }
+    /// Decode the LZKN1 blob at sub address `addr`; with a pt-BR picture patch installed the redrawn bytes replace the original ones.
+    pub fn decomp(&self, addr: u32) -> Result<(Vec<u8>, usize), lzkn::LzError> {
+        let s = self.slice_at(addr).ok_or(lzkn::LzError::Truncated)?;
+        let (mut out, used) = lzkn::decompress(s)?;
+        let hash = if self.trace.is_some() { crate::gfxpatch::fnv64(&out) } else { 0 };
+        let patched = self.gfx.as_ref().map(|g| g.apply(&mut out)).unwrap_or(false);
+        self.trace_ev(TraceEv::Blob { src: addr, hash, len: out.len(), patched });
+        Ok((out, used))
+    }
+    pub fn trace_ev(&self, e: TraceEv) { if let Some(t) = &self.trace { t.borrow_mut().push(e); } }
     pub fn slice_at(&self, addr: u32) -> Option<&[u8]> {
         let a = addr & 0xFF_FFFF;
         for (b, d) in &self.regions {
@@ -247,8 +272,7 @@ impl Vdp {
 
     /// Decompress an LZKN1 blob at sub address `src` and write it to VRAM (`subfn_07`).
     pub fn upload_lzkn(&mut self, mem: &SubMem, src: u32, dst: u16) -> Result<usize, lzkn::LzError> {
-        let s = mem.slice_at(src).ok_or(lzkn::LzError::Truncated)?;
-        let (out, _) = lzkn::decompress(s)?;
+        let (out, _) = mem.decomp(src)?;
         self.write_vram(dst, &out);
         Ok(out.len())
     }

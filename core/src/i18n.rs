@@ -300,6 +300,8 @@ pub struct Translation {
     pub names: HashMap<u8, Vec<u8>>,
     /// subtitles of the voice clips by clip id (docs/voice-subtitles.md); absent in packs made before the feature
     pub voice: HashMap<u16, VoiceSub>,
+    /// pictures with text redrawn in this language (docs/i18n-graphics.md); empty in packs made before the feature
+    pub gfx: crate::gfxpatch::GfxPatch,
 }
 
 // ---- voice subtitle timing (shared by the engine overlay and the validator `snt voice-check`)
@@ -341,7 +343,8 @@ const MAGIC: &[u8; 5] = b"SNTR\x01";
 impl Translation {
     /// Pack layout (big endian): "SNTR" 1, u8 nfiles, per file { u8 sp, u16 n, n x { u16 off, u16 len, bytes } },
     /// u8 nnames, nnames x { u8 index, u8 len, bytes }, then optionally (packs with voice subtitles)
-    /// u16 nvoice, nvoice x { u16 clip id, u8 speaker, u16 len, bytes }.
+    /// u16 nvoice, nvoice x { u16 clip id, u8 speaker, u16 len, bytes }, then optionally (packs with redrawn pictures, written with a voice
+    /// count even when it is 0) u32 len + a `gfxpatch` image.
     pub fn parse(b: &[u8]) -> Result<Translation, String> {
         let mut p = 0usize;
         let rd = |p: &mut usize, n: usize| -> Result<&[u8], String> {
@@ -373,6 +376,10 @@ impl Translation {
                 t.voice.insert(u16::from_be_bytes([h[0], h[1]]), VoiceSub { speaker: h[2], text: rd(&mut p, len)?.to_vec() });
             }
         }
+        if p < b.len() {
+            let h = rd(&mut p, 4)?; let n = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) as usize;
+            t.gfx = crate::gfxpatch::GfxPatch::parse(rd(&mut p, n)?)?;
+        }
         Ok(t)
     }
 
@@ -392,13 +399,17 @@ impl Translation {
         let mut ns: Vec<_> = self.names.keys().copied().collect(); ns.sort();
         o.push(ns.len() as u8);
         for n in ns { let v = &self.names[&n]; o.push(n); o.push(v.len() as u8); o.extend_from_slice(v); }
-        if !self.voice.is_empty() {
+        if !self.voice.is_empty() || !self.gfx.is_empty() {
             let mut ids: Vec<_> = self.voice.keys().copied().collect(); ids.sort();
             o.extend_from_slice(&(ids.len() as u16).to_be_bytes());
             for id in ids {
                 let v = &self.voice[&id];
                 o.extend_from_slice(&id.to_be_bytes()); o.push(v.speaker); o.extend_from_slice(&(v.text.len() as u16).to_be_bytes()); o.extend_from_slice(&v.text);
             }
+        }
+        if !self.gfx.is_empty() {
+            let g = self.gfx.build();
+            o.extend_from_slice(&(g.len() as u32).to_be_bytes()); o.extend_from_slice(&g);
         }
         o
     }

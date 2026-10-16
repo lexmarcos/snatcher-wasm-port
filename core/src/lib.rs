@@ -7,6 +7,7 @@ pub mod script;  // script bytecode (owner: script workstream)
 pub mod audio;   // PCM / sound formats (owner: audio workstream)
 pub mod actions; // sequencer, text, menus (owner: actions workstream)
 pub mod prompt;  // button-prompt icons (controllers)
+pub mod gfxpatch; // pt-BR picture substitution (decoded-blob patches)
 pub mod i18n;    // translation: markup, pt-BR glyphs, pack, text layout rules
 pub mod vwrap;   // voice subtitle layouts and run-time wrapping
 

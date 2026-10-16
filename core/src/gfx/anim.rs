@@ -599,16 +599,15 @@ impl Runtime {
                 rt.last_dma = rt.frame;
                 // S:0xE8C6: DMA buffer + off(+6) → VRAM (+4), len (+8) bytes.
                 let (vram, off, len) = (mem.u16(e + 4), mem.u16(e + 6) as usize, mem.u16(e + 8) as usize);
+                mem.trace_ev(crate::gfx::TraceEv::TileSend { buf, vram, off, len });
                 let end = (off + len).min(0x2000);
                 let data = rt.tilebuf[buf][off.min(end)..end].to_vec();
                 vdp.write_vram(vram, &data);
             };
             let decomp = |rt: &mut Runtime, e: u32| {
-                if let Some(s) = mem.slice_at(mem.u32(e) & 0xFF_FFFF) {
-                    if let Ok((out, _)) = crate::lzkn::decompress(s) {
-                        let n = out.len().min(0x2000);
-                        rt.tilebuf[buf][..n].copy_from_slice(&out[..n]);
-                    }
+                if let Ok((out, _)) = mem.decomp(mem.u32(e) & 0xFF_FFFF) {
+                    let n = out.len().min(0x2000);
+                    rt.tilebuf[buf][..n].copy_from_slice(&out[..n]);
                 }
             };
             // Dispatch S:0xE89C: `movea.l 0(pc,d0.w)` with d0 = (kind&0xF)*4 and the PC base at the
@@ -682,13 +681,12 @@ impl Runtime {
         let dst = mem.u16(p + 6);
         // subfn_07 S:0xF326 → lz_to_wordram S:0xF32C: decompress into Word RAM S:0xB8000
         // (= tile-stream buffer 0, later re-sent by channels with bit 7 set), then DMA to VRAM.
-        if let Some(s) = mem.slice_at(src) {
-            if let Ok((out, _)) = crate::lzkn::decompress(s) {
-                for (k, chunk) in out.chunks(0x2000).enumerate().take(3) {
-                    self.tilebuf[k][..chunk.len()].copy_from_slice(chunk);
-                }
-                vdp.write_vram(dst, &out);
+        if let Ok((out, _)) = mem.decomp(src) {
+            for (k, chunk) in out.chunks(0x2000).enumerate().take(3) {
+                self.tilebuf[k][..chunk.len()].copy_from_slice(chunk);
             }
+            mem.trace_ev(crate::gfx::TraceEv::VramUp { dst, len: out.len() });
+            vdp.write_vram(dst, &out);
         }
         self.vram_list = Some(p + 8);
     }

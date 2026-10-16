@@ -49,6 +49,8 @@ fn main() {
         e.set_language(true);
         println!("translation pack: {n} strings");
     }
+    // GFXTRACE=1: print every blob decoded for a picture (sub address, hash, length) and where it went (VRAM list / tile channel)
+    if std::env::var("GFXTRACE").is_ok() { e.mem.trace = Some(Default::default()); }
     // VSUB=1: voice subtitles on (pt-BR pack with a voice section, docs/voice-subtitles.md)
     if std::env::var("VSUB").is_ok() { e.vsub.on = true; }
     // main-CPU boot screens need the IP image (HEADER.BIN + IP.BIN of the disc, assets/raw/{header,ip}.bin)
@@ -106,6 +108,7 @@ fn main() {
     // SYNCU=n: calibration of the menu readiness (frames added to the engine's `since` counter of 'u' presses)
     let sync_u: u64 = std::env::var("SYNCU").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
     let shot_at: Vec<u64> = std::env::var("SHOTAT").map(|v| v.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_default();
+    let mut spr_tiles = std::collections::BTreeSet::<u16>::new(); // SPRTILES=1: every VRAM tile a sprite piece covered during the run
     let mut last = String::new();
     let mut last_fx = String::new();
     let mut last_msg = -2i32;
@@ -141,6 +144,14 @@ fn main() {
             println!("{l}");
         }
         for o in e.out.drain(..) { println!("{f:6} {o:?}"); }
+        if std::env::var("SPRTILES").is_ok() {
+            for sp in &e.disp.vdp.sprites {
+                if sp.y >= 128 + 224 || sp.x >= 128 + 256 { continue; }
+                let (w, h) = (((sp.size >> 2) & 3) as u16 + 1, (sp.size & 3) as u16 + 1);
+                for t in 0..w * h { spr_tiles.insert((sp.attr & 0x7FF) + t); }
+            }
+        }
+        if let Some(t) = &e.mem.trace { for ev in t.borrow_mut().drain(..) { println!("{f:6} gfx {ev:x?}"); } }
         let m = &e.disp.main;
         let ms = format!("fx e060={:x} e061={:x} e06c={:x} e064={:x} e036={:x} e070={:x}", m.e060, m.e061, m.e06c, m.e064, m.e036, m.e070);
         if std::env::var("FXTRACE").is_ok() && ms != last_fx { println!("{f:6} {ms}"); last_fx = ms; }
@@ -151,6 +162,9 @@ fn main() {
             println!("{f:6} scroll: vdp vs {} {} hs {} {} | sub pos {:x?} delta {:x?} mode {} | main eb00 {:x?} e700 {:x?} e076 {} e078 {:x} | plane {:x} {:x} {}x{} display {}",
                 v.vscroll_a, v.vscroll_b, v.hscroll_a, v.hscroll_b, sc.pos, sc.delta, sc.mode, m.eb00, m.e700, m.e076, m.e078, v.plane_a, v.plane_b, v.plane_w, v.plane_h, v.display);
         }
+        if let Ok(v) = std::env::var("CRAMDUMP") { if f == frames { // 128 big-endian words: palette set A then B, as shown at the end of the run
+            let mut b = vec![]; for w in e.disp.vdp.cram.iter().chain(e.disp.vdp.cram_b.iter()) { b.extend_from_slice(&w.to_be_bytes()); }
+            std::fs::write(v, b).unwrap(); } }
         if let Ok(v) = std::env::var("VRAMDUMP") { if f == frames { std::fs::write(v, &e.disp.vdp.vram).unwrap(); } }
         if let Ok(v) = std::env::var("OBJWATCH") { // "slot,slot": per-frame x/y (integer), flags, idx, delay, rep of animation objects
             for s in v.split(',').filter_map(|x| x.parse::<usize>().ok()) { let o = &e.disp.sub.objs[s]; println!("{f:6} objw {s} act {} x {} y {} fl {:02x} idx {:04x} dly {} rep {} sc {:x}", o.active, o.x >> 16, o.y >> 16, o.flags, o.idx, o.delay, o.rep, o.script); }
@@ -180,6 +194,7 @@ fn main() {
             enc.write_header().unwrap().write_image_data(&e.fb).unwrap();
         }
     }
+    if !spr_tiles.is_empty() { println!("sprite tiles: {:?}", spr_tiles); }
     // contact sheet: 4 columns
     let cols = 4usize; let rows = (sheet.len() + cols - 1) / cols;
     if rows > 0 {
