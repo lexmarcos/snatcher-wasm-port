@@ -10,11 +10,22 @@ O texto original em inglês não é copiado para o repositório: as adaptações
 * **Metal Gear** (robô assistente): tagarela, prestativo, literal, com humor involuntário. Frases completas e um pouco formais, mas nunca duras.
 * **Mika** (recepcionista/operadora): educada e delicada; trata Gillian por "Sr. Seed" até a intimidade crescer. Responde às cantadas com ironia leve.
 * **Chefe**: seco, autoritário, chama todo mundo pelo sobrenome ("Seed"). **Harry**: velho teimoso e rabugento, coloquial ("garoto", "rapaz", "pô").
-* Vozes: as falas dubladas continuam em inglês. A legenda fica **próxima do que se ouve** (mesma ideia, mesma ordem, mesmas palavras-chave), para quem
-  entende um pouco de inglês não estranhar. As linhas com voz aparecem no despejo de contexto como `vNNNN`.
+* Vozes: as falas dubladas continuam em inglês e **o jogo original nunca mostra texto junto com uma fala dublada** (a caixa de mensagem fica escura e vazia enquanto o áudio toca; todos os
+  1146 trechos são seguidos de espera). Portanto nenhuma linha de `SPxx.json` legenda uma fala: as marcas `vNNNN` do despejo de contexto só dizem que um `SAY` vem logo antes ou depois de um trecho
+  (não são a transcrição dele). As legendas das falas ficam em `voice.json` (uma por trecho, `docs/voice-subtitles.md`) e seguem as regras da seção "Legendas das falas" abaixo.
 * Erros de digitação do original ("eachother", "your not serious") não se reproduzem: traduz-se o sentido.
 * Aspas: usar `"` e `'` (não há aspas curvas na fonte). Reticências: `...` como no original. Travessão: usar `-` ou reformular.
 * Datas dos arquivos de pessoal: dia/mês/ano (25/05/1959).
+
+## Legendas das falas (`voice.json`)
+* A legenda acompanha o que se **ouve**: mesma ideia, mesma ordem, palavras-chave do inglês reconhecíveis (quem entende um pouco de inglês não deve estranhar). Pode condensar quando o ritmo exigir,
+  nunca inventar nem acrescentar informação. Tom e vocabulário são os mesmos das linhas de `SPxx.json` (Gillian irônico, Metal Gear tagarela e formal, Harry rabugento, Mika educada...), com os mesmos termos do glossário.
+* Velocidade de leitura: no máximo 17 caracteres por segundo, contando o tempo do trecho mais a permanência extra (até 1,5 s) que o motor concede; `snt voice-check` reprova o que passa disso.
+  Trechos rápidos pedem frases enxutas (cortar "bem," "então," repetições, preferir a forma curta).
+* Falas curtas e exclamações com palavra ("Cuidado!", "Evacuar!") ganham legenda; gemidos, gritos, espirros, risadas e efeitos (sem palavras) não ganham (`voice.json` não os lista).
+* Nome do falante: só quando o contexto deixa claro (a linha de nome aparece como numa mensagem); na dúvida, sem nome. Número do falante = o de `snt i18n-names`.
+* Páginas: até 3 linhas por página (o motor divide o tempo do trecho entre as páginas pelo tamanho do texto): fim de página em fim de frase sempre que possível. Quebras de linha com `{nl}` (ou `~` no importador).
+* Colchetes e efeitos sonoros do roteiro não se repetem: a legenda é só a fala.
 
 ## Nomes próprios (ficam como estão)
 Gillian Seed, Jamie Seed, Jean-Jack Gibson (Gibson), Katrina, Mika, Harry (Benson), Metal Gear, Napoleon, Isabella (Velvet), Freddy (Nielsen),

@@ -3,6 +3,7 @@
 
   snt voice-export assets/raw/files work/voice/wav
   python3 -I scripts/voice-transcribe.py [--jobs 3] [--only 450,451] [--redo]
+  python3 -I scripts/voice-transcribe.py --alt          # second pass without the names prompt (raw_noprompt/), kept as `alt` in en.json
   python3 -I scripts/voice-transcribe.py --merge        # only rebuild work/voice/transcripts/en.json
 
 Reads the server URL and key from work/whisper.env (gitignored) or the environment variables WHISPER_URL / WHISPER_API_KEY.
@@ -16,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WAV = os.path.join(ROOT, "work/voice/wav")
 OUT = os.path.join(ROOT, "work/voice/transcripts")
 RAW = os.path.join(OUT, "raw")
+ALT = os.path.join(OUT, "raw_noprompt")  # second opinion: the same clip without the names prompt (--alt)
 PROMPT = ("Gillian Seed, Jean-Jack Gibson, Mika Slayton, Metal Gear, Junker, Neo Kobe, Snatcher, Benson, Napoleon, Katrina, "
           "Jamie, Harry Benson, Lisa, Random Hajile, Elijah Modnar, Chief Cunningham, Isabella Velvet, Jordan.")
 
@@ -49,8 +51,8 @@ def post(url, key, path, prompt):
         return json.loads(r.read())
 
 
-def one(cid, url, key, redo):
-    f = os.path.join(RAW, f"{cid}.json")
+def one(cid, url, key, redo, alt=False):
+    f = os.path.join(ALT if alt else RAW, f"{cid}.json")
     if os.path.exists(f) and not redo:
         return cid, "skip"
     wav = os.path.join(WAV, f"v{cid:04d}.wav")
@@ -58,9 +60,9 @@ def one(cid, url, key, redo):
     for attempt in range(5):
         try:
             t0 = time.time()
-            j = post(url, key, wav, PROMPT)
+            j = post(url, key, wav, None if alt else PROMPT)
             j["_elapsed"] = round(time.time() - t0, 3)
-            if not j.get("text", "").strip():  # the prompt can make Whisper answer nothing: ask once more without it
+            if not alt and not j.get("text", "").strip():  # the prompt can make Whisper answer nothing: ask once more without it
                 j2 = post(url, key, wav, None)
                 if j2.get("text", "").strip():
                     j2["_elapsed"] = j["_elapsed"]
@@ -112,7 +114,9 @@ def merge():
                          "no_speech_prob": s.get("no_speech_prob"), "compression_ratio": s.get("compression_ratio")})
             for w in s.get("words", []) or []:
                 words.append({"w": w["word"].strip(), "start": w["start"], "end": w["end"], "p": w.get("probability")})
-        out[cid] = {"seconds": meta["seconds"], "text": j.get("text", "").strip(), "segments": segs, "words": words,
+        fa = os.path.join(ALT, f"{cid}.json")
+        alt = json.load(open(fa)) if os.path.exists(fa) else None
+        out[cid] = {"alt": alt["text"].strip() if alt else None, "seconds": meta["seconds"], "text": j.get("text", "").strip(), "segments": segs, "words": words,
                     "avg_logprob": min([s["avg_logprob"] for s in segs if s["avg_logprob"] is not None], default=None),
                     "no_speech_prob": max([s["no_speech_prob"] for s in segs if s["no_speech_prob"] is not None], default=None),
                     "elapsed": j.get("_elapsed"), "noprompt": bool(j.get("_noprompt"))}
@@ -144,6 +148,9 @@ def main():
     jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else 3
     only = {int(x) for x in a[a.index("--only") + 1].split(",")} if "--only" in a else None
     redo = "--redo" in a
+    alt = "--alt" in a
+    if alt:
+        os.makedirs(ALT, exist_ok=True)
     e = env()
     url, key = e["WHISPER_URL"], e["WHISPER_API_KEY"]
     ids = sorted(int(k) for k in json.load(open(os.path.join(WAV, "index.json"))))
@@ -154,7 +161,7 @@ def main():
     lock = threading.Lock()
     fails = []
     with ThreadPoolExecutor(jobs) as ex:
-        for cid, st in ex.map(lambda i: one(i, url, key, redo), ids):
+        for cid, st in ex.map(lambda i: one(i, url, key, redo, alt), ids):
             with lock:
                 done += 1
                 if st.startswith("FAILED"):
