@@ -263,3 +263,44 @@ fn draw_page(win: &mut TextWindow, font: &Font, names: &[(u8, Vec<u8>)], speaker
         y += i::TALL_PITCH as usize;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame_with(boxes: &[(usize, usize)]) -> Vec<u8> {
+        let mut fb = vec![0u8; W * H * 4];
+        for p in fb.chunks_mut(4) { p[3] = 255; }
+        for &(x0, x1) in boxes { for y in PORTRAIT_TOP..PORTRAIT_TOP + 64 { for x in x0..x1 { let k = (y * W + x) * 4; fb[k] = 200; fb[k + 1] = 200; fb[k + 2] = 200; } } }
+        fb
+    }
+
+    #[test]
+    fn the_strip_scan_finds_the_portrait_frames() {
+        let (strip, runs, top) = scan_strip(&frame_with(&[(24, 88), (168, 232)]));
+        assert!(strip);
+        assert_eq!(runs, vec![(24, 87), (168, 231)]);
+        assert_eq!(top, PORTRAIT_TOP);
+        assert_eq!(scan_strip(&frame_with(&[])).1, vec![]);
+        // a portrait at the very edge of the screen ends the run at the last column
+        assert_eq!(scan_strip(&frame_with(&[(192, 256)])).1, vec![(192, 255)]);
+        // a picture that reaches the bottom of the screen is not a strip
+        let mut fb = frame_with(&[]);
+        for y in 140..224 { for x in 8..W - 8 { let k = (y * W + x) * 4; fb[k] = 90; } }
+        assert!(!scan_strip(&fb).0);
+    }
+
+    #[test]
+    fn a_new_portrait_on_the_text_forces_a_new_layout_a_vanished_one_waits() {
+        let lane = vwrap::layout_for(&[(24, 87)], true, true);
+        assert_eq!(lane.kind, VKind::Lane);
+        assert!(!conflicts(&lane, true, &[(24, 87)]));
+        assert!(conflicts(&lane, true, &[(24, 87), (96, 159)]), "a portrait appeared in the lane");
+        assert!(!conflicts(&lane, true, &[]), "a portrait left: the lane stays until the next page");
+        let bx = vwrap::layout_for(&[], true, true);
+        assert!(conflicts(&bx, true, &[(24, 87)]));
+        let band = vwrap::layout_for(&[(24, 87), (168, 231)], true, true);
+        assert!(!conflicts(&band, true, &[(24, 87), (96, 159), (168, 231)]) && !conflicts(&band, true, &[]));
+        assert!(conflicts(&band, false, &[]) && conflicts(&vwrap::layout_for(&[], false, true), true, &[]));
+    }
+}

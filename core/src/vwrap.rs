@@ -138,8 +138,8 @@ pub fn all_layouts(named: bool) -> Vec<(&'static str, VLayout)> {
 pub const LANE_MIN: u32 = 120;
 /// Gap kept between a portrait frame and the text of a lane.
 pub const LANE_GAP: u32 = 8;
-/// Screen columns a lane may use (the message box's name starts at X 16, its text ends at X 232).
-pub const LEFT_EDGE: u32 = 16;
+/// Screen columns a lane may use (the text of a message box spans X 24..232).
+pub const LEFT_EDGE: u32 = 24;
 pub const RIGHT_EDGE: u32 = 240;
 
 /// The layout for the occupied columns of the strip: `runs` = inclusive column ranges (x0, x1) of everything that is not black in the strip rows (the
@@ -159,7 +159,7 @@ pub fn layout_for(runs: &[(u32, u32)], strip: bool, named: bool) -> VLayout {
     let mut best: Option<VLayout> = None;
     for (lo, hi) in lanes {
         if hi <= lo + 8 { continue; }
-        let l = VLayout { kind: VKind::Lane, x_name: lo, x_text: lo + 8, right: if hi >= RIGHT_EDGE { 232 } else { hi }, name_inline: false, pref: 4, max: 5.min(cap) };
+        let l = VLayout { kind: VKind::Lane, x_name: lo, x_text: lo, right: if hi >= RIGHT_EDGE { 232 } else { hi }, name_inline: false, pref: 4, max: 5.min(cap) };
         if l.right < l.x_text + LANE_MIN { continue; }
         if best.map_or(true, |b| l.width() > b.width()) { best = Some(l); }
     }
@@ -253,11 +253,11 @@ mod tests {
         assert_eq!((b.kind, b.x_name, b.x_text, b.right, b.name_inline), (VKind::Box, 16, 24, 232, false));
         // Gillian at the left (frame columns 24..87): the lane starts right of it
         let l = layout_for(&[(24, 87)], true, true);
-        assert_eq!((l.kind, l.x_name, l.x_text, l.right), (VKind::Lane, 96, 104, 232));
+        assert_eq!((l.kind, l.x_name, l.x_text, l.right), (VKind::Lane, 96, 96, 232));
         assert!(l.width() >= LANE_MIN);
         // the Chief alone at the right (168..231): the lane is left of it
         let r = layout_for(&[(168, 231)], true, true);
-        assert_eq!((r.kind, r.x_name, r.x_text, r.right), (VKind::Lane, 16, 24, 160));
+        assert_eq!((r.kind, r.x_name, r.x_text, r.right), (VKind::Lane, 24, 24, 160));
         // two portraits (left and right): the 80 px gap is too narrow, the band above them
         let lr = layout_for(&[(24, 87), (168, 231)], true, true);
         assert_eq!((lr.kind, lr.x_text, lr.right, lr.name_inline), (VKind::Band, 24, 232, true));

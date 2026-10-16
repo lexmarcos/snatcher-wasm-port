@@ -3,6 +3,7 @@
 use snengine::game::{Engine, FILE_NAMES, H, W};
 use sncore::i18n::{self as i, Translation, VoiceSub};
 use sncore::script::vm::Action;
+use sncore::vwrap::VKind;
 
 fn engine() -> Option<Engine> {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/raw");
@@ -81,7 +82,11 @@ fn pt_subtitle_appears_during_a_clip_and_disappears_after_it_without_touching_th
         assert_eq!(off.debug_info(), on.debug_info(), "game state differs at frame {f}");
         assert_eq!(off.voice_left, on.voice_left);
         match on.vsub_active() {
-            Some(77) => { seen77 = true; last_active = f; assert!(strip_white(&on) > 60 && hash(&on) != hash(&off), "no text in the strip at frame {f}"); differs |= hash(&on) != hash(&off); }
+            Some(77) => {
+                seen77 = true; last_active = f;
+                // the text waits for the portraits of the clip (SETTLE frames), then it is in the strip
+                if on.vsub_info().is_some() { assert!(strip_white(&on) > 60 && hash(&on) != hash(&off), "no text in the strip at frame {f}"); differs |= hash(&on) != hash(&off); }
+            }
             Some(79) => { seen79 = true; last_active = f; page_hashes.insert(hash(&on)); }
             Some(78) => panic!("clip 78 has no subtitle"),
             Some(x) => panic!("unexpected clip {x}"),
@@ -115,8 +120,9 @@ fn a_picture_without_a_strip_gets_a_compact_band_at_the_bottom() {
     let mut checked = false;
     for _ in 0..400 {
         on.tick(0); off.tick(0);
-        if on.vsub_active() != Some(221) { continue; }
+        if on.vsub_active() != Some(221) || on.vsub_info().is_none() { continue; }
         checked = true;
+        assert_eq!(on.vsub_info().unwrap().kind, VKind::Compact);
         // the picture area is identical, the bottom rows show the subtitle on black
         for y in 0..160 { assert_eq!(on.fb[y * W * 4..(y + 1) * W * 4], off.fb[y * W * 4..(y + 1) * W * 4], "picture row {y} changed"); }
         let white = |e: &Engine, y0: usize, y1: usize| (y0..y1).map(|y| (0..W).filter(|&x| e.fb[(y * W + x) * 4..(y * W + x) * 4 + 3] == [252, 252, 252]).count()).sum::<usize>();
@@ -124,4 +130,112 @@ fn a_picture_without_a_strip_gets_a_compact_band_at_the_bottom() {
         break;
     }
     assert!(checked, "the clip never started");
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Layouts next to the portraits (docs/voice-subtitles.md section 4): the portrait frames stay visible, the text stays in the free area.
+
+/// The Chief's office in the Junker HQ (SP06:05d6): clip 83 is spoken over a black screen, 86 shows Mika's portrait on the left, 87 Mika and the Chief
+/// (left and right), 88 all three portraits (the middle one is Gillian's).
+fn office(pack: Translation, on: bool) -> Option<Engine> {
+    let mut e = engine()?;
+    e.load_translation(&pack.build()).unwrap();
+    e.set_language(true);
+    e.vsub.on = on;
+    for id in 83u16..=89 { e.voice_len.insert(id, 200); }
+    e.jump_path(57 + 6, 0x05d6, &[]);
+    Some(e)
+}
+
+fn office_pack() -> Translation {
+    let mut t = Translation::default();
+    t.names.insert(3, i::markup_to_bytes("Mika").unwrap());
+    t.names.insert(6, i::markup_to_bytes("Chefe").unwrap());
+    let long = "Obrigado por vir, Seed. Sou Benson Cunningham, Chefe das operações Junker. Já ouvi falar do seu treinamento especial no exército e espero que o use bem neste novo posto.";
+    for (id, sp) in [(83u16, 4u8), (86, 4), (87, 7), (88, 0)] {
+        t.voice.insert(id, VoiceSub { speaker: sp, text: i::markup_to_bytes(long).unwrap() });
+    }
+    t
+}
+
+/// Occupied column runs of the strip rows 149..214 of a frame (the portrait frames), inclusive ranges.
+fn portrait_runs(e: &Engine) -> Vec<(usize, usize)> {
+    let lit = |x: usize| (149..214).any(|y| { let k = (y * W + x) * 4; e.fb[k..k + 3] != [0, 0, 0] });
+    let mut runs: Vec<(usize, usize)> = vec![];
+    let mut x = 0;
+    while x < W {
+        if !lit(x) { x += 1; continue; }
+        let x0 = x; let mut gap = 0;
+        while x < W && gap < 4 { if lit(x) { gap = 0; } else { gap += 1; } x += 1; }
+        runs.push((x0, x - gap - 1));
+    }
+    runs
+}
+
+/// Runs the office with and without subtitles in step; for every frame where the subtitle is drawn checks that the portrait rectangles are untouched
+/// and that every changed pixel is inside the rectangle the overlay reports. Returns the (clip, layout kind, portraits, lines of text) it saw.
+fn office_layouts() -> Option<Vec<(u16, VKind, usize)>> {
+    let (mut on, mut off) = (office(office_pack(), true)?, office(without_voice_office(), false)?);
+    let mut seen: Vec<(u16, VKind, usize)> = vec![];
+    for f in 0..2600usize {
+        let pad = if f % 40 == 39 { 0x20 } else { 0 };
+        on.tick(pad); off.tick(pad);
+        assert_eq!(off.debug_info(), on.debug_info(), "game state differs at frame {f}");
+        let (Some(id), Some(info)) = (on.vsub_active(), on.vsub_info().cloned()) else { continue };
+        let runs = portrait_runs(&off);
+        // 1. the portrait rectangles (frame columns x rows 149..213) are pixel-identical with the subtitle on
+        for &(x0, x1) in &runs {
+            for y in 149..214 { assert_eq!(on.fb[(y * W + x0) * 4..(y * W + x1 + 1) * 4], off.fb[(y * W + x0) * 4..(y * W + x1 + 1) * 4], "clip {id} frame {f}: a portrait was painted over (rows {y}, x {x0}..{x1})"); }
+        }
+        // 2. every changed pixel is inside the overlay's rectangle, and the rectangle clears the portraits
+        let (rx0, ry0, rx1, ry1) = info.rect;
+        for y in 0..H { for x in 0..W {
+            let k = (y * W + x) * 4;
+            if on.fb[k..k + 4] != off.fb[k..k + 4] { assert!(x >= rx0 && x < rx1 && y >= ry0 && y < ry1, "clip {id} frame {f}: pixel ({x},{y}) changed outside the reported rect {:?}", info.rect); }
+        } }
+        for &(x0, x1) in &runs { assert!(!(rx0 <= x1 && x0 < rx1 && ry0 < 214 && 149 < ry1), "clip {id} frame {f}: the subtitle rect {:?} overlaps the portrait at {x0}..{x1}", info.rect); }
+        if !seen.iter().any(|s| s.0 == id && s.1 == info.kind) { seen.push((id, info.kind, runs.len())); }
+    }
+    Some(seen)
+}
+
+fn without_voice_office() -> Translation { let mut t = office_pack(); t.voice.clear(); t }
+
+#[test]
+fn portraits_stay_visible_and_the_text_stays_in_the_free_area() {
+    let Some(seen) = office_layouts() else { return };
+    // black screen, no portrait: the message box; one portrait: a lane next to it; two or three portraits: the band above them
+    assert!(seen.contains(&(83, VKind::Box, 0)), "{seen:?}");
+    assert!(seen.contains(&(86, VKind::Lane, 1)), "{seen:?}");
+    assert!(seen.contains(&(87, VKind::Band, 2)), "{seen:?}");
+    assert!(seen.contains(&(88, VKind::Band, 3)), "{seen:?}");
+}
+
+/// The layout does not jump during a clip: once placed it stays the same while the strip does not change.
+#[test]
+fn the_layout_is_stable_during_a_clip() {
+    let Some(mut on) = office(office_pack(), true) else { return };
+    let mut per_clip: std::collections::BTreeMap<u16, Vec<VKind>> = Default::default();
+    for f in 0..2600usize {
+        on.tick(if f % 40 == 39 { 0x20 } else { 0 });
+        if let (Some(id), Some(info)) = (on.vsub_active(), on.vsub_info()) { let v = per_clip.entry(id).or_default(); if v.last() != Some(&info.kind) { v.push(info.kind); } }
+    }
+    for (id, kinds) in &per_clip { assert_eq!(kinds.len(), 1, "clip {id} changed layout: {kinds:?}"); }
+    assert!(per_clip.len() >= 3, "{per_clip:?}");
+}
+
+/// Nothing is drawn before the portraits of the clip are on screen (`SETTLE` frames after the start) when the clip loads a portrait scene.
+#[test]
+fn the_first_draw_waits_for_the_portraits() {
+    let Some(mut on) = office(office_pack(), true) else { return };
+    let mut start: Option<usize> = None;
+    for f in 0..900usize {
+        on.tick(if f % 40 == 39 { 0x20 } else { 0 });
+        if on.vsub_active() == Some(86) {
+            let s = *start.get_or_insert(f);
+            if on.vsub_info().is_some() { assert!(f - s + 1 >= sncore::vwrap::SETTLE as usize, "drawn {} frames after the start", f - s); break; }
+        }
+    }
+    assert!(start.is_some());
 }
