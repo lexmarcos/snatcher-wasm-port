@@ -95,7 +95,8 @@ In the box and lane layouts the name is its own line in the speaker's colour; in
 ### The rest
 * **Overlay on the finished frame**: no game state, script flow or timing is touched (tests compare `debug_info` frame by frame); with the option off, in English, or without a subtitle for the clip nothing is drawn, so the output is byte-identical.
 * **Start/stop**: sequencer command 0x0D with an id >= 36 starts the subtitle (`Out::Voice` is emitted at the same place); it ends when the clip is over plus the hold, when the
-  script starts another clip (replaced), draws a message, opens a menu, or runs a command that changes the picture (fade, clear, scene, load).
+  script starts another clip (replaced), draws a message or opens a menu. A command that changes the picture (fade, clear, scene, load, inset picture 0x15, shooting) ends it **only once the clip is over** (the reading hold):
+  while the clip still plays the player is listening to it, so the subtitle stays and the layout follows the strip (section 9).
 * **Timing**: display time = `voice_left` (clip length + 6 frames) + hold; the hold gives fast clips the reading time they lack (`voice_display_frames`: `ceil(chars / 17 * 60) - clip` frames counted from the first drawn frame, at least 15, at most 90).
 * **API**: wasm `set_voice_subtitles(bool)`, `voice_subtitle_count()`, `voice_subtitle_active()` (-1 or the clip id), `voice_subtitle_layout()` (0 none, 1 box, 2 lane, 3 band, 4 compact); native `Engine.vsub.on`, `Engine::vsub_info()` (layout, page, occupied columns, painted rectangle).
   `debug_jump("SP09:0ff4:070e")` also shows a scene resource first (DATA index, image) for screens that an earlier SCENE node would set up.
@@ -127,3 +128,21 @@ One review subagent (sonnet, high effort; read-only; prompt kept in `work/voice/
 conservative and correct speaker names. Findings applied (about 45 clips): awkward page breaks (fixed in the importer too: page ends are weighted by `break_severity` and a page may take a 4th line to avoid a mid-phrase break), register slips of informal speakers
 (Katrina "Não se preocupa", Gillian "Guarda o fôlego", the vendor "tira / estraga": colloquial imperatives as in the glossary), dense clips shortened, two terms ("Equipe de Limpeza Junker", "relacionamento"), capitalisation, four speaker names added where the
 conversation makes them certain (clips 132, 138, 169, 209). Not applied: naming the speaker of clip 88 (the Chief is likely but not certain), clip 293 stays without a subtitle (the words are unclear; someone should listen to it).
+
+## 9. Sweep of Act 1 and the inset-picture bug (2026-10-16)
+
+**Bug** (found while playing): in the Chief's office, after all the topics were asked, the Chief gives Seed the Junker ID card (SP06:0b6e, clips 95..102). The script is `CMD0D 96`, `sys.Q15_OR_ANIM` (command 0x15: the card
+as an inset picture at the top left of the scene), `CMD0A`. The overlay ended the subtitle on every picture command, including 0x15, so clip 96 (8 s, only the Chief's portrait, in the right slot)
+ran with an empty strip and the next clip (97, Gillian's portrait arrives) was the first one with text. It was not the portraits: the "wait for the portraits" rule and the right-only lane were fine
+(clip 95 before it and 97 after it draw as usual); the subtitle was taken away a few frames after it was created and never drawn.
+**Fix** (`vsub::vsub_on_command`): a picture command (0x02 fade, 0x0F clear, 0x11 load, 0x12 / 0x20 scene, 0x15 inset, 0x18 / 0x1E / 0x1F shooting) ends the subtitle only when the clip is over (`t >= play`, i.e. during the
+reading hold); while the clip plays only a message (0x08, 0x16), a menu, another clip or the end of the time end it. `VoiceSubs::ended_by` records why the last subtitle ended (the command, `END_TIME`, `END_SCREEN`, `END_REPLACED`).
+
+**Sweep** (`engine/examples/vsub_sweep.rs`, the same code runs in `engine/tests/vsub.rs` over `engine/tests/vsub_roots.txt`): plays script entry points (`SPnn:pc[:menu path[:scene]]`, story flags `FLAGS=zero|ones|alt|randN`) with the real pack and
+checks for every clip that starts: (a) the subtitle is drawn at most `MAX_LAG` = 24 frames after the clip starts (18 = `SETTLE` is normal; `LATE` / `MISSING` otherwise), (b) what is drawn is the text of the clip that started last (`WRONG`),
+(c) nothing is drawn after clip + hold (`STALE`) or while a message box is open (`MSG`), (d) a subtitle is never taken away while its clip plays and no message, menu or other clip came (`EARLY`, with the command). `CUT` = the script ended the clip
+itself within the first frames (not a violation). Usage: `vsub_sweep i18n/build/pt-BR.pack 40000 SP06:0b6e::0a00 [more roots | roots.txt]`, `ALL=1` lists the OK clips, `ONLY=<id>`, `PNG=<dir>` saves a frame of each violation.
+Roots: every Act 1 clip start (`CMD0D` in SP06..SP19) gives the enclosing sequence of the script (from `snt script-disasm`: the nearest line with a smaller indent), with the scene of `work/voice/voice-scenes.csv`, plus the roots of `work/voice/probes.txt`.
+**Static check** (all 292 Act 1 clips, no run needed): between a `CMD0D` and its `CMD0A` the Act 1 scripts only contain WAIT, ANIM, ANIMWAIT, MUSIC and, in clip 96 only, `sys.Q15_OR_ANIM`; so clip 96 was the only clip a picture command could cut.
+Clips without an entry that Act 1 can start: all are non-speech (empty output, vocalisations 145 / 164 / 166 / 167 / 287, effects) or the known ones: 48 (game over voice), 165 (hallucination), 293 (unclear, no subtitle), and **300** (SP12:00cd, 6.1 s,
+Whisper: "And that's it." with a log-probability of -1.0 for the first 0.6 s, second pass "HUH? PFFT!": it sounds like a vocalisation after "Excuse me." at the door of Outer Heaven; someone should listen to it).
