@@ -3,6 +3,8 @@
 //!
 //!   snt voice-inventory <files-dir> [--csv triggers.csv] [--clips-csv clips.csv] [--scenes-csv scenes.csv] [--md tables.md]
 //!       [--probes list.txt] [--probe-results file ...] [--icons docs/voice-icons.tsv] [--graphics-text docs/voice-graphics-text.tsv]
+//!   snt voice-export <files-dir> <out-dir> [--clips-csv work/voice/voice-clips.csv] [--rate 16000] [--all]
+//!       WAV (16-bit mono) of every script-started clip + <out-dir>/index.json (id -> seconds, samples, rate); for the Whisper pass
 //!   (`--probes` writes the entry points for engine/examples/voice_probe.rs, `--probe-results` reads its output; see docs/voice-inventory.md)
 //!
 //! Static analysis of the 39 script files (SPnn.BIN): each `CMD0D #id` node (script op 0x04, the only path that starts a
@@ -18,8 +20,83 @@ use std::fs;
 pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
     match args[0].as_str() {
         "voice-inventory" if args.len() >= 2 => Some(inventory(&args[1], &args[2..])),
+        "voice-export" if args.len() >= 3 => Some(export(&args[1], &args[2], &args[3..])),
         _ => None,
     }
+}
+
+// ---------------------------------------------------------------- export for transcription
+
+/// Linear resampling of 16-bit mono (the clips are 16276 Hz; Whisper wants 16 kHz).
+fn resample(s: &[i16], from: f64, to: f64) -> Vec<i16> {
+    if (from - to).abs() < 0.5 || s.is_empty() { return s.to_vec(); }
+    let n = (s.len() as f64 * to / from).floor() as usize;
+    (0..n).map(|i| {
+        let t = i as f64 * from / to;
+        let k = t.floor() as usize;
+        let f = t - k as f64;
+        let a = s[k] as f64;
+        let b = s[(k + 1).min(s.len() - 1)] as f64;
+        (a + (b - a) * f).round() as i16
+    }).collect()
+}
+
+/// Ids of the clips that a script starts: the rows with `triggers > 0` of `voice-clips.csv` (written by `voice-inventory`).
+pub fn started_clips(csv: &str) -> Result<Vec<u16>, String> {
+    let t = fs::read_to_string(csv).map_err(|e| format!("{csv}: {e} (run snt voice-inventory --clips-csv first, or pass --all)"))?;
+    let mut lines = t.lines();
+    let head: Vec<&str> = lines.next().ok_or("empty csv")?.split(',').collect();
+    let (ci, ti) = (head.iter().position(|h| *h == "id").ok_or("no id column")?, head.iter().position(|h| *h == "triggers").ok_or("no triggers column")?);
+    let mut v = vec![];
+    for l in lines {
+        let f: Vec<&str> = l.split(',').collect();
+        let (Some(id), Some(tr)) = (f.get(ci).and_then(|x| x.parse::<u16>().ok()), f.get(ti).and_then(|x| x.parse::<u32>().ok())) else { continue };
+        if tr > 0 && id >= 36 { v.push(id); }
+    }
+    v.sort();
+    Ok(v)
+}
+
+fn export(dir: &str, out: &str, opts: &[String]) -> Result<(), String> {
+    let mut csv = "work/voice/voice-clips.csv".to_string();
+    let mut rate = 16000u32;
+    let mut all = false;
+    let mut it = opts.iter();
+    while let Some(o) = it.next() {
+        match o.as_str() {
+            "--clips-csv" => csv = it.next().ok_or("--clips-csv needs a path")?.clone(),
+            "--rate" => rate = it.next().and_then(|x| x.parse().ok()).ok_or("--rate needs a number")?,
+            "--all" => all = true,
+            x => return Err(format!("unknown option {x}")),
+        }
+    }
+    let rd = |n: &str| fs::read(format!("{dir}/{n}")).map_err(|e| format!("{dir}/{n}: {e}"));
+    let lt = rd("PCMLT_01.BIN")?;
+    let ld = rd("PCMLD_01.BIN")?;
+    let vrate = fd_to_hz(VOICE_FD);
+    let table = parse_voice_table(&lt);
+    let want: Option<BTreeSet<u16>> = if all { None } else { Some(started_clips(&csv)?.into_iter().collect()) };
+    fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let mut idx = String::from("{\n");
+    let mut n = 0;
+    let mut total = 0.0;
+    for v in &table {
+        if v.kind == 1 || v.id < 36 { continue; }
+        if let Some(w) = &want { if !w.contains(&v.id) { continue; } }
+        let blk = &ld[v.sector as usize * 2048..(v.sector as usize + v.sectors as usize) * 2048];
+        let s = decode_sm8(blk);
+        let secs = s.len() as f64 / vrate;
+        let r = resample(&s, vrate, rate as f64);
+        fs::write(format!("{out}/v{:04}.wav", v.id), sncore::audio::wav_bytes(&r, rate, 1)).map_err(|e| e.to_string())?;
+        if n > 0 { idx.push_str(",\n"); }
+        idx.push_str(&format!("  \"{}\": {{\"seconds\": {:.3}, \"samples\": {}, \"src_samples\": {}, \"rate\": {}}}", v.id, secs, r.len(), s.len(), rate));
+        n += 1;
+        total += secs;
+    }
+    idx.push_str("\n}\n");
+    fs::write(format!("{out}/index.json"), idx).map_err(|e| e.to_string())?;
+    println!("exported {n} clips, {:.1} min, {rate} Hz mono, to {out}", total / 60.0);
+    Ok(())
 }
 
 // ---------------------------------------------------------------- event trees
