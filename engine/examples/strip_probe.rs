@@ -50,15 +50,19 @@ fn main() {
             let mut cur: Vec<(u64, String)> = vec![];
             let mut ends: Vec<(u64, u16, u64, String)> = vec![];
             let _ = &mut cur;
+            let mut hist: std::collections::VecDeque<Vec<u16>> = Default::default();
             for fr in 1..=max {
                 e.tick(if fr % 40 == 0 { 0x20 } else { 0 });
+                hist.push_back((0..64).map(|k| e.disp.sub.objs[k].idx).collect());
+                if hist.len() > 14 { hist.pop_front(); }
                 for o in e.out.drain(..) { if let Out::Voice { id } = o { starts.push((fr, id, e.voice_left as u64)); } }
                 let probes: Vec<(u64, u16, u64)> = starts.iter().filter(|s| { let d = fr - s.0; [30, s.2 / 4, s.2 / 2, 3 * s.2 / 4, s.2.saturating_sub(4)].iter().any(|&k| k == d) }).cloned().collect();
                 for (f0, id, len) in probes {
                     let ps = portraits(&e).iter().map(|p| {
+                        let moved = hist.len() >= 14 && hist.front().unwrap()[p.0 - 1] != hist.back().unwrap()[p.0 - 1];
                         let mut h: u32 = 0x811c9dc5;
                         for y in 150..166 { for x in p.1 as usize..p.1 as usize + 64 { let k = (y * W + x) * 4; for b in 0..3 { h ^= e.fb[k + b] as u32; h = h.wrapping_mul(16777619); } } }
-                        format!("{}{}:{:08x}", p.1, if p.2 { "*" } else { "" }, h) }).collect::<Vec<_>>().join(",");
+                        format!("{}{}{}:{:08x}", p.1, if p.2 { "*" } else { "" }, if moved { "m" } else { "" }, h) }).collect::<Vec<_>>().join(",");
                     ends.push((f0, id, fr - f0, ps));
                     let _ = len;
                 }
@@ -67,6 +71,23 @@ fn main() {
             let mut by: std::collections::BTreeMap<(u64, u16), Vec<(u64, String)>> = Default::default();
             for (f0, id, d, ps) in ends { by.entry((f0, id)).or_default().push((d, ps)); }
             for ((f0, id), v) in by { println!("{p} id={id} f={f0} {}", v.iter().map(|(d, s)| format!("+{d}:[{s}]")).collect::<Vec<_>>().join(" ")); }
+        }
+        return;
+    }
+    if a.get(1).map(|s| s.as_str()) == Some("mouth") {
+        // mouth <root> <frames> <from> <to>: per frame, for every portrait: (flags, idx, frame address) of its three objects
+        let mut e = make(&a[2]);
+        let (max, from, to): (u64, u64, u64) = (a[3].parse().unwrap(), a[4].parse().unwrap(), a[5].parse().unwrap());
+        let mut v0 = 0u64;
+        for fr in 1..=max {
+            e.tick(if fr % 40 == 0 { 0x20 } else { 0 });
+            for o in e.out.drain(..) { if let Out::Voice { id } = o { println!("{fr}: VOICE {id} len={}", e.voice_left); v0 = fr; } }
+            if v0 > 0 && fr >= v0 + from && fr <= v0 + to {
+                let mut s = format!("{}:", fr - v0);
+                for p in portraits(&e) { s += &format!("  x{}:", p.1); for k in 2..=0 { let _ = k; } for sl in [p.0 - 2, p.0 - 1, p.0] { let o = &e.disp.sub.objs[sl]; s += &format!(" [{sl} fl{:x} i{} f{:x}]", o.flags, o.idx, o.frame & 0xFFFF); } }
+                println!("{s}");
+            }
+            if v0 > 0 && fr > v0 + to { if a.get(6).is_none() { break; } v0 = 0; }
         }
         return;
     }

@@ -117,6 +117,23 @@ impl VLayout {
     pub fn width(&self) -> u32 { self.right - self.x_text }
 }
 
+/// Frames after the clip start before the subtitle is placed (the portraits of the clip's scene arrive about 15 frames after the start, measured on the
+/// engine: SP06:032e, voice at frame 8, portrait objects at 19, visible at 23); the layout must not jump when they do. The display time and the reading
+/// speed are counted from here.
+pub const SETTLE: u32 = 18;
+
+/// The layouts a clip can get, with a representative set of occupied strip columns, for the validator: (label, layout). Left / right portrait frames are
+/// at X 24..87 and 168..231, the middle slot at 96..159 (`docs/voice-subtitles.md`).
+pub fn all_layouts(named: bool) -> Vec<(&'static str, VLayout)> {
+    vec![
+        ("box", layout_for(&[], true, named)),
+        ("lane-left-portrait", layout_for(&[(24, 87)], true, named)),
+        ("lane-right-portrait", layout_for(&[(168, 231)], true, named)),
+        ("band", layout_for(&[(24, 87), (168, 231)], true, named)),
+        ("compact", layout_for(&[], false, named)),
+    ]
+}
+
 /// Narrowest text column (px) that is used as a lane: about 18 characters. Below it the band is used (a 80 px gap between two portraits is 11 characters).
 pub const LANE_MIN: u32 = 120;
 /// Gap kept between a portrait frame and the text of a lane.

@@ -5,16 +5,12 @@
 //! Only pt-BR text, clip ids, durations and hashes are committed: the English transcripts stay in `work/voice/transcripts/` (gitignored). The tools read
 //! the flat copy `work/voice/transcripts/en.tsv` (written by `scripts/voice-transcribe.py`; the path can be set with the environment variable `VOICE_EN`)
 //! to fill and check the hash; without it the hash check is skipped.
-use super::i18n::{self as ti, json_parse, jstr, lang_path, spk_names, font_widths, Report, J};
+use super::i18n::{json_parse, jstr, lang_path, spk_names, font_widths, Report, J};
 use sncore::audio::{decode_sm8, fd_to_hz, parse_voice_table, VOICE_FD};
 use sncore::i18n as i;
+use sncore::vwrap as vw;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
-
-/// Lines per subtitle page produced by the automatic pagination (a page may hold more, up to the window: 5 lines with a name, 6 without).
-pub const WRAP_LINES: usize = 3;
-/// A page may take a 4th line when that avoids a break inside a phrase (costs a little).
-pub const WRAP_MAX: usize = 4;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VEntry { pub h: u32, pub d: String, pub s: u8, pub t: String }
@@ -97,56 +93,18 @@ fn speaker_arg(s: &str, names: &[String]) -> Result<u8, String> {
     names.iter().position(|n| n.eq_ignore_ascii_case(s)).map(|p| p as u8 + 1).ok_or(format!("unknown speaker {s:?} (see snt i18n-names)"))
 }
 
-/// Wrap a subtitle to the box width and split it into pages of at most `WRAP_LINES` lines. The page ends are chosen first (sentence ends and pauses
-/// before the middle of a clause: `break_severity`), then every page is wrapped on its own. `{page}` written by the author are kept; a `|` in the text
-/// forces a line break (that segment is flowed with `reflow` and cut between lines).
-pub fn wrap(text: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
-    let mut out: Vec<String> = vec![];
-    for seg in text.split("{page}") {
-        let seg = seg.trim();
-        if seg.contains('|') || seg.contains("{nl}") { out.push(wrap_lines(seg, spk, widths)?); continue; }
-        let bytes = i::markup_to_bytes(seg)?;
-        let words: Vec<Vec<u8>> = bytes.split(|&c| c == b' ').filter(|w| !w.is_empty()).map(|w| w.to_vec()).collect();
-        let n = words.len();
-        if n == 0 { continue; }
-        let sev = ti::word_severities(&words);
-        let lines_of = |a: usize, b: usize| ti::greedy_lines(&words[a..b].join(&b' '), spk, widths);
-        let mut best: Vec<(f64, usize)> = vec![(f64::INFINITY, 0); n + 1];
-        best[0] = (0.0, 0);
-        for j in 1..=n {
-            for a in (0..j).rev() {
-                let nl = lines_of(a, j).len();
-                if nl > WRAP_MAX { break; }
-                if best[a].0.is_infinite() { continue; }
-                let mut c = best[a].0 + 30.0 + if nl > WRAP_LINES { 12.0 } else { (WRAP_LINES - nl) as f64 };
-                if a > 0 { c += 20.0 * sev[a] as f64; }
-                if c < best[j].0 { best[j] = (c, a); }
-            }
-        }
-        let mut cuts = vec![];
-        let mut j = n;
-        while j > 0 { cuts.push(j); j = best[j].1; }
-        cuts.reverse();
-        let mut a = 0;
-        let mut pages = vec![];
-        for b in cuts { pages.push(i::bytes_to_markup(&lines_of(a, b).join(&i::NL))); a = b; }
-        out.push(pages.join("{page}"));
-    }
-    Ok(out.join("{page}"))
-}
-
-/// Segment with forced line breaks (`|`, `{nl}`): flow each part, then cut the lines into pages between lines.
-fn wrap_lines(seg: &str, spk: u8, widths: &[u8]) -> Result<String, String> {
-    let flowed = ti::reflow(seg, spk, widths)?;
-    let bytes = i::markup_to_bytes(&flowed)?;
-    let lines: Vec<&[u8]> = bytes.split(|&c| c == i::NL).collect();
-    Ok(lines.chunks(WRAP_LINES).map(|c| i::bytes_to_markup(&c.join(&i::NL))).collect::<Vec<_>>().join("{page}"))
+/// Text of a patch line: stored unwrapped. The engine wraps and pages at run time for the layout of the screen (`sncore::vwrap`), so a `{nl}` or
+/// `{page}` written by the author is kept as a hint (a forced line / page break) and nothing else is added. `|` is a forced line break (`{nl}`); a
+/// leading `~` (the old "wrap this for me") is accepted and ignored. Line breaks of the source file's text are not allowed.
+pub fn clean_text(t: &str) -> String {
+    let t = t.strip_prefix('~').unwrap_or(t);
+    t.split_whitespace().collect::<Vec<_>>().join(" ").replace(" | ", "{nl}").replace('|', "{nl}")
 }
 
 pub fn import(lang: &str, dir: &str, patch: &str) -> Result<(), String> {
     fs::create_dir_all(lang).map_err(|e| e.to_string())?;
     let txt = fs::read_to_string(patch).map_err(|e| format!("{patch}: {e}"))?;
-    let widths = font_widths(dir)?;
+
     let names = spk_names(dir);
     let dur = durations(dir)?;
     let en = read_en();
@@ -161,7 +119,7 @@ pub fn import(lang: &str, dir: &str, patch: &str) -> Result<(), String> {
         let id: u16 = f[0].trim().parse().map_err(|_| format!("{patch}:{}: bad clip id", ln + 1))?;
         let s = speaker_arg(f[1], &names).map_err(|e| format!("{patch}:{}: {e}", ln + 1))?;
         let d = dur.get(&id).ok_or(format!("{patch}:{}: clip {id} is not a voice clip", ln + 1))?;
-        let t = match f[2].strip_prefix('~') { Some(p) => wrap(p, s, &widths).map_err(|e| format!("{patch}:{}: {e}", ln + 1))?, None => f[2].to_string() };
+        let t = clean_text(f[2]);
         let h = en.get(&id).map(|e| en_hash(&e.text)).or_else(|| v.get(&id).map(|x| x.h)).ok_or(format!("{patch}:{}: no English transcript for clip {id} (work/voice/transcripts/en.tsv)", ln + 1))?;
         v.insert(id, VEntry { h, d: format!("{d:.3}"), s, t });
         count += 1;
@@ -189,7 +147,8 @@ pub fn check_into(lang: &str, dir: &str, rep: &mut Report) -> Result<usize, Stri
     let dur = durations(dir)?;
     let en = read_en();
     if en.is_empty() { rep.warns.push("voice: work/voice/transcripts/en.tsv not found, the English hashes are not checked".into()); }
-    let (mut hold_n, mut max_cps, mut pages_total) = (0usize, 0.0f64, 0usize);
+    let (mut hold_n, mut max_cps) = (0usize, 0.0f64);
+    let mut layout_stats: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
     for (id, e) in &v {
         rep.checked += 1;
         let t = format!("voice {id}");
@@ -203,40 +162,50 @@ pub fn check_into(lang: &str, dir: &str, rep: &mut Report) -> Result<usize, Stri
         let bytes = match i::markup_to_bytes(&e.t) { Ok(b) => b, Err(m) => { rep.fails.push(format!("{t}: {m}")); continue } };
         if bytes.is_empty() { rep.fails.push(format!("{t}: empty subtitle")); continue; }
         if bytes.iter().any(|&c| c == i::AUTO || matches!(c, 0xEC | 0xEE | 0xF0) || c == 0xF4 || (c < 0x20)) { rep.fails.push(format!("{t}: control tokens other than {{nl}}, {{page}} and colours")); }
-        // geometry: the layout of a pt-BR message with / without a name, 10 px pitch
-        let l = i::layout_message_in(&bytes, e.s, &widths, true);
-        let cap = i::lines_per_page(e.s as u32, true);
-        for (k, line) in l.lines.iter().enumerate() {
-            if line.x_end > i::RIGHT_SPEECH { rep.fails.push(format!("{t}: line {} is {} px wide, limit {}: \"{}\"", k + 1, line.x_end - i::X_SPEECH, i::RIGHT_SPEECH - i::X_SPEECH, i::bytes_to_markup(&line.text))); }
-            if line.cut { rep.fails.push(format!("{t}: line {} reaches the 50 character cut", k + 1)); }
-            if line.full_page { rep.fails.push(format!("{t}: page {} is full ({cap} lines) and the text goes on without {{page}}", line.page + 1)); }
-        }
-        let per_page = (0..l.pages).map(|p| l.lines.iter().filter(|x| x.page == p).count()).max().unwrap_or(0);
-        if per_page > WRAP_MAX { rep.warns.push(format!("{t}: a page has {per_page} lines (the automatic pagination uses {WRAP_LINES}, at most {WRAP_MAX})")); }
-        pages_total += l.pages;
-        // reading speed: the pages share the clip time plus the hold, in proportion to their text (engine/src/vsub.rs)
-        let pages: Vec<Vec<u8>> = bytes.split(|&c| c == i::PAGE).map(|p| p.to_vec()).collect();
-        let chars: usize = pages.iter().map(|p| i::voice_glyph_count(p)).sum();
+        // the subtitle is wrapped at run time for the layout of the screen (`sncore::vwrap`): check every layout a clip can get
+        let name = if e.s >= 2 { names.get(e.s as usize - 1).filter(|n| !n.is_empty()) } else { None };
+        let prefix_px = name.map_or(0, |n| { let nb = i::markup_to_bytes(n).unwrap_or_default(); vw::text_width(&widths, &nb) + vw::text_width(&widths, b": ") });
+        let chars: usize = bytes.split(|&c| c == i::PAGE).map(|p| i::voice_glyph_count(p)).sum();
         let play = (real * 60.0).ceil() as u32 + 6;
-        let (_, hold) = i::voice_display_frames(play, chars);
-        let secs = (play + hold) as f64 / 60.0;
+        // the reading time counts from the first frame the text is on screen (`SETTLE` after the start, when the clip loads a portrait scene)
+        let eff = play.saturating_sub(vw::SETTLE);
+        let (_, hold) = i::voice_display_frames(eff, chars);
+        let secs = (eff + hold) as f64 / 60.0;
         let cps = chars as f64 / secs;
         let need = chars as f64 / i::VOICE_READ_CPS;
-        if hold as f64 > i::VOICE_HOLD_MIN as f64 && need > play as f64 / 60.0 { hold_n += 1; }
+        if hold as f64 > i::VOICE_HOLD_MIN as f64 && need > eff as f64 / 60.0 { hold_n += 1; }
         max_cps = max_cps.max(cps);
         if need > secs + 0.02 {
             rep.fails.push(format!("{t}: reading speed {cps:.1} chars/s over the {secs:.1} s of the subtitle ({chars} chars, clip {real:.1} s + {:.1} s hold), limit {:.0}: shorten it", hold as f64 / 60.0, i::VOICE_READ_CPS));
         }
-        // a page must stay long enough on its own
-        let starts = i::voice_page_starts(&pages, play + hold);
-        for (k, p) in pages.iter().enumerate() {
-            let end = starts.get(k + 1).copied().unwrap_or(play + hold);
-            let ps = (end - starts[k]) as f64 / 60.0;
-            let pc = i::voice_glyph_count(p) as f64;
-            if pc / ps > i::VOICE_READ_CPS + 0.5 { rep.fails.push(format!("{t}: page {} shows {pc} chars for {ps:.1} s", k + 1)); }
+        for (label, lay) in vw::all_layouts(name.is_some()) {
+            let pp = if lay.name_inline { prefix_px } else { 0 };
+            let pages = vw::paginate(&bytes, &widths, &lay, pp);
+            if pages.is_empty() { rep.fails.push(format!("{t}: {label}: no text")); continue; }
+            for (k, pg) in pages.iter().enumerate() {
+                if pg.len() > lay.max { rep.fails.push(format!("{t}: {label}: page {} has {} lines (limit {})", k + 1, pg.len(), lay.max)); }
+                for (n, line) in pg.iter().enumerate() {
+                    let w = vw::text_width(&widths, line) + if n == 0 { pp } else { 0 };
+                    if w > lay.width() { rep.fails.push(format!("{t}: {label}: line is {w} px wide, limit {}: \"{}\"", lay.width(), i::bytes_to_markup(line))); }
+                }
+            }
+            let st = layout_stats.entry(label).or_default();
+            st.0 += pages.len();
+            st.1 = st.1.max(pages.len());
+            // a page must stay long enough on its own: the pages share the display time in proportion to their text
+            let pb: Vec<Vec<u8>> = pages.iter().map(|p| p.join(&i::NL)).collect();
+            let starts = i::voice_page_starts(&pb, eff + hold);
+            for (k, p) in pb.iter().enumerate() {
+                let end = starts.get(k + 1).copied().unwrap_or(eff + hold);
+                let ps = (end - starts[k]) as f64 / 60.0;
+                let pc = i::voice_glyph_count(p) as f64;
+                if pc / ps > i::VOICE_READ_CPS + 0.5 { rep.fails.push(format!("{t}: {label}: page {} shows {pc} chars for {ps:.1} s", k + 1)); }
+            }
         }
     }
-    println!("voice-check: {} subtitles, {pages_total} pages, {hold_n} need the hold, fastest {max_cps:.1} chars/s", v.len());
+    let ls: Vec<String> = layout_stats.iter().map(|(l, (n, m))| format!("{l} {n} pages (longest clip {m})")).collect();
+    println!("voice-check layouts: {}", ls.join(", "));
+    println!("voice-check: {} subtitles, {hold_n} need the hold, fastest {max_cps:.1} chars/s", v.len());
     Ok(v.len())
 }
 
@@ -253,25 +222,12 @@ pub fn check_cmd(lang: &str, dir: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    fn widths() -> Vec<u8> { vec![7; 256] }
-
     #[test]
-    fn wrap_pages_hold_at_most_three_lines_and_keep_every_word() {
-        let t = "Esta é a sua blaster, a arma oficial de um Junker. Tem circuito de feedback total, que se ajusta ao seu tempo de reação. Ou seja, é tão boa quanto você. Pode apostar, não é uma daquelas pistolas de raios do Exército.";
-        let w = wrap(t, 3, &widths()).unwrap();
-        let bytes = i::markup_to_bytes(&w).unwrap();
-        let mut words = vec![];
-        for page in bytes.split(|&c| c == i::PAGE) {
-            let lines: Vec<&[u8]> = page.split(|&c| c == i::NL).collect();
-            assert!(lines.len() <= WRAP_MAX, "page with {} lines", lines.len());
-            for l in &lines { assert!(l.iter().map(|&c| i::advance(&widths(), c)).sum::<u32>() <= i::RIGHT_SPEECH - i::X_SPEECH, "line too wide"); }
-            words.extend(page.split(|&c| c == i::NL || c == b' ').filter(|x| !x.is_empty()).map(|x| i::bytes_to_markup(x)));
-        }
-        assert_eq!(words.join(" "), t);
-        assert!(w.matches("{page}").count() >= 2, "a 200 character subtitle needs several pages: {w}");
-        // a hand-written {page} is kept, and `|` forces a line break
-        assert_eq!(wrap("Um.{page}Dois.", 0, &widths()).unwrap(), "Um.{page}Dois.");
-        assert_eq!(wrap("Um|dois", 0, &widths()).unwrap(), "Um{nl}dois");
+    fn patch_text_is_stored_unwrapped_and_keeps_the_authors_hints() {
+        assert_eq!(clean_text("~Um   dois\ttrês."), "Um dois três.");
+        assert_eq!(clean_text("Um{page}Dois"), "Um{page}Dois");
+        assert_eq!(clean_text("Um|dois"), "Um{nl}dois");
+        assert_eq!(clean_text("Um | dois"), "Um{nl}dois");
     }
 
     #[test]

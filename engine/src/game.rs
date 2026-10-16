@@ -657,7 +657,7 @@ impl Engine {
     }
 
     /// Voice id -> portrait scene (byte table S:0x13FEC, 0xFF = none), see sequencer command 0x0D.
-    fn portrait_scene(&self, n: u16) -> Option<u8> {
+    pub(crate) fn portrait_scene(&self, n: u16) -> Option<u8> {
         let b = self.mem.u8(0x13FEC + n as u32);
         if b == 0xFF || n >= 1198 { None } else { Some(b) }
     }
