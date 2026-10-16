@@ -1,28 +1,29 @@
-"""GAME OVER picture (DATA_Y05 scene 5): metallic italic lettering over the gold noise, redrawn as "FIM DE JOGO".
-Letters = a mask (outline included) filled with diagonal colour bands that run across the whole word, a pale highlight on the outer top-left edge
-and a dark outline; bands and edges are measured on the original, the new mask comes from a condensed bold italic face."""
+"""GAME OVER picture (DATA_Y05 scene 5) -> "FIM DE JOGO".  Big stylised metallic lettering: pixel redraw was tried first (flat diagonal colour bands measured on
+the original, letter mask from a TTF face) but the bands, highlight and outline did not reconstruct well, so this item used the codex-image fallback
+(gpt-6.1-sol, effort high; reference = the original lettering crop, text FIM DE JOGO, landscape 256:88).  The generated art (work/i18n/gfx/codex/gameover_pt.png,
+not committed) is scaled to 256x88, quantised to the picture palette (colour 1..11 of line 1) and written over rows 32..111; the committed patch holds only the
+resulting tiles (docs/i18n-graphics.md)."""
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from planes import *
 
-def letter_mask(im):
-    """True inside the lettering incl. its outline: everything the flood fill from the border through noise colours (6, 7, 8) cannot reach"""
-    noise = (im == 6) | (im == 7) | (im == 8)
-    h, w = im.shape
-    reach = np.zeros_like(noise)
-    stack = [(y, x) for y in range(h) for x in (0, w - 1)] + [(y, x) for x in range(w) for y in (0, h - 1)]
-    while stack:
-        y, x = stack.pop()
-        if y < 0 or x < 0 or y >= h or x >= w or reach[y, x] or not noise[y, x]: continue
-        reach[y, x] = True
-        stack += [(y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)]
-    return ~reach
+SRC = os.path.join(os.path.dirname(__file__), '..', '..', 'work', 'i18n', 'gfx', 'codex', 'gameover_pt.png')
 
-if __name__ == '__main__':
-    d = Data('DATA_Y05'); p = Plane(d, 5, plane_base=0xC000); im, pl = p.index_image(28)
-    m = letter_mask(im)
-    pw = d.palette(0x2f330); pal = pal_rgb(pw[:16]); pal[0] = (0, 0, 0)
-    out = np.zeros(im.shape + (3,), dtype=np.uint8)
-    for (y, x), v in np.ndenumerate(im): out[y, x] = pal[v] if m[y, x] else (40, 40, 40)
-    Image.fromarray(out[30:110, 10:240]).resize((230 * 4, 80 * 4), Image.NEAREST).save('work/i18n/gfx/go_mask2.png')
-    ys, xs = np.nonzero(m); print(m.sum(), xs.min(), xs.max(), ys.min(), ys.max())
+def quantize_to(img, pal, first=1, last=11):
+    """RGB image array (h,w,3) -> palette indices first..last by the nearest colour (weighted RGB)"""
+    P = np.array(pal[first:last + 1], dtype=float)
+    out = np.zeros(img.shape[:2], dtype=np.uint8)
+    flat = img.reshape(-1, 3).astype(float)
+    w = np.array([0.30, 0.59, 0.11])
+    d = (((flat[:, None, :] - P[None, :, :]) ** 2) * w).sum(axis=2)
+    return (d.argmin(axis=1) + first).reshape(img.shape[:2]).astype(np.uint8)
+
+def apply(P):
+    d = Data('DATA_Y05')
+    e = PlaneEdit(d, 5, plane_base=0xC000)
+    pal = pal_rgb(d.palette(0x2f330)[:16])
+    g = Image.open(SRC).convert('RGB').resize((256, 88), Image.BOX)       # rows 30..117 of the picture
+    q = quantize_to(np.array(g), pal)
+    y0, y1, x0, x1 = 32, 112, 8, 248
+    e.im[y0:y1, x0:x1] = q[y0 - 30:y1 - 30, x0:x1]
+    return e.commit(P, 'DATA_Y05.BIN', 'GAME OVER -> FIM DE JOGO (codex-image art, quantised) tiles', 'GAME OVER -> FIM DE JOGO nametable')

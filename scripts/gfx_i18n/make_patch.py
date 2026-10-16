@@ -3,7 +3,7 @@
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from patchset import PatchSet
-import title, cards, caption, prologue, videophone, slot
+import title, cards, caption, prologue, videophone, slot, gameover
 
 P = PatchSet()
 title.apply(P)
@@ -12,6 +12,7 @@ caption.apply(P)
 prologue.apply(P)
 videophone.apply(P)
 slot.apply(P)
+print('game over', gameover.apply(P))
 root = os.path.join(os.path.dirname(__file__), '..', '..')
 P.write(os.path.join(root, 'i18n', 'pt-BR', 'gfx.tsv'))
 print('blobs', len(P.blobs), 'raw runs', len(P.files))
