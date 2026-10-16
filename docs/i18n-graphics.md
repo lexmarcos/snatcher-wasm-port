@@ -27,6 +27,23 @@ language is pt-BR; English is byte-identical (the patch is looked up by the hash
 | disclaimer | DATA_D1 scene 0 | pixel font cut from the original glyphs (+ drawn j q Q and accents) | good |
 | dedication "THIS STORY IS DEDICATED ..." | DATA_D1 scene 2 | skeleton font cut from the original (D M Q drawn, accents), outline / ends by the measured rule | good |
 | videophone banners NOT IN SERVICE -> FORA DE SERVICO, NO VIDEO AVAILABLE -> SEM SINAL DE VIDEO | DATA_M0 scenes 4 and 9 (SP18, SP35) | pixel font cut from the originals (F A L M P B drawn, accents), shadow shifted (+1,+1) | good |
+| CONTINUE slot screen: header INVESTIGATION FILE -> INVESTIGACAO, PLAY -> TEMPO, ACT -> ATO, SAVES -> SALVOS (TOTAL stays) | DATA_D2 module state 10 (tile channels) | pixel: 3x5 label font cut from the original, header = Liberation Serif Bold squeezed to the original width + (+1,+1) shadow; edited on the finished screen of the English engine (`vrammap.py`: which blob wrote every VRAM byte), re-tiled into freed tiles + 1 grown tile, tile-channel length patched (raw) | good (checked with saves in slots 1+3 and in slot 2 only) |
+| GAME OVER -> FIM DE JOGO | DATA_Y05 scene 5 (SP07, SP14..SP16, SP30..SP33) | **codex-image** (gpt-6.1-sol, effort high): flat diagonal bands, highlight and outline of the lettering did not reconstruct from a mask + measured bands, so the original crop was given as style reference; result scaled to 256x88, quantised to the 11 colours of the picture palette, rows 32..111 re-tiled (background noise included, seamless) | good; generated art kept only in `work/i18n/gfx/codex/` (not committed), the patch holds the tiles |
+| prologue word JAPAN -> JAPAO | DATA_D0 scene 1 (plane A, one palette pair per letter faded in one by one) | TTF Liberation Serif 44 px; letters keep the colour pair of their position (1,2) (3,4) (5,6) (7,8) (9,10), A~ with tilde | good |
+
+## Kept in English (and why)
+* **NO DATA** (slot screen): the cells of the play time / NO DATA text are written at run time (the module draws the panel into Word RAM), a patch of the blobs behind them leaked into the play time digits (tried, reverted). **SNATCHER n** names stay (title).
+* **Options screen** (OPTIONS, DEVICE, JOYPAD ONLY, CONTROLS + the six button-configuration variants, SOUND MODE, STEREO / MONO, GUN ADJUST, QUIT): drawn from many state-dependent tile lists (selected row yellow / grey, values toggled at run time); each state would need its own patch of tiles and nametable rows, not attempted. Short, technical, and the pt-BR player sees the button letters anyway.
+* **Dec. 2047 / NEO KOBE CITY** (prologue): the text is on a plane the dump of the finished screen does not show consistently (64 cell planes with scroll); NEO KOBE CITY is a name and only "Dec." would become "Dez.", so it stays.
+* **Neo Kobe Times front page headlines** (MYSTERIOUS LIFE-FORM, PLANE CRASH DEATH REACH 55?, ...): halftone / dithered newspaper print, not a font; a clean redraw would look different from the page. Masthead and article text stay.
+* **SP09 file pages** (Metal Gear reads them aloud, clips 221-235): kept English. The pages are 15 full-screen pictures of dense small text with portraits and layout; the pt-BR voice subtitle already shows the reading below the picture (compact band), so the player gets the content; redrawing about 15 screens of text would be most of the job for little gain, and the reading is voice-driven.
+* Backup RAM error screens (DATA_D2 scenes 1-6), GUN ADJUST title, SNATCHER and KONAMI logos, copyright / legal lines, staff roll and cast, posters / signs in rooms: out of scope or not reachable.
+
+## Checks
+`cargo test --release -p snengine --test gfx_i18n` (English identical with / without the pack, pt-BR blobs patched only in pt-BR), `core/src/gfxpatch.rs` unit tests (round trip, growth, append),
+`tools` test `tsv_round_trips_into_the_pack_patch`, `snt i18n-gfx-check i18n/pt-BR assets/raw`. A whole boot / intro run in both languages (12400 frames, a frame every 100) differs only on the
+frames of the translated pictures (title, disclaimer, RSS, dedication, Moscow, 50 years).
+Before / after images (3-5x): `work/i18n/gfx/shots/cmp_*.png` (gitignored), e.g. `cmp_title_f001180`, `cmp_act2_f000100`, `cmp_cap_f000930`, `cmp_vp2_f000100`, `cmp_slot_f001500`, `cmp_go_f000300`, `cmp_japan_f011070`, `cmp_ded_f003500`, `cmp_disc_f001900`, `cmp_moscow_f003900`.
 
 ## Original inventory (kept for reference; the table above is the status)
 ## Boot, title and options (module code in IP.BIN, pictures in DATA_D2)

@@ -45,6 +45,11 @@ Open items, in suggested order:
 5. YM2612: the real chip model has a DAC noise floor / ladder distortion the engine lacks (high bands 10-30 dB higher in noisy sounds); levels agree, nothing retuned (oracle2 section 5).
 6. Larger engine item left: after the GAME OVER restart the title chain timing (`SP_RELOAD_FRAMES` = 90) is from one real-BIOS measurement; the copyright/logo/title phase of the real restart lasts 840 frames like a cold boot.
 
+## Resume here: pt-BR pictures (2026-10-16, docs/i18n-graphics.md)
+Done and committed (python `scripts/gfx_i18n/make_patch.py` -> `i18n/pt-BR/gfx.tsv` -> `snt i18n-build`): title menu, act cards, location caption, prologue date / 50 years / RSS / disclaimer / dedication / JAPAO,
+videophone banners, CONTINUE slot screen labels + header, GAME OVER (codex-image). Engine: `SubMem::decomp` patches decoded blobs, raw DATA patches in `cmd_load`, only in pt-BR.
+Open: options screen (state dependent tiles), NO DATA, Dec. 2047 line, newspaper headlines (reasons in docs/i18n-graphics.md "Kept in English"); play-test the pictures in the browser.
+
 ## Resume here: voice subtitles (2026-10-16, docs/voice-subtitles.md, survey in docs/voice-inventory.md)
 Status per act: **transcribed** all 1146 clips (Whisper large-v3 on the LAN server, two passes, work/voice/transcripts, gitignored; key in work/whisper.env, never committed); **translated**: Act 1 (291 clips, i18n/pt-BR/voice.json),
 Acts 2 and 3 not yet (397 and 409 speech clips); **reviewed**: Act 1 (review subagent, score in docs/voice-subtitles.md), Acts 2 and 3 not yet.
