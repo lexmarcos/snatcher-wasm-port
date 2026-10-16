@@ -12,7 +12,7 @@
     "85": {"h": "9f301dad", "d": "3.886", "s": "4", "t": "Sim, nosso chefão aqui no QG Junker. Aquela é a sala dele."},
     "86": {"h": "033b6a69", "d": "3.983", "s": "4", "t": "Chefe Cunningham, Gillian Seed chegou. Eu o trouxe, como pediu."},
     "87": {"h": "9b36dbc1", "d": "5.096", "s": "7", "t": "Obrigado por vir, Seed. Sou Benson Cunningham, Chefe das operações Junker."},
-    "88": {"h": "37a93655", "d": "3.918", "t": "Gillian Seed foi transferido para cá da 17ª Divisão de Forças Especiais."},
+    "88": {"h": "37a93655", "d": "3.918", "s": "3", "t": "Gillian Seed foi transferido para cá da 17ª Divisão de Forças Especiais."},
     "89": {"h": "cbd08b1f", "d": "7.228", "s": "7", "t": "Já ouvi falar do seu treinamento especial no exército, Seed. Espero que o use bem neste novo posto."},
     "90": {"h": "b7af56ea", "d": "6.377", "s": "7", "t": "A propósito, soube que você sofre de amnésia. Algum sinal de que a memória está voltando?"},
     "91": {"h": "cd7429fb", "d": "5.382", "s": "3", "t": "Infelizmente não. Ainda não lembro de nada de antes de o exército me recolher, há três anos."},
