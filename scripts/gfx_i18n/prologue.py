@@ -35,5 +35,31 @@ def rss(P):
     draw_text_thr(e.im, f, 'em algumas partes.', 129, 182, THR_RSS, align='center')
     return e.commit(P, 'DATA_D1.BIN', 'prologue: RSS credit sentence (tiles)', 'prologue: RSS credit nametable')
 
+# ---- disclaimer (DATA_D1 scene 0) and dedication (scene 2): bitmap fonts cut from the originals (bmfont.py, skelfont.py)
+import bmfont, skelfont
+DISCLAIMER = ['A história, os personagens', 'e os eventos deste jogo', 'são totalmente fictícios.', 'Qualquer semelhança com', 'pessoas, lugares ou fatos', 'reais é mera coincidência.']
+DEDICATION = ['ESTA HISTÓRIA É DEDICADA', 'A TODOS OS CYBERPUNKS QUE', 'LUTAM CONTRA A INJUSTIÇA', 'E A CORRUPÇÃO TODOS OS', 'DIAS DE SUAS VIDAS.']
+
+def disclaimer(P):
+    d = Data('DATA_D1'); e = PlaneEdit(d, 0)
+    f = bmfont.Font()
+    e.im[:] = bmfont.BG
+    wmax = max(f.text_width(t) for t in DISCLAIMER)
+    x0 = int(round(130 - wmax / 2)); top = 64
+    for k, t in enumerate(DISCLAIMER):
+        bmfont.draw_bm(f, e.im, t, x0, top + 16 * k)
+    return e.commit(P, 'DATA_D1.BIN', 'prologue: disclaimer text (tiles)', 'prologue: disclaimer nametable')
+
+def dedication(P):
+    d = Data('DATA_D1'); e = PlaneEdit(d, 2)
+    f = skelfont.Skel()
+    S = np.zeros(e.im.shape, dtype=bool)
+    for k, t in enumerate(DEDICATION):
+        skelfont.put_text(S, f, t, int(round(128 - f.text_width(t) / 2)), skelfont.TOPS[k] + 1)
+    out = skelfont.render_skeleton(S)
+    e.im[40:176, :] = out[40:176, :]
+    return e.commit(P, 'DATA_D1.BIN', 'prologue: dedication text (tiles)', 'prologue: dedication nametable')
+
 def apply(P):
     print('moscow', moscow(P)); print('50 years', years_later(P)); print('rss', rss(P))
+    print('disclaimer', disclaimer(P)); print('dedication', dedication(P))
