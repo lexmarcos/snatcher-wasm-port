@@ -83,6 +83,12 @@ impl Game {
     pub fn voice_subtitle_count(&self) -> u32 { self.e.i18n.pack.voice.len() as u32 }
     /// Clip id whose subtitle is on screen now, -1 when there is none (debugging, screenshot tests).
     pub fn voice_subtitle_active(&self) -> i32 { self.e.vsub_active().map(|x| x as i32).unwrap_or(-1) }
+    /// Layout of the subtitle drawn in the last frame: 0 none, 1 message box (no portrait), 2 lane next to the portrait, 3 band above two or more portraits,
+    /// 4 compact band (no dialogue strip). Debugging and screenshot tests.
+    pub fn voice_subtitle_layout(&self) -> i32 {
+        use sncore::vwrap::VKind;
+        self.e.vsub_info().map_or(0, |i| match i.kind { VKind::Box => 1, VKind::Lane => 2, VKind::Band => 3, VKind::Compact => 4 })
+    }
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).
     pub fn tick(&mut self, pad: u16) {
         self.e.tick(pad as u8);

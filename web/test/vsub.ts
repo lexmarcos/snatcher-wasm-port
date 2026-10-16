@@ -1,5 +1,6 @@
 // Headless check of the voice subtitles (docs/voice-subtitles.md): open a scene, wait for a clip with a subtitle and save screenshots of the canvas
 // while it is up (one every `step` frames, up to `shots`).
+// the shot is taken once the subtitle is drawn (it waits for the portraits of the clip), with the layout in the log line.
 // usage: PORT=5300 bun test/vsub.ts "scene=SP06:032e&lang=pt-BR" outprefix [shots=4] [step=60] [skipFrames=0]
 //   the shots are written to <outprefix>-1.png ...; the first one is taken when the first subtitle appears (frame + 10).
 import puppeteer from "puppeteer-core";
@@ -26,6 +27,8 @@ await page.goto(`http://localhost:${port}/?${query}`, { waitUntil: "networkidle0
 await page.waitForFunction(() => (window as any).snatcher, { timeout: 30000 });
 const frame = () => page.evaluate(() => JSON.parse((window as any).snatcher.game.debug_info()).frame as number);
 const active = () => page.evaluate(() => (window as any).snatcher.game.voice_subtitle_active() as number);
+// 0 = nothing drawn yet (the text waits for the portraits), 1 box, 2 lane, 3 band, 4 compact
+const layout = () => page.evaluate(() => (window as any).snatcher.game.voice_subtitle_layout() as number);
 const waitFrames = async (n: number) => { const s = await frame(); await page.waitForFunction((t) => JSON.parse((window as any).snatcher.game.debug_info()).frame >= t, { timeout: 120000, polling: 20 }, s + n); };
 if (skip) await waitFrames(skip);
 // confirm presses keep the script moving (the page auto-presses nothing)
@@ -34,9 +37,11 @@ let found = 0, guard = 0;
 while (found < shots && guard++ < 6000) {
   const a = await active();
   if (a >= 0) {
-    if (found === 0) await waitFrames(10);
+    let guard2 = 0;
+    while ((await layout()) === 0 && guard2++ < 200) await waitFrames(2);
+    await waitFrames(4);
     await (await page.$("#screen"))!.screenshot({ path: `${prefix}-${++found}.png` });
-    console.log(`shot ${found}: clip ${a} frame ${await frame()}`);
+    console.log(`shot ${found}: clip ${a} layout ${["none", "box", "lane", "band", "compact"][await layout()]} frame ${await frame()}`);
     await waitFrames(step);
   } else await waitFrames(5);
 }

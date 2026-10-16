@@ -190,6 +190,22 @@ fn greedy(words: &[&[u8]], widths: &[u8], first_w: u32, w: u32) -> Vec<Vec<u8>> 
     lines
 }
 
+/// The lines of a page with the same line count as `greedy` but as even as possible (the narrowest limit that still fits the page in that many lines):
+/// no one-word last line, the same look at every width. The first line keeps the room `prefix_px` of the inline name takes.
+fn balanced(words: &[&[u8]], widths: &[u8], prefix_px: u32, w: u32) -> Vec<Vec<u8>> {
+    let base = greedy(words, widths, w.saturating_sub(prefix_px), w);
+    let n = base.len();
+    if n < 2 { return base; }
+    let longest = words.iter().map(|x| text_width(widths, x)).max().unwrap_or(0);
+    let (mut lo, mut hi) = (longest.max(prefix_px + 1), w);
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if greedy(words, widths, mid.saturating_sub(prefix_px), mid).len() <= n { hi = mid; } else { lo = mid + 1; }
+    }
+    let l = greedy(words, widths, hi.saturating_sub(prefix_px), hi);
+    if l.len() == n { l } else { base }
+}
+
 /// Break a subtitle text (markup bytes: colours, `NL`, `PAGE`) into pages of lines for a layout. `prefix_px` is the width of the inline speaker name that
 /// the first line of every page carries. Hints of the author: `PAGE` is a page break, `NL` a line break (such a segment is cut between lines);
 /// everything else is wrapped by the real glyph widths and paged at the places where a sentence or clause ends (`break_severity`), preferring `pref`-line
@@ -233,7 +249,7 @@ pub fn paginate(text: &[u8], widths: &[u8], lay: &VLayout, prefix_px: u32) -> Ve
         while j > 0 { cuts.push(j); j = best[j].1; }
         cuts.reverse();
         let mut a = 0;
-        for b in cuts { pages.push(lines_of(a, b)); a = b; }
+        for b in cuts { pages.push(balanced(&refs[a..b], widths, prefix_px, w)); a = b; }
     }
     pages
 }
@@ -271,6 +287,18 @@ mod tests {
             let l = layout_for(&runs, true, true);
             if l.kind == VKind::Lane { for &(x0, x1) in &runs { assert!(l.right + LANE_GAP <= x0 || l.x_name > x1, "{runs:?} -> {l:?}"); } }
         }
+    }
+
+    #[test]
+    fn lines_of_a_page_are_even_and_never_end_on_a_lone_word() {
+        let lay = layout_for(&[(24, 87), (168, 231)], true, false);
+        let pages = paginate(&text("Já ouvi falar do seu treinamento especial no exército, Seed."), &widths(), &lay, 0);
+        assert_eq!(pages.len(), 1);
+        let l: Vec<String> = pages[0].iter().map(|x| i::bytes_to_markup(x)).collect();
+        assert_eq!(l.len(), 3, "{l:?}");
+        assert!(l.iter().all(|x| x.contains(' ')), "{l:?}");
+        let w: Vec<u32> = pages[0].iter().map(|x| text_width(&widths(), x)).collect();
+        assert!(w.iter().max().unwrap() - w.iter().min().unwrap() < 7 * 8, "{w:?}");
     }
 
     #[test]

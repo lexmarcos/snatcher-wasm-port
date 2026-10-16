@@ -178,6 +178,12 @@ pub fn check_into(lang: &str, dir: &str, rep: &mut Report) -> Result<usize, Stri
         if need > secs + 0.02 {
             rep.fails.push(format!("{t}: reading speed {cps:.1} chars/s over the {secs:.1} s of the subtitle ({chars} chars, clip {real:.1} s + {:.1} s hold), limit {:.0}: shorten it", hold as f64 / 60.0, i::VOICE_READ_CPS));
         }
+        // for the record, not validated: the 72 px column between two portraits, which the engine does not use (docs/voice-subtitles.md)
+        let narrow = vw::VLayout { kind: vw::VKind::Lane, x_name: 92, x_text: 92, right: 164, name_inline: false, pref: 4, max: 5 };
+        let np = vw::paginate(&bytes, &widths, &narrow, 0).len();
+        let st = layout_stats.entry("middle-gap-72px (not used)").or_default();
+        st.0 += np;
+        st.1 = st.1.max(np);
         for (label, lay) in vw::all_layouts(name.is_some()) {
             let pp = if lay.name_inline { prefix_px } else { 0 };
             let pages = vw::paginate(&bytes, &widths, &lay, pp);
