@@ -321,7 +321,11 @@ fn every_act1_clip_shows_its_own_subtitle_in_time() {
         for (id, v) in &r.verdicts { if v.contains("OK") { ok.insert(*id); } }
     }
     assert!(violations.is_empty(), "{} violation(s):\n{}", violations.len(), violations.join("\n"));
-    // the roots reach (nearly) every Act 1 clip that has a subtitle: 291 entries, a handful of clips are only reachable through long menu paths
-    assert!(ok.len() >= 1, "only {} clips were checked", ok.len());
+    // the roots reach every Act 1 clip that has a subtitle (291: ids 77..=370, 1185..=1191, 1193; the Act 1 re-sweep, docs/voice-subtitles.md section 13)
+    let tr = Translation::parse(&std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../i18n/build/pt-BR.pack")).unwrap()).unwrap();
+    let act1: Vec<u16> = tr.voice.keys().copied().filter(|&id| (77..=370).contains(&id) || (1185..=1191).contains(&id) || id == 1193).collect();
+    assert!(act1.len() >= 291, "only {} Act 1 subtitles in the pack", act1.len());
+    let missing: Vec<u16> = act1.iter().copied().filter(|id| !ok.contains(id)).collect();
+    assert!(missing.is_empty(), "Act 1 clips not reached by vsub_roots.txt: {:?}", missing);
     assert!(ok.contains(&96), "clip 96 (the Junker ID card) was not reached");
 }
