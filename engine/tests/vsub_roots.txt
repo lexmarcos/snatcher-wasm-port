@@ -1,2 +1,9 @@
 # flags root (engine/examples/vsub_sweep.rs syntax: SPnn:pc[:menu path[:scene]])
 ones SP06:0b6e::0a00
+# Act 2 (docs/voice-subtitles.md section 11): lane, band, box, compact layouts and long Metal Gear clips
+zero SP30:08c1::1d03
+zero SP27:0354::1b05
+zero SP23:0801::0001
+zero SP28:0472::1c06
+alt SP32:06da::2402
+zero SP28:01d0::1c04
