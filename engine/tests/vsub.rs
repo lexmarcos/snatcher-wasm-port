@@ -302,7 +302,7 @@ fn every_act1_clip_shows_its_own_subtitle_in_time() {
     assert!(!roots.is_empty());
     let next = std::sync::atomic::AtomicUsize::new(0);
     let reports: Vec<sweep::Report> = std::thread::scope(|sc| {
-        let hs: Vec<_> = (0..std::thread::available_parallelism().map_or(2, |n| n.get()).min(8)).map(|_| sc.spawn(|| {
+        let hs: Vec<_> = (0..std::thread::available_parallelism().map_or(2, |n| n.get()).min(4)).map(|_| sc.spawn(|| {
             let mut rep = sweep::Report::default();
             loop {
                 let k = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
