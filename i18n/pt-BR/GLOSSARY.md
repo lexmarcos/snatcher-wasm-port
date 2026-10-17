@@ -199,3 +199,7 @@ Menus de digitação (teclado/teclado numérico, 9 ou mais itens, SP05 e SP09, .
 * Respostas de um mesmo menu de quiz são da mesma classe gramatical (ESPIRRO, TOSSE, BOCEJO, SOLUÇO). "container" = "contêiner/contêineres" em menus e diálogo. "back room" = "sala do fundo".
 * Mika usa imperativos formais ("Pare", "Não fique", "Aguente firme") em todo o jogo; Gillian e Jamie usam "Não se preocupa", "Aguenta firme", "tem como/não tem como", "a gente achou". "Não se preocupe" é de Metal Gear, do Chefe e da Mika.
 * Patentes: General, Coronel/coronel, Major/major, Capitão/capitão, Segundo-Tenente/segundo-tenente (com hífen). "has a nice ring to it" = "soa bem". Imagens de beisebol ("bottom of the ninth") viram "minutos finais da partida".
+
+## Tela de opções (figuras, `docs/i18n-graphics.md`)
+OPÇÕES; ENTRADA (DEVICE) com SÓ CONTROLE / CONTROLE E ARMA (a arma é a pistola de luz: "pistola" não cabe na coluna); BOTÕES (CONTROLS) com A - SACAR BLASTER, B - CANCELAR, C - SELEC./ATIRAR;
+SOM com ESTÉREO / MONO; AJUSTAR MIRA (GUN ADJUST, a tela calibra a mira); SAIR. As larguras da letra original mandam: "DISPOSITIVO" e "CONTROLES" não cabem.

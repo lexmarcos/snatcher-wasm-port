@@ -48,7 +48,7 @@ Open items, in suggested order:
 ## Resume here: pt-BR pictures (2026-10-16, docs/i18n-graphics.md)
 Done and committed (python `scripts/gfx_i18n/make_patch.py` -> `i18n/pt-BR/gfx.tsv` -> `snt i18n-build`): title menu, act cards, location caption, prologue date / 50 years / RSS / disclaimer / dedication / JAPAO,
 videophone banners, CONTINUE slot screen labels + header, GAME OVER (codex-image). Engine: `SubMem::decomp` patches decoded blobs, raw DATA patches in `cmd_load`, only in pt-BR.
-Open: options screen (state dependent tiles), NO DATA, Dec. 2047 line, newspaper headlines (reasons in docs/i18n-graphics.md "Kept in English"); play-test the pictures in the browser.
+Options screen done (2026-10-16, all 21 states, `scripts/gfx_i18n/optshots.py`). Open: NO DATA, Dec. 2047 line, newspaper headlines (reasons in docs/i18n-graphics.md "Kept in English"); play-test the pictures in the browser.
 
 ## Resume here: voice subtitles (2026-10-16, docs/voice-subtitles.md, survey in docs/voice-inventory.md)
 Status per act: **transcribed** all 1146 clips (Whisper large-v3 on the LAN server, two passes, work/voice/transcripts, gitignored; key in work/whisper.env, never committed); **translated**: Act 1 (291 clips, i18n/pt-BR/voice.json),

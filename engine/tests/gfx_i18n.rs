@@ -65,3 +65,32 @@ fn pt_br_scene_blobs_are_patched_only_in_pt_br() {
         assert_eq!(patched > 0, pt, "blob patched = {patched} for pt = {pt}");
     }
 }
+
+/// OPTIONS screen (START on NEW GAME): the panel plane tiles and the sprite sheet of the option rows are patched in pt-BR only; the picture outside the
+/// panel is untouched and English is identical with or without the pack.
+fn options_frame(pt: Option<&[u8]>, lang_pt: bool) -> Option<(Vec<u8>, usize)> {
+    let mut e = engine()?;
+    if let Some(p) = pt { e.load_translation(p).unwrap(); }
+    e.set_language(lang_pt);
+    e.mem.trace = Some(Default::default());
+    e.boot();
+    for f in 1..=1500 { e.tick(if f == 1301 { 0x80 } else { 0 }); e.out.clear(); }
+    let n = e.mem.trace.as_ref().unwrap().borrow().iter()
+        .filter(|t| matches!(t, sncore::gfx::TraceEv::Blob { src: 0x31484 | 0x2e67c, patched: true, .. })).count();
+    Some((e.fb.clone(), n))
+}
+
+#[test]
+fn options_screen_is_redrawn_only_in_pt_br() {
+    let Some(p) = pack() else { eprintln!("pack missing, skipped"); return };
+    let (Some((a, na)), Some((b, nb)), Some((c, nc))) = (options_frame(None, false), options_frame(Some(&p), false), options_frame(Some(&p), true)) else { return };
+    assert_eq!(a, b, "English options screen must not change when the pt-BR pack is loaded");
+    assert_eq!((na, nb), (0, 0));
+    assert!(nc >= 2, "plane tiles and sprite sheet patched in pt-BR ({nc})");
+    assert_ne!(a, c);
+    let w = snengine::game::W;
+    let px = |f: &Vec<u8>, x: usize, y: usize| f[(y * w + x) * 4..(y * w + x) * 4 + 4].to_vec();
+    // left of the panel (x < 24) and below it (y > 205) nothing changes
+    for y in 0..224 { for x in 0..24 { assert_eq!(px(&a, x, y), px(&c, x, y), "({x},{y}) outside the panel changed"); } }
+    for y in 205..224 { for x in 0..256 { assert_eq!(px(&a, x, y), px(&c, x, y), "({x},{y}) below the panel changed"); } }
+}
