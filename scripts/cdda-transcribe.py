@@ -4,6 +4,8 @@
   python3 scripts/cdda-transcribe.py --prepare            # 16 kHz mono WAV of every track from assets/raw/audio -> work/cdda/wav (needs ffmpeg)
   python3 scripts/cdda-transcribe.py [--only 3,4] [--redo] # Whisper, chunks of 150 s with 10 s overlap, resumable (work/cdda/transcripts/raw/trackNN_cMM.json); then merges
   python3 scripts/cdda-transcribe.py --merge               # only rebuild en.json / en.tsv / summary.txt from the raw files
+  python3 scripts/cdda-transcribe.py --backend eleven      # ElevenLabs Scribe (CLI `elevenlabs speech-to-text convert`, whole tracks, no chunking) instead of the Whisper server;
+                                                           # raw answers in work/cdda/transcripts/eleven/trackNN.json, merged into the same en.json / en.tsv / summary.txt
 
 Server URL and key: work/whisper.env (gitignored) or WHISPER_URL / WHISPER_API_KEY; never printed or committed, audio goes only to that LAN server.
 Output (game content, English speech: work/ is gitignored, never commit it):
@@ -169,6 +171,10 @@ def merge():
         dur = js[-1]["_end"]
         spsec = sum(s["end"] - s["start"] for s in dd if s["speech"])
         tracks[str(t)] = {"duration": dur, "speech_seconds": round(spsec, 1), "music_only": spsec < 4.0, "segments": dd}
+    write_merged(tracks)
+
+
+def write_merged(tracks):
     os.makedirs(OUT, exist_ok=True)
     json.dump(tracks, open(os.path.join(OUT, "en.json"), "w"), indent=1)
     with open(os.path.join(OUT, "en.tsv"), "w") as f:
@@ -183,6 +189,83 @@ def merge():
     print("\n".join(lines))
 
 
+ELEVEN_CLI = os.environ.get("ELEVEN_CLI", "/home/suel/.nvm/versions/node/v22.21.1/bin/elevenlabs")
+ELEVEN_DIR = os.path.join(OUT, "eleven")
+
+
+def eleven_one(track, redo):
+    """one whole track through ElevenLabs Scribe v2 (language en, word timestamps, audio events tagged, diarization); the key stays inside the CLI"""
+    f = os.path.join(ELEVEN_DIR, "track%02d.json" % track)
+    if os.path.exists(f) and not redo:
+        return "skip"
+    os.makedirs(ELEVEN_DIR, exist_ok=True)
+    r = subprocess.run([ELEVEN_CLI, "speech-to-text", "convert", "--model-id", "scribe_v2", "--file", os.path.join(WAV, "track%02d.wav" % track), "--language-code", "en",
+                        "--timestamps-granularity", "word", "--tag-audio-events", "true", "--diarize", "true", "--format", "json"], capture_output=True, text=True)
+    if r.returncode != 0 or not r.stdout.strip().startswith("{"):
+        return "FAILED " + (r.stderr or r.stdout)[:200]
+    json.loads(r.stdout)
+    open(f + ".tmp", "w").write(r.stdout)
+    os.replace(f + ".tmp", f)
+    return "ok"
+
+
+def eleven_segments(j, max_len=12.0):
+    """words -> segments: a segment ends at a sentence end followed by a pause >= 0.35 s, at a pause >= 0.8 s, at a speaker change, at an audio event, or at max_len seconds"""
+    segs, cur = [], []
+    def flush():
+        nonlocal cur
+        if cur:
+            segs.append({"start": cur[0]["start"], "end": cur[-1]["end"], "text": " ".join(w["text"].strip() for w in cur), "speaker": cur[0].get("speaker_id"),
+                         "words": [{"w": w["text"].strip(), "start": w["start"], "end": w["end"], "p": w.get("logprob")} for w in cur]})
+        cur = []
+    words = [dict(w) for w in j.get("words", []) if w["type"] in ("word", "audio_event")]
+    for w in words:
+        # Scribe lets a word swallow the silence before it (the first word of track 3 "starts" 34 s early): keep only a plausible speaking time
+        if w["type"] == "word":
+            n = len(w["text"].strip(" ,.!?'\""))
+            if w["end"] - w["start"] > max(1.0, 0.15 * n + 0.4):
+                w["start"] = round(w["end"] - (0.07 * n + 0.25), 3)
+    for k, w in enumerate(words):
+        if w["type"] == "audio_event":
+            flush()
+            segs.append({"start": w["start"], "end": w["end"], "text": w["text"].strip(), "speaker": None, "words": [], "event": True})
+            continue
+        if cur and (w.get("speaker_id") != cur[0].get("speaker_id") or w["start"] - cur[-1]["end"] >= 0.8 or w["end"] - cur[0]["start"] > max_len):
+            flush()
+        cur.append(w)
+        nxt = words[k + 1] if k + 1 < len(words) else None
+        if re.search(r"[.!?]['\")]*$", w["text"]) and (nxt is None or nxt["type"] == "audio_event" or nxt["start"] - w["end"] >= 0.35 or w["end"] - cur[0]["start"] > 5.0):
+            flush()
+    flush()
+    # join a sentence the splitting cut in two (same speaker, short gap, the first part does not end a sentence)
+    out = []
+    for g in segs:
+        p = out[-1] if out else None
+        if p and not p.get("event") and not g.get("event") and p["speaker"] == g["speaker"] and not re.search(r"[.!?]['\")]*$", p["text"]) \
+                and g["start"] - p["end"] < 1.5 and g["end"] - p["start"] <= 14.0:
+            p["text"] += " " + g["text"]; p["end"] = g["end"]; p["words"] += g["words"]
+        else:
+            out.append(g)
+    return out
+
+
+def merge_eleven():
+    tracks = {}
+    for t in range(2, 22):
+        f = os.path.join(ELEVEN_DIR, "track%02d.json" % t)
+        if not os.path.exists(f):
+            continue
+        j = json.load(open(f))
+        out = []
+        for s in eleven_segments(j):
+            ev = s.get("event")
+            sp, flag = (False, "audio event") if ev else (bool(s["text"].strip()), None)
+            out.append({"start": round(s["start"], 3), "end": round(s["end"], 3), "text": s["text"], "speaker": s["speaker"], "speech": sp, "flag": flag, "words": s["words"]})
+        spsec = sum(s["end"] - s["start"] for s in out if s["speech"])
+        tracks[str(t)] = {"duration": j.get("audio_duration_secs"), "speech_seconds": round(spsec, 1), "music_only": spsec < 4.0, "segments": out}
+    write_merged(tracks)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--prepare", action="store_true")
@@ -190,9 +273,18 @@ def main():
     ap.add_argument("--only", default="")
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--jobs", type=int, default=1)
+    ap.add_argument("--backend", default="whisper", choices=["whisper", "eleven"])
     a = ap.parse_args()
     if a.prepare:
         return prepare()
+    if a.backend == "eleven":
+        if not a.merge:
+            prepare()
+            only = {int(x) for x in a.only.split(",") if x}
+            for t in range(2, 22):
+                if not only or t in only:
+                    print("track %02d" % t, eleven_one(t, a.redo), flush=True)
+        return merge_eleven()
     if a.merge:
         return merge()
     e = env()
