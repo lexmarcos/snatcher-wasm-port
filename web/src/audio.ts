@@ -59,7 +59,7 @@ export class AudioOut {
   onMissing: ((path: string) => void) | null = null;
   missing = new Set<string>();
 
-  private cdSrc: AudioBufferSourceNode | null = null;
+  cdSrc: AudioBufferSourceNode | null = null;
   private cdClock: CdClock | null = null;
   private cdCtl = 0;
   private fmMusic: { src: AudioBufferSourceNode; gain: GainNode; id: number } | null = null;
