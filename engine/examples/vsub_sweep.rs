@@ -95,7 +95,8 @@ pub fn run_root(e: &mut Engine, root: &str, tag_prefix: &str, frames: u64, png: 
         if started && !clips[..clips.len() - 1].iter().any(|c| Some(c.id) == clips.last().map(|l| l.id)) { idle = 0; }
         last_fr = fr;
         let ci = clips.len().wrapping_sub(1);
-        let act = e.vsub_active();
+        // a CD-DA speech cue shares the overlay but is not a voice clip: not judged here
+        let act = if e.vsub_is_cd() { None } else { e.vsub_active() };
         // (d) the subtitle went away while its clip still plays and the script did not start another clip
         if !started && prev_act.is_some() && act.is_none() && e.voice_left > 8 && e.msg.is_none() && e.menu.is_none() && clips.last().map_or(false, |c| Some(c.id) == prev_act) {
             early.push((ci, e.vsub.ended_by, e.voice_left, fr));
@@ -108,7 +109,7 @@ pub fn run_root(e: &mut Engine, root: &str, tag_prefix: &str, frames: u64, png: 
             // (e) the painted rectangle never covers a portrait frame (rows 149..214 of an occupied column run)
             let (rx0, ry0, rx1, ry1) = rect;
             if runs.iter().any(|&(x0, x1)| rx0 as u32 <= x1 && x0 < rx1 as u32 && ry0 < 214 && 149 < ry1) { flagged.push((ci, "COVER", fr)); }
-            if act != Some(cur.id) { flagged.push((ci, "WRONG", fr)); if let Some(d) = png { save_png(d, &format!("wrong-{}-{}", cur.id, fr), &e.fb); } }
+            if act != Some(cur.id) && !e.vsub_is_cd() { flagged.push((ci, "WRONG", fr)); if let Some(d) = png { save_png(d, &format!("wrong-{}-{}", cur.id, fr), &e.fb); } }
             if e.msg.is_some() { flagged.push((ci, "MSG", fr)); }
             if cur.first.is_none() { cur.first = Some(fr); cur.layout = k; if let Some(d) = png { if fr - cur.start > MAX_LAG as u64 { save_png(d, &format!("late-{}-{}", cur.id, fr), &e.fb); } } }
             cur.last = Some(fr);

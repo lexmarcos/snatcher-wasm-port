@@ -121,6 +121,9 @@ impl Engine {
     pub fn vsub_active(&self) -> Option<u16> { self.vsub.cur.as_ref().map(|a| a.id) }
 
     /// Layout and geometry the overlay used in the last frame (tests, debugging); `None` when no subtitle was drawn.
+    /// True while the subtitle on screen is a CD-DA speech cue (not a voice clip's): the sweep does not judge those.
+    pub fn vsub_is_cd(&self) -> bool { self.vsub.cur.as_ref().map_or(false, |a| a.cd.is_some()) }
+
     pub fn vsub_info(&self) -> Option<&VsubInfo> { if self.vsub.cur.is_some() { self.vsub.last.as_ref() } else { None } }
 
     /// One frame of subtitle time (called once per `tick`).
