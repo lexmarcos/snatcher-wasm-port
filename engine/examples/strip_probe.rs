@@ -22,6 +22,16 @@ fn make(p: &str) -> Engine {
     };
     let scene: Option<u16> = scene_s.and_then(|x| u16::from_str_radix(x, 16).ok());
     e.jump_path(57 + f[2..].parse::<u16>().unwrap(), u16::from_str_radix(pc, 16).unwrap(), &path);
+    // story flags after the jump (as vsub_sweep): FLAGS=ones|alt
+    match std::env::var("FLAGS").unwrap_or_default().as_str() {
+        "ones" => for b in e.vm.save[sncore::script::vm::VARS_OFF..].iter_mut() { *b = 0xFF; },
+        "alt" => for (i, b) in e.vm.save[sncore::script::vm::VARS_OFF..].iter_mut().enumerate() { *b = if i % 2 == 0 { 0xAA } else { 0x55 }; },
+        x if x.starts_with("rand") => {
+            let mut st: u64 = x[4..].parse::<u64>().unwrap_or(1).wrapping_mul(0x9E3779B97F4A7C15) | 1;
+            for b in e.vm.save[sncore::script::vm::VARS_OFF..].iter_mut() { st ^= st << 13; st ^= st >> 7; st ^= st << 17; *b = (st >> 24) as u8; }
+        }
+        _ => {}
+    }
     if let Some(r) = scene {
         use sncore::script::vm::Action;
         e.queue.push(Action { cmd: 0x0F, args: vec![] });
