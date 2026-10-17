@@ -60,9 +60,9 @@ Tools: `snt voice-export`, `scripts/voice-transcribe.py`, `scripts/voice-script.
 Next: (1) translate Acts 2 and 3 clip by clip with `work/voice/script/SPnn.txt` as context (same workflow as Act 1: patch TSV -> `snt voice-import` -> `snt voice-check` -> review subagent -> fixes); (2) play-test the subtitles in pt-BR (timing of the hold, long clips);
 (3) optional English subtitle mode from the local transcripts; (4) the 15 SP09 file-reading clips show the English page in the picture and the pt-BR subtitle below it (compact band), check it reads well.
 
-## Resume here: CD-DA speech subtitles (2026-10-16, docs/voice-subtitles.md section 10)
-Built and tested with synthetic data: pack section `cdda`, engine overlay on the CD clock (`vsub.rs`), `snt cdda-import` / `cdda-check`, `scripts/cdda-transcribe.py` (chunked Whisper, resumable), web audio aligned to the engine clock (`cdclock.ts`, drift under 50 ms, `web/test/cdclock.test.ts`, `web/test/cdsync.ts`).
-**Blocked: the Whisper server was off** (no transcripts, no `i18n/pt-BR/cdda.json`, nothing translated or reviewed). When it is on: follow "To finish" in section 10. Server-free pre-selection says the prologue tracks 3-5 look like music; the openings of tracks 6, 7, 8, 10, 14 and parts of 21 look like speech.
+## Resume here: CD-DA speech subtitles (2026-10-17, docs/voice-subtitles.md section 10)
+Done: engine overlay on the CD clock, pack section, `snt cdda-import` / `cdda-check`, web audio aligned to the engine clock, **transcription with ElevenLabs Scribe v2** (`scripts/cdda-transcribe.py --backend eleven`; transcripts only in gitignored `work/cdda/`), `i18n/pt-BR/cdda.json` (560 cues, 17 tracks; **the prologue track 3 does have narration**, 35-126 s; track 4 has dialogue + dossier from 157 s), review subagent applied.
+Open: play-test timing in the browser; speaker names for the dialogue tracks (not shown now); the Whisper backend is untested against a real server.
 
 ## Resume here: translation pt-BR (task: translate every batch, review with a subagent, apply, commit)
 Docs: `docs/i18n.md` (system, tools), `i18n/pt-BR/GLOSSARY.md` (glossary, style, adaptations), status table at the end of this file (regenerate: `python3 -I scripts/i18n-progress.py`).
