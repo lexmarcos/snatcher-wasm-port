@@ -72,7 +72,7 @@ struct Clip { id: u16, start: u64, play: u32, entry: bool, first: Option<u64>, l
 #[derive(Default)]
 pub struct Report { pub lines: Vec<String>, pub verdicts: BTreeMap<u16, BTreeSet<&'static str>>, pub violations: Vec<String> }
 
-/// Play `root` for up to `frames` frames (it stops when no new clip started for 900 frames) and check every clip. `png`: a directory for a frame of each violation.
+/// Play `root` for up to `frames` frames (it stops when no new clip started for 1500 frames and no clip plays) and check every clip. `png`: a directory for a frame of each violation.
 pub fn run_root(e: &mut Engine, root: &str, tag_prefix: &str, frames: u64, png: Option<&str>, rep: &mut Report) {
     let mut clips: Vec<Clip> = vec![];
     let mut flagged: Vec<(usize, &'static str, u64)> = vec![];
@@ -117,7 +117,8 @@ pub fn run_root(e: &mut Engine, root: &str, tag_prefix: &str, frames: u64, png: 
         // (c) nothing after the clip and the longest hold
         if act.is_some() && fr > cur.start + cur.play as u64 + sncore::i18n::VOICE_HOLD_MAX as u64 + 4 { flagged.push((ci, "STALE", fr)); }
         idle += 1;
-        if idle > 1500 { break; }
+        // (a clip that still plays does not count: the Act 1 analysis clip 152 lasts 36 s)
+        if idle > 1500 && e.voice_left == 0 { break; }
     }
     for (k, c) in clips.iter().enumerate() {
         let next = clips.get(k + 1).map(|n| n.start).unwrap_or(u64::MAX);
