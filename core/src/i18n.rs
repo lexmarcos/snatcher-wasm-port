@@ -302,6 +302,24 @@ pub struct Translation {
     pub voice: HashMap<u16, VoiceSub>,
     /// pictures with text redrawn in this language (docs/i18n-graphics.md); empty in packs made before the feature
     pub gfx: crate::gfxpatch::GfxPatch,
+    /// subtitles of the speech on CD-DA tracks by track number, sorted by start (docs/voice-subtitles.md "CD-DA speech"); absent in older packs
+    pub cdda: std::collections::BTreeMap<u8, Vec<CdSub>>,
+}
+
+/// Subtitle of one segment of speech on a CD-DA track: times in milliseconds from the start of the track (the engine's CD clock), markup bytes, speaker number as `VoiceSub`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CdSub { pub start_ms: u32, pub end_ms: u32, pub speaker: u8, pub text: Vec<u8> }
+
+/// Frames (60 Hz) a CD-DA subtitle stays up counted from its start: the speech (`start_ms..end_ms`) plus the reading hold (as for voice clips), but never into the next
+/// subtitle of the track (`next_start_ms`). Shared by the engine overlay and `snt cdda-check`.
+pub fn cdda_display_frames(start_ms: u32, end_ms: u32, next_start_ms: Option<u32>, chars: usize) -> u32 {
+    let f = |ms: u32| (ms as u64 * 60 / 1000) as u32;
+    let (s, e) = (f(start_ms), f(end_ms));
+    let play = e.saturating_sub(s).max(1);
+    let (_, hold) = voice_display_frames(play, chars);
+    let mut total = play + hold;
+    if let Some(n) = next_start_ms { total = total.min(f(n).saturating_sub(s).max(1)); }
+    total
 }
 
 // ---- voice subtitle timing (shared by the engine overlay and the validator `snt voice-check`)
@@ -378,7 +396,19 @@ impl Translation {
         }
         if p < b.len() {
             let h = rd(&mut p, 4)?; let n = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) as usize;
-            t.gfx = crate::gfxpatch::GfxPatch::parse(rd(&mut p, n)?)?;
+            if n > 0 { t.gfx = crate::gfxpatch::GfxPatch::parse(rd(&mut p, n)?)?; }
+        }
+        if p < b.len() {
+            let nt = rd(&mut p, 1)?[0];
+            for _ in 0..nt {
+                let h = rd(&mut p, 3)?; let (track, n) = (h[0], u16::from_be_bytes([h[1], h[2]]));
+                let v = t.cdda.entry(track).or_default();
+                for _ in 0..n {
+                    let h = rd(&mut p, 11)?;
+                    let len = u16::from_be_bytes([h[9], h[10]]) as usize;
+                    v.push(CdSub { start_ms: u32::from_be_bytes([h[0], h[1], h[2], h[3]]), end_ms: u32::from_be_bytes([h[4], h[5], h[6], h[7]]), speaker: h[8], text: rd(&mut p, len)?.to_vec() });
+                }
+            }
         }
         Ok(t)
     }
@@ -399,7 +429,7 @@ impl Translation {
         let mut ns: Vec<_> = self.names.keys().copied().collect(); ns.sort();
         o.push(ns.len() as u8);
         for n in ns { let v = &self.names[&n]; o.push(n); o.push(v.len() as u8); o.extend_from_slice(v); }
-        if !self.voice.is_empty() || !self.gfx.is_empty() {
+        if !self.voice.is_empty() || !self.gfx.is_empty() || !self.cdda.is_empty() {
             let mut ids: Vec<_> = self.voice.keys().copied().collect(); ids.sort();
             o.extend_from_slice(&(ids.len() as u16).to_be_bytes());
             for id in ids {
@@ -407,9 +437,19 @@ impl Translation {
                 o.extend_from_slice(&id.to_be_bytes()); o.push(v.speaker); o.extend_from_slice(&(v.text.len() as u16).to_be_bytes()); o.extend_from_slice(&v.text);
             }
         }
-        if !self.gfx.is_empty() {
-            let g = self.gfx.build();
+        if !self.gfx.is_empty() || !self.cdda.is_empty() {
+            let g = if self.gfx.is_empty() { vec![] } else { self.gfx.build() };
             o.extend_from_slice(&(g.len() as u32).to_be_bytes()); o.extend_from_slice(&g);
+        }
+        if !self.cdda.is_empty() {
+            o.push(self.cdda.len() as u8);
+            for (track, v) in &self.cdda {
+                o.push(*track); o.extend_from_slice(&(v.len() as u16).to_be_bytes());
+                for c in v {
+                    o.extend_from_slice(&c.start_ms.to_be_bytes()); o.extend_from_slice(&c.end_ms.to_be_bytes()); o.push(c.speaker);
+                    o.extend_from_slice(&(c.text.len() as u16).to_be_bytes()); o.extend_from_slice(&c.text);
+                }
+            }
         }
         o
     }
@@ -581,5 +621,30 @@ mod tests {
     fn menu_width_stops_at_end_and_counts_bytes() {
         let widths = vec![7u8; 200];
         assert_eq!(menu_width(b"LOOK", &widths), (X_MENU + 28, 4));
+    }
+
+    #[test]
+    fn pack_round_trip_with_cdda_subtitles_and_without_gfx() {
+        let mut t = Translation::default();
+        t.voice.insert(77, VoiceSub { speaker: 0, text: markup_to_bytes("Oi").unwrap() });
+        t.cdda.entry(3).or_default().push(CdSub { start_ms: 1500, end_ms: 4200, speaker: 0, text: markup_to_bytes("Moscou, 1996.{nl}Tudo comeca.").unwrap() });
+        t.cdda.entry(3).or_default().push(CdSub { start_ms: 6000, end_ms: 9000, speaker: 3, text: markup_to_bytes("Fim").unwrap() });
+        t.cdda.entry(19).or_default().push(CdSub { start_ms: 0, end_ms: 1000, speaker: 0, text: markup_to_bytes("a").unwrap() });
+        let p = Translation::parse(&t.build()).unwrap();
+        assert_eq!(p.cdda, t.cdda);
+        assert!(p.gfx.is_empty() && p.voice.len() == 1);
+    }
+
+    #[test]
+    fn cdda_display_time_is_speech_plus_hold_capped_by_the_next_subtitle() {
+        // 2 s of speech, 30 characters: no hold needed beyond the minimum
+        assert_eq!(cdda_display_frames(1000, 3000, None, 30), 120 + VOICE_HOLD_MIN);
+        // 1 s of speech, 85 characters: 5 s needed, the hold is capped at VOICE_HOLD_MAX
+        assert_eq!(cdda_display_frames(0, 1000, None, 85), 60 + VOICE_HOLD_MAX);
+        // the next subtitle starts 2 s after this one: it never stays longer
+        assert_eq!(cdda_display_frames(0, 1000, Some(2000), 85), 120);
+        assert_eq!(cdda_display_frames(0, 1000, Some(3000), 85), 150);
+        // overlapping segments: cut at the next start
+        assert_eq!(cdda_display_frames(0, 5000, Some(2000), 10), 120);
     }
 }

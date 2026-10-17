@@ -97,6 +97,8 @@ impl Game {
         use sncore::vwrap::VKind;
         self.e.vsub_info().map_or(0, |i| match i.kind { VKind::Box => 1, VKind::Lane => 2, VKind::Band => 3, VKind::Compact => 4 })
     }
+    /// Seconds since the engine started the CD-DA track now playing (its CD clock, frames / 60), -1 when no track plays. The front end keeps the audio on it.
+    pub fn cd_position(&self) -> f64 { self.e.cd_start.map_or(-1.0, |s| self.e.frame.saturating_sub(s) as f64 / 60.0) }
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).
     pub fn tick(&mut self, pad: u16) {
         self.e.tick(pad as u8);

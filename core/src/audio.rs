@@ -23,6 +23,12 @@ pub fn fd_to_hz(fd: u16) -> f64 { fd as f64 * PCM_CLOCK_HZ / 2048.0 }
 /// FD used for streamed voices (S:0x156B0 `move.w #$400,$1A(a0,d3)`).
 pub const VOICE_FD: u16 = 0x0400;
 
+/// CD-DA tracks of the disc: (track number, length in sectors of 1/75 s). The engine's CD clock and the subtitle validator use them.
+pub const CD_TRACK_SECTORS: [(u16, u32); 20] = [
+    (2, 346), (3, 9971), (4, 20406), (5, 1431), (6, 5268), (7, 12353), (8, 15941), (9, 6404), (10, 9532), (11, 7999),
+    (12, 20079), (13, 8473), (14, 5993), (15, 5709), (16, 1138), (17, 7275), (18, 3386), (19, 31548), (20, 2336), (21, 31231),
+];
+
 /// Convert one sign-magnitude PCM byte to a signed 16-bit sample.
 #[inline]
 pub fn sm8_to_i16(b: u8) -> i16 {

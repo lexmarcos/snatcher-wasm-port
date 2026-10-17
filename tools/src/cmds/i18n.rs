@@ -579,6 +579,7 @@ fn build(lang: &str, out: &str) -> Result<(), String> {
         t.names.insert(idx.checked_sub(1).ok_or("name 0")?, i::markup_to_bytes(&s)?);
     }
     t.voice = super::voice_sub::pack_voice(lang)?;
+    t.cdda = super::cdda_sub::pack_cdda(lang)?;
     t.gfx = super::gfx_i18n::patch_for(lang)?;
     let b = t.build();
     if let Some(p) = Path::new(out).parent() { fs::create_dir_all(p).map_err(|e| e.to_string())?; }

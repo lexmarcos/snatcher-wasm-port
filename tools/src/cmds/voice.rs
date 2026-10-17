@@ -7,6 +7,8 @@
 //!       WAV (16-bit mono) of every script-started clip + <out-dir>/index.json (id -> seconds, samples, rate); for the Whisper pass
 //!   snt voice-import <lang-dir> <files-dir> <patch.tsv>   merge `id<TAB>speaker<TAB>text` lines into <lang-dir>/voice.json (`~text` = wrap + paginate; hash and duration filled in)
 //!   snt voice-check  <lang-dir> <files-dir>               validate <lang-dir>/voice.json (also run by `i18n-check ... all`): characters, widths, lines per page, reading speed
+//!   snt cdda-import <lang-dir> <files-dir> <patch.tsv>    merge `track<TAB>start_ms<TAB>speaker<TAB>text` lines into <lang-dir>/cdda.json (CD-DA speech, end and hash filled in)
+//!   snt cdda-check  <lang-dir> <files-dir>               validate <lang-dir>/cdda.json (also part of `voice-check` and `i18n-check ... all`)
 //!   (`--probes` writes the entry points for engine/examples/voice_probe.rs, `--probe-results` reads its output; see docs/voice-inventory.md)
 //!
 //! Static analysis of the 39 script files (SPnn.BIN): each `CMD0D #id` node (script op 0x04, the only path that starts a
@@ -27,6 +29,8 @@ pub fn dispatch(args: &[String]) -> Option<Result<(), String>> {
         "voice-export" if args.len() >= 3 => Some(export(&args[1], &args[2], &args[3..])),
         "voice-import" if args.len() == 4 => Some(sub::import(&args[1], &args[2], &args[3])),
         "voice-check" if args.len() == 3 => Some(sub::check_cmd(&args[1], &args[2])),
+        "cdda-import" if args.len() == 4 => Some(super::cdda_sub::import(&args[1], &args[2], &args[3])),
+        "cdda-check" if args.len() == 3 => Some(super::cdda_sub::check_cmd(&args[1], &args[2])),
         _ => None,
     }
 }

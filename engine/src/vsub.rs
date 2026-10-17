@@ -80,7 +80,12 @@ struct Active {
     delay: u32,
     placed: Option<Placed>,
     drawn: Option<usize>,
+    /// a CD-DA speech subtitle: (track, index in `pack.cdda[track]`); its time is the CD clock, commands never end it
+    cd: Option<(u8, usize)>,
 }
+
+/// Id reported for a CD-DA subtitle by `vsub_active`: 0x8000 | track << 8 | index (voice clip ids stay below 0x4B0).
+pub const CD_ID_BASE: u16 = 0x8000;
 
 impl Engine {
     /// A voice clip starts (sequencer command 0x0D, `id` >= 36): look the subtitle up and start it.
@@ -91,7 +96,7 @@ impl Engine {
         let delay = if self.portrait_scene(id).is_some() { SETTLE } else { 0 };
         // the reading time counts from the first frame the text is on screen
         let (_, hold) = display_frames(play.saturating_sub(delay), glyph_count(&v.text));
-        self.vsub.cur = Some(Active { id, speaker: v.speaker, text: v.text.clone(), total: play + hold, play, t: 0, delay, placed: None, drawn: None });
+        self.vsub.cur = Some(Active { id, speaker: v.speaker, text: v.text.clone(), total: play + hold, play, t: 0, delay, placed: None, drawn: None, cd: None });
     }
 
     /// The sequencer is about to run command `cmd`. A command that draws a message ends the subtitle. A command that changes the picture ends it
@@ -100,6 +105,7 @@ impl Engine {
     /// scene: the Chief's clip 96 starts and the very next command shows the card, which used to end its subtitle before it was drawn.
     pub(crate) fn vsub_on_command(&mut self, cmd: u16) {
         let Some(a) = self.vsub.cur.as_ref() else { return };
+        if a.cd.is_some() { return; }
         let ends = match cmd {
             0x08 | 0x16 => true,
             0x02 | 0x0F | 0x11 | 0x12 | 0x15 | 0x18 | 0x1E | 0x1F | 0x20 => a.t >= a.play,
@@ -119,12 +125,49 @@ impl Engine {
 
     /// One frame of subtitle time (called once per `tick`).
     pub(crate) fn vsub_step(&mut self) {
+        self.cdsub_select();
+        if self.vsub.cur.as_ref().map_or(false, |a| a.cd.is_some()) { return; }
         let end = match self.vsub.cur.as_mut() { Some(a) => { a.t += 1; a.t > a.total } None => return };
         if end || self.menu.is_some() || self.msg.is_some() || self.top != crate::game::Top::Game {
             self.vsub.cur = None;
             self.vsub.last = None;
             self.vsub.ended_by = if end { END_TIME } else { END_SCREEN };
         }
+    }
+
+    /// CD-DA speech (docs/voice-subtitles.md "CD-DA speech"): the subtitle is a function of the CD clock (frames since the engine started the track, the same
+    /// clock the scene timelines use and the web player's audio is aligned to), so it is deterministic and independent of what the script does. It is hidden
+    /// while a message or a menu is open and comes back when they close; a voice clip's own subtitle has priority.
+    fn cdsub_select(&mut self) {
+        let is_cd = self.vsub.cur.as_ref().map_or(false, |a| a.cd.is_some());
+        if self.vsub.cur.is_some() && !is_cd { return; }
+        let want = self.cdsub_now();
+        match want {
+            Some((track, k, t, total)) if self.menu.is_none() && self.msg.is_none() => {
+                let cur = self.vsub.cur.as_mut();
+                if let Some(a) = cur.filter(|a| a.cd == Some((track, k))) { a.t = t; return; }
+                let Some(c) = self.i18n.pack.cdda.get(&track).and_then(|v| v.get(k)) else { return };
+                self.vsub.cur = Some(Active { id: CD_ID_BASE | (track as u16) << 8 | k.min(255) as u16, speaker: c.speaker, text: c.text.clone(), total, play: total, t, delay: 0, placed: None, drawn: None, cd: Some((track, k)) });
+            }
+            _ => if is_cd { self.vsub.cur = None; self.vsub.last = None; self.vsub.ended_by = END_TIME; },
+        }
+    }
+
+    /// The CD-DA subtitle due now: (track, index, frames since its start, frames it stays up).
+    fn cdsub_now(&self) -> Option<(u8, usize, u32, u32)> {
+        if !self.vsub.on || !self.i18n.pt || self.i18n.pack.cdda.is_empty() { return None; }
+        let start = self.cd_start?;
+        let track = self.regs.get(crate::modules::CD_TRACK_KEY) as u8;
+        let subs = self.i18n.pack.cdda.get(&track)?;
+        let pos = self.frame.saturating_sub(start);
+        let f = |ms: u32| ms as u64 * 60 / 1000;
+        // the last subtitle that has started
+        let k = subs.partition_point(|c| f(c.start_ms) <= pos).checked_sub(1)?;
+        let c = &subs[k];
+        let total = i::cdda_display_frames(c.start_ms, c.end_ms, subs.get(k + 1).map(|n| n.start_ms), glyph_count(&c.text)) as u64;
+        let t = pos - f(c.start_ms);
+        if t >= total { return None; }
+        Some((track, k, t as u32, total as u32))
     }
 
     /// Draw the subtitle onto the finished frame `fb` (RGBA, W x H).

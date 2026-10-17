@@ -14,6 +14,8 @@
 // fmMix / pcmMix node is forced to one channel in mono mode, which the Web Audio "speakers" mixing rule turns into
 // 0.5 (L+R) on both outputs. CD-DA does not pass through the sound drivers, so it is never downmixed (HYPOTHESIS:
 // the original option only affects the FM and PCM drivers; docs/re/modules.md §Status said "no audible effect yet").
+import { CdClock } from "./cdclock";
+
 type Json = any;
 export type Reader = (path: string) => Promise<ArrayBuffer | null>;
 export type VolumeKind = "music" | "voice" | "fx";
@@ -58,6 +60,8 @@ export class AudioOut {
   missing = new Set<string>();
 
   private cdSrc: AudioBufferSourceNode | null = null;
+  private cdClock: CdClock | null = null;
+  private cdCtl = 0;
   private fmMusic: { src: AudioBufferSourceNode; gain: GainNode; id: number } | null = null;
   private fmSfx = new Map<number, AudioBufferSourceNode>();
   private voiceSrc: AudioBufferSourceNode | null = null;
@@ -148,7 +152,7 @@ export class AudioOut {
     return p;
   }
 
-  private play(buf: AudioBuffer, bus: string, opts: { loopStart?: number; loopEnd?: number; rate?: number; gain?: number } = {}) {
+  private play(buf: AudioBuffer, bus: string, opts: { loopStart?: number; loopEnd?: number; rate?: number; gain?: number; offset?: number } = {}) {
     const ctx = this.ensure();
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -160,7 +164,7 @@ export class AudioOut {
     g.gain.value = opts.gain ?? 1;
     src.connect(g); g.connect(this.nodes[bus]);
     src.onended = () => { src.disconnect(); g.disconnect(); };
-    src.start();
+    src.start(0, Math.min(opts.offset ?? 0, Math.max(0, buf.duration - 0.001)));
     return { src, gain: g };
   }
 
@@ -171,11 +175,29 @@ export class AudioOut {
   /** CD-DA track (sequencer cmd 0E / scene code), played once. */
   async cd(track: number) {
     const gen = ++this.cdGen;
-    AudioOut.stop(this.cdSrc); this.cdSrc = null;
+    AudioOut.stop(this.cdSrc); this.cdSrc = null; this.cdClock = null;
+    // the engine's CD clock starts now; the file may still have to be fetched and decoded (seconds for a long track): start where the engine is by then
+    const t0 = this.ensure().currentTime;
     const buf = await this.load(`web/music/track${String(track).padStart(2, "0")}.ogg`);
-    if (buf && gen === this.cdGen) this.cdSrc = this.play(buf, "cdBus").src;
+    if (buf && gen === this.cdGen) {
+      const late = Math.max(0, this.ctx!.currentTime - t0);   // the audio clock stands still while suspended, like the engine
+      if (late >= buf.duration) return;
+      this.cdSrc = this.play(buf, "cdBus", { offset: late }).src;
+      this.cdClock = new CdClock(this.ctx!.currentTime, late); this.cdCtl = this.ctx!.currentTime;
+    }
   }
-  stopCd() { this.cdGen++; AudioOut.stop(this.cdSrc); this.cdSrc = null; }
+  stopCd() { this.cdGen++; AudioOut.stop(this.cdSrc); this.cdSrc = null; this.cdClock = null; }
+  /** Called every frame with the engine's CD clock (seconds since it started the track, -1 when none): slews the audio rate towards it. */
+  syncCd(enginePos: number) {
+    const c = this.cdClock, src = this.cdSrc;
+    if (!c || !src || !this.ctx || enginePos < 0) return;
+    const now = this.ctx.currentTime;
+    if (now - this.cdCtl < 0.5) return;
+    this.cdCtl = now;
+    src.playbackRate.value = c.control(now, enginePos);
+  }
+  /** Gap (s) between the engine's CD clock and the audio position; for the drift test and the debug panel. */
+  cdOffset(enginePos: number) { return this.cdClock && this.ctx && enginePos >= 0 ? enginePos - this.cdClock.position(this.ctx.currentTime) : null; }
 
   /**
    * FM request (subfn_12): music ids 0x3F–0x7A loop; 0xFF fades the music out (85 frames); F1 stops all FM sound

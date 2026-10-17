@@ -473,6 +473,7 @@ function frame(now: number) {
     note("crash", "err", T("note.crash", { e: String(e) }));
     return;
   }
+  audio?.syncCd(game.cd_position()); // CD-DA audio follows the engine's CD clock (the subtitles use it)
   img.data.set(new Uint8Array(memory!.buffer, game.framebuffer_ptr(), W * H * 4));
   ctx.putImageData(img, 0, 0);
   if (dbgBox.checked) debugEl.textContent = game.debug_info() + "\n" + (audio?.debugInfo() ?? "");

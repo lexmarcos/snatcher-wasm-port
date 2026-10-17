@@ -5,6 +5,7 @@ mod audio;
 mod actions;
 mod voice;
 mod voice_sub;
+mod cdda_sub;
 pub mod gfx_i18n;
 pub mod i18n;
 

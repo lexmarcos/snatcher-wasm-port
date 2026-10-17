@@ -25,16 +25,13 @@ pub fn factory(top: Top, part: u8) -> Option<Box<dyn Module>> {
 }
 
 /// Pseudo register address holding the current CD-DA track (`Regs` is a map, not sub memory).
-const CD_TRACK_KEY: u32 = 0x00CD_0000;
+pub(crate) const CD_TRACK_KEY: u32 = 0x00CD_0000;
 
 /// Track lengths in sectors (1/75 s) of the USA disc (`assets/raw/extract_report.txt`, `snt extract`): the modules poll
 /// `CDBSTAT` for "track ended" (DATA_Y16 step 17, S:0x2920A) and the intro tables are consistent with them (D1's last entry
 /// 02:12:40 vs track 3 = 02:12:54, D0 track 5 = 00:19:05 vs the track-4 start entry at 00:19:00, D0's last entry 04:30:00 vs
 /// track 4 = 04:32:06).
-const TRACK_SECTORS: [(u16, u32); 20] = [
-    (2, 346), (3, 9971), (4, 20406), (5, 1431), (6, 5268), (7, 12353), (8, 15941), (9, 6404), (10, 9532), (11, 7999),
-    (12, 20079), (13, 8473), (14, 5993), (15, 5709), (16, 1138), (17, 7275), (18, 3386), (19, 31548), (20, 2336), (21, 31231),
-];
+use sncore::audio::CD_TRACK_SECTORS as TRACK_SECTORS;
 
 /// Status word of `cd_status` (S:0xE2FE, CDBSTAT word 0): 0x0100 = playing.
 pub const CD_PLAYING: u16 = 0x0100;

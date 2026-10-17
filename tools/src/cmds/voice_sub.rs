@@ -86,7 +86,7 @@ pub fn durations(dir: &str) -> Result<BTreeMap<u16, f64>, String> {
     Ok(m)
 }
 
-fn speaker_arg(s: &str, names: &[String]) -> Result<u8, String> {
+pub fn speaker_arg(s: &str, names: &[String]) -> Result<u8, String> {
     let s = s.trim();
     if s.is_empty() || s == "-" || s == "0" { return Ok(0); }
     if let Ok(n) = s.parse::<u8>() { return Ok(n); }
@@ -140,8 +140,9 @@ pub fn pack_voice(lang: &str) -> Result<HashMap<u16, i::VoiceSub>, String> {
 
 /// Validate `<lang>/voice.json`; returns the number of subtitles checked. Failures and warnings go to `rep`.
 pub fn check_into(lang: &str, dir: &str, rep: &mut Report) -> Result<usize, String> {
+    let ncd = super::cdda_sub::check_into(lang, dir, rep)?;   // CD-DA speech subtitles (docs/voice-subtitles.md "CD-DA speech")
     let v = read_voice(&voice_path(lang))?;
-    if v.is_empty() { return Ok(0); }
+    if v.is_empty() { return Ok(ncd); }
     let widths = font_widths(dir)?;
     let names = spk_names(dir);
     let dur = durations(dir)?;
@@ -212,7 +213,7 @@ pub fn check_into(lang: &str, dir: &str, rep: &mut Report) -> Result<usize, Stri
     let ls: Vec<String> = layout_stats.iter().map(|(l, (n, m))| format!("{l} {n} pages (longest clip {m})")).collect();
     println!("voice-check layouts: {}", ls.join(", "));
     println!("voice-check: {} subtitles, {hold_n} need the hold, fastest {max_cps:.1} chars/s", v.len());
-    Ok(v.len())
+    Ok(v.len() + ncd)
 }
 
 pub fn check_cmd(lang: &str, dir: &str) -> Result<(), String> {
