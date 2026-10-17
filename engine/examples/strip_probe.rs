@@ -14,8 +14,14 @@ fn make(p: &str) -> Engine {
     for n in FILE_NAMES.iter() { if *n == "PCMLD_01.BIN" { continue; } if let Ok(d) = std::fs::read(raw.join(n)) { e.load_file(n, d); } }
     let mut it = p.split(':');
     let (f, pc) = (it.next().unwrap(), it.next().unwrap());
-    let scene: Option<u16> = it.next().and_then(|x| u16::from_str_radix(x, 16).ok());
-    e.jump_path(57 + f[2..].parse::<u16>().unwrap(), u16::from_str_radix(pc, 16).unwrap(), &[]);
+    // `SPnn:pc[:scene]` (old) or `SPnn:pc:menu path:scene` as in vsub_sweep (path = comma-separated hex)
+    let (third, fourth) = (it.next(), it.next());
+    let (path, scene_s): (Vec<u16>, Option<&str>) = match fourth {
+        Some(sc) => (third.unwrap_or("").split(',').filter_map(|h| u16::from_str_radix(h, 16).ok()).collect(), Some(sc)),
+        None => (vec![], third),
+    };
+    let scene: Option<u16> = scene_s.and_then(|x| u16::from_str_radix(x, 16).ok());
+    e.jump_path(57 + f[2..].parse::<u16>().unwrap(), u16::from_str_radix(pc, 16).unwrap(), &path);
     if let Some(r) = scene {
         use sncore::script::vm::Action;
         e.queue.push(Action { cmd: 0x0F, args: vec![] });
