@@ -61,7 +61,10 @@ struct TrackHist {
 pub enum LoopKind { Exact, Approx }
 
 pub struct Rendered {
+    /// interleaved L/R at [`OUT_RATE`]; empty for a dry run ([`render_dry`])
     pub samples: Vec<i16>,
+    /// length in stereo frames at [`OUT_RATE`] (what `samples.len() / 2` is after a full render)
+    pub out_frames: usize,
     pub loop_start: Option<usize>,
     pub loop_end: usize,
     pub frames: usize,
@@ -71,6 +74,19 @@ pub struct Rendered {
 
 /// Render sound `id`; `max_frames` bounds the run.
 pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain: f64) -> Rendered {
+    render_impl(drv, Some(kit), id, max_frames, gain)
+}
+
+/// Run only the 68000 sound driver (no YM2612, no drums, no audio): gives the exact length and loop points of [`render`]
+/// (`frames`, `loop_start`, `loop_end`, `loop_kind`, `out_frames`) in a small fraction of the time, because neither the
+/// driver nor the loop detection ever reads the chip. `loop_corr` is `None` (it needs the audio). The importer uses it to
+/// publish the whole FM manifest at once and render the audio on demand.
+pub fn render_dry(drv: &mut KDriver, id: u8, max_frames: usize) -> Rendered {
+    render_impl(drv, None, id, max_frames, 1.0)
+}
+
+fn render_impl(drv: &mut KDriver, kit: Option<&DrumKit>, id: u8, max_frames: usize, gain: f64) -> Rendered {
+    let synth = kit.is_some();
     let no_drums = std::env::var("SNT_NO_DRUMS").is_ok();
     if let Ok(m) = std::env::var("SNT_FM_MUTE") { drv.ym.mute = u8::from_str_radix(&m, 16).unwrap_or(0); }
     drv.request(id);
@@ -79,7 +95,14 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
     let refslot = slots.iter().copied().find(|&s| drv.track_active(s as u32)).unwrap_or(0);
     let spf = CHIP_RATE / FRAME_RATE;
     let mut acc = 0.0;
-    let mut chip: Vec<(i32, i32)> = Vec::new();
+    // The chip runs at CHIP_RATE and is resampled linearly to OUT_RATE while it renders: out[i] needs chip[j], chip[j + 1] with
+    // j = floor(i * ratio), so only a short window of chip samples is kept (a 6 minute song would be 160 MB at chip rate).
+    let ratio = CHIP_RATE / OUT_RATE as f64;
+    let mut chip: Vec<(i32, i32)> = Vec::new(); // window: chip sample number `base + k` is chip[k]
+    let mut base = 0usize;
+    let mut chip_n = 0usize;                    // chip samples produced so far
+    let mut out: Vec<i16> = Vec::new();
+    let mut next_out = 0usize;
     let mut frame_start_chip = Vec::new();
     let mut hist: Vec<TrackHist> = (0..10).map(|_| TrackHist::default()).collect();
     let mut target: Option<(usize, usize)> = None; // (start tick, length) in refslot ticks
@@ -133,12 +156,13 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
         if loop_frames.is_some() && f >= extra_until { break }
 
         // ---- one VBlank
-        frame_start_chip.push(chip.len());
+        frame_start_chip.push(chip_n);
         drv.tick();
         for ev in drv.drums.drain(..) {
             for (note, vol, ch) in ev.decode() {
                 if no_drums { continue }
-                if let Some(Some((_, step, env, pan))) = kit.notes.get(note as usize) {
+                if !synth { continue }
+                if let Some(Some((_, step, env, pan))) = kit.unwrap().notes.get(note as usize) {
                     // S:0x16260: volume 0 keeps the table ENV, otherwise ENV*vol>>8
                     let env = if vol == 0 { *env as i32 } else { (*env as i32 * vol as i32) >> 8 };
                     // driver writes PAN nibble-swapped (S:0x154A2); RF5C164 low nibble = left (HYPOTHESIS)
@@ -150,7 +174,9 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
         }
         acc += spf;
         let n = acc as usize; acc -= n as f64;
-        for _ in 0..n {
+        if !synth { chip_n += n; }
+        for _ in 0..if synth { n } else { 0 } {
+            let kit = kit.unwrap();
             let (mut l, mut r) = drv.ym.clock();
             for v in voices.iter_mut() {
                 if let Some(vo) = v {
@@ -163,7 +189,22 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
                     vo.pos += vo.step;
                 }
             }
-            chip.push((l, r));
+            chip.push((l, r)); chip_n += 1;
+        }
+        // resample what is complete: out[i] needs chip[j + 1] to exist
+        while synth {
+            let x = next_out as f64 * ratio;
+            let j = x as usize;
+            if j + 1 >= chip_n { break }
+            let t = x - j as f64;
+            let (a, b) = (chip[j - base], chip[j + 1 - base]);
+            out.push(((a.0 as f64 * (1.0 - t) + b.0 as f64 * t) * gain).clamp(-32768.0, 32767.0) as i16);
+            out.push(((a.1 as f64 * (1.0 - t) + b.1 as f64 * t) * gain).clamp(-32768.0, 32767.0) as i16);
+            next_out += 1;
+        }
+        if synth {
+            let keep = (next_out as f64 * ratio) as usize; // first chip sample still needed
+            if keep > base + 4096 { chip.drain(..keep - base); base = keep; }
         }
         f += 1;
         let active = if is_music { drv.music_active() } else { drv.sfx_active() };
@@ -187,28 +228,26 @@ pub fn render(drv: &mut KDriver, kit: &DrumKit, id: u8, max_frames: usize, gain:
             }
         }
     }
-    // ---- resample chip-rate → 48 kHz (linear)
-    let ratio = CHIP_RATE / OUT_RATE as f64;
-    let nout = (chip.len() as f64 / ratio) as usize;
-    let mut out = Vec::with_capacity(nout * 2);
-    for i in 0..nout {
-        let x = i as f64 * ratio;
+    // ---- resample the rest (the last chip sample has no successor: it is repeated)
+    let nout = (chip_n as f64 / ratio) as usize;
+    while synth && next_out < nout {
+        let x = next_out as f64 * ratio;
         let j = x as usize; let t = x - j as f64;
-        let a = chip[j]; let b = *chip.get(j + 1).unwrap_or(&a);
-        let l = (a.0 as f64 * (1.0 - t) + b.0 as f64 * t) * gain;
-        let r = (a.1 as f64 * (1.0 - t) + b.1 as f64 * t) * gain;
-        out.push(l.clamp(-32768.0, 32767.0) as i16);
-        out.push(r.clamp(-32768.0, 32767.0) as i16);
+        let a = chip[j - base]; let b = *chip.get(j + 1 - base).unwrap_or(&a);
+        out.push(((a.0 as f64 * (1.0 - t) + b.0 as f64 * t) * gain).clamp(-32768.0, 32767.0) as i16);
+        out.push(((a.1 as f64 * (1.0 - t) + b.1 as f64 * t) * gain).clamp(-32768.0, 32767.0) as i16);
+        next_out += 1;
     }
-    let to_out = |fr: usize| ((*frame_start_chip.get(fr).unwrap_or(&chip.len())) as f64 / ratio) as usize;
+    let to_out = |fr: usize| ((*frame_start_chip.get(fr).unwrap_or(&chip_n)) as f64 / ratio) as usize;
     let (loop_start, loop_end, loop_kind) = match loop_frames {
         Some((g, e, k)) => (Some(to_out(g)), to_out(e).min(nout), Some(k)),
         None => (None, nout, None),
     };
-    let loop_corr = loop_start.and_then(|ls| verify(&out, ls, loop_end));
-    let mut out = out;
-    if std::env::var("SNT_NO_TRUNC").is_err() { out.truncate(loop_end * 2); }
-    Rendered { samples: out, loop_start, loop_end, frames: f, loop_corr, loop_kind }
+    let loop_corr = if synth { loop_start.and_then(|ls| verify(&out, ls, loop_end)) } else { None };
+    let keep_all = std::env::var("SNT_NO_TRUNC").is_ok();
+    if synth && !keep_all { out.truncate(loop_end * 2); }
+    let out_frames = if keep_all { nout } else { loop_end };
+    Rendered { samples: out, out_frames, loop_start, loop_end, frames: f, loop_corr, loop_kind }
 }
 
 /// Best normalized correlation (lag within ±1.5 frames) between the audio following the loop

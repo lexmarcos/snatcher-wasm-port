@@ -1,6 +1,7 @@
 //! Shared data-format code for the Snatcher web port.
 //! Used both by the offline tools (`snt`) and by the wasm engine.
 pub mod disc;
+pub mod sha256;
 pub mod lzkn;
 pub mod gfx;     // graphics formats (owner: graphics workstream)
 pub mod script;  // script bytecode (owner: script workstream)
