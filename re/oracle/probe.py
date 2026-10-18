@@ -28,5 +28,6 @@ for t in rec:
     prev = t
 print('cram', [hex(x) for x in m.vdp.cram[:64]])
 from PIL import Image
-Image.fromarray(m.vdp.frame_image()).save('/tmp/claude-1000/-home-suel-Documents-snatcher/481afae9-7945-4218-9e50-32eb479f158a/scratchpad/probe.png')
-open('/tmp/claude-1000/-home-suel-Documents-snatcher/481afae9-7945-4218-9e50-32eb479f158a/scratchpad/oracle_vram.bin','wb').write(bytes(m.vdp.vram))
+os.makedirs(os.path.join(HERE, 'out'), exist_ok=True)
+Image.fromarray(m.vdp.frame_image()).save(os.path.join(HERE, 'out', 'probe.png'))
+open(os.path.join(HERE, 'out', 'oracle_vram.bin'),'wb').write(bytes(m.vdp.vram))

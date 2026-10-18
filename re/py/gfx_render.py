@@ -1,6 +1,6 @@
 """Experiment (superseded by core/src/gfx.rs + `snt gfx-export`): rebuild VRAM/CRAM for a DATA scene. NOTE: in-game planes are 32 cells wide (see docs/re/graphics.md §3); pass w=32."""
-import sys, struct
-sys.path.insert(0, '/home/suel/Documents/snatcher/re/py')
+import os, sys, struct
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gfx_lzkn import lzkn1
 from gfx_scenes import scenes, chunks, be16, be32
 from PIL import Image

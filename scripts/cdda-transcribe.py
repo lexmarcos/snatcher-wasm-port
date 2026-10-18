@@ -189,7 +189,7 @@ def write_merged(tracks):
     print("\n".join(lines))
 
 
-ELEVEN_CLI = os.environ.get("ELEVEN_CLI", "/home/suel/.nvm/versions/node/v22.21.1/bin/elevenlabs")
+ELEVEN_CLI = os.environ.get("ELEVEN_CLI", "elevenlabs")  # the ElevenLabs CLI on PATH, or its path in ELEVEN_CLI
 ELEVEN_DIR = os.path.join(OUT, "eleven")
 
 

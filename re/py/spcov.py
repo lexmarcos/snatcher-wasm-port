@@ -1,7 +1,7 @@
-import sys, glob
-sys.path.insert(0, '/home/suel/Documents/snatcher/re/py')
+import os, sys, glob
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sparse import node
-for f in sorted(glob.glob('/home/suel/Documents/snatcher/assets/raw/files/SP*.BIN')):
+for f in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'assets', 'raw', 'files', 'SP*.BIN'))):
     b = open(f, 'rb').read()
     o = 0; n = 0; err = None
     while o < len(b):

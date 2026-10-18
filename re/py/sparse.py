@@ -1,5 +1,5 @@
-import struct, sys
-img = open('/home/suel/Documents/snatcher/re/images/sub_prg.bin','rb').read()
+import os, struct, sys
+img = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'images', 'sub_prg.bin'),'rb').read()
 T = 0x16cdc - 0x6000
 TYPES = {}
 for i in range(0x4b):

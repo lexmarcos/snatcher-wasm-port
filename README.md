@@ -1,10 +1,13 @@
-# Snatcher (USA, Sega CD) – native web port (private preservation project)
+# Snatcher (USA, Sega CD) – native web port
 
 A reimplementation of the Snatcher engine in Rust, compiled to WebAssembly, that plays the
 original game data from **your own disc image**. It is not an emulator: the script VM,
 sequencer and scene composer are rewritten from the reverse-engineered 68000 code.
 
 No game data is included in this repository. `assets/`, `work/`, `*.chd/*.bin/*.cue` are ignored.
+
+The page can show the game in English (the disc's own text) or in Brazilian Portuguese: `i18n/pt-BR/` holds a fan
+translation of the text, the voice and CD music subtitles and the redrawn pictures, applied over your disc at run time.
 
 ## Play (the simple way): import your disc image in the browser
 You need the page served (see "Build" below) and your own disc image of **Snatcher (USA, Sega CD)** as `.cue` + `.bin` (one `.bin` for the
@@ -57,6 +60,12 @@ Light gun (shooting sections): mouse to aim, left button = trigger, right button
 back to the pad. Esc = menu (pauses; volume sliders, smooth scaling, save export/import, controls), F = fullscreen,
 M = mute, F1 = debug. The game pauses while the tab is hidden. Saves live in `localStorage` (`snatcher.save.N`);
 export/import them as JSON from the menu.
+
+## Legal
+This is an independent fan project, not affiliated with or endorsed by Konami or Sega. Snatcher is © Konami;
+Sega and Sega CD are trademarks of Sega. The names are used only to say which game and disc this works with.
+To play you need your own copy of the game. The MIT licence (`LICENSE`) covers this project's own code and text;
+it grants no rights to the game. The DotGothic16 font subset in `web/fonts/` is under the SIL Open Font License (`web/fonts/OFL.txt`).
 
 ## Documentation
 - `docs/PROGRESS.md` – milestones, current state, next steps.

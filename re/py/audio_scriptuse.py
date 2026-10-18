@@ -1,7 +1,7 @@
 """Collect audio-related script operands (op 04 voice, 05 pcm sfx, 0a fm music, 0d cd track,
 0f fm sfx) from all SPxx.BIN code regions (parser: re/py/sparse.py)."""
-import sys, glob, collections
-sys.path.insert(0, '/home/suel/Documents/snatcher/re/py')
+import os, sys, glob, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sparse import node
 OPS = {0x04: 'voice', 0x05: 'pcmsfx', 0x0a: 'fm', 0x0d: 'cdda', 0x0f: 'fmsfx'}
 use = collections.defaultdict(collections.Counter)
