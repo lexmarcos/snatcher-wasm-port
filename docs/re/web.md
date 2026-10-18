@@ -216,12 +216,29 @@ frames equal the original run in picture, engine events and (every 50 frames) fu
 `core/src/snap.rs` unit tests (round trip, corrupt input, fingerprint). `web/test/autosave.ts` (headless Chrome, own server on 5340): first save in a new game, the record in IndexedDB and not in localStorage, save slots untouched, Continue (en, pt-BR) with the same engine frame and screen hash and the music back,
 hiding the page saves, toggle off = no new autosave although safe points go by, the setting persists, delete with a second click, "Clear everything", other engine / other disc / damaged autosave, localStorage blocked, IndexedDB blocked. Screenshots in `work/shots/autosave/`.
 
+## 10. Static build and GitHub Pages (`scripts/build-static.sh`, `.github/workflows/pages.yml`, `web/src/urls.ts`, `web/test/static.ts`)
+The page is published at https://markzuel.com/snatcher-wasm-port/ (project site of `lexmarcos/snatcher-wasm-port`; the owner's user site serves the custom domain, this repo sets none). The site holds the engine, the page and the pt-BR pack only: no game data, no `assets/`, no source maps. The disc is imported by the player in the browser (section 8) and never sent anywhere.
+
+**Sub-path.** Every URL is relative to the page: `index.html` uses `dist/main.js`, `styles/system.css`, `fonts/...`; code builds the others with `siteUrl("pkg/snengine.js")` (`urls.ts`: `document.baseURI` in the page, the worker's own URL one folder up in the worker). The dev server still serves the same paths at the root. `--external /pkg/snengine.js` is gone from the bun build: the engine is loaded by a computed `import()`, which bun leaves alone. The wasm file is passed to `init({module_or_path})` explicitly, so it gets the version query too.
+
+**Headers.** Pages sets none of the dev server's. Nothing needs cross-origin isolation or SharedArrayBuffer (checked: no use in `src/`, and `static.ts` asserts `crossOriginIsolated` is false). `.wasm` is served as `application/wasm` (streaming compile works); the pack is read with `arrayBuffer()`, so its content type does not matter.
+
+**No probe on Pages.** The dev server serves `./assets` and the page asks for `assets/raw/filelist.tsv`. On a static host that is a 404, and Chrome prints every 404 in the console. `build-static.sh` therefore adds `<meta name="sn-served-assets" content="none">` to the published `index.html`; `probeServed()` returns at once when it is there (no request, no "no local assets" line under "Other ways to load"). The dev page has no such meta and probes as before. The page has an inline favicon, so there is no `favicon.ico` request either.
+
+**Cache.** Pages caches for 10 minutes, so a deploy could pair an old wasm with a new JS. `build-static.sh` hashes the whole site (html, js, wasm, pack, strings, css; the build is deterministic) and writes the first 12 hex digits into the `@@BUILD@@` token of the bundles and into `main.js?v=` / `system.css?v=` in `index.html`. `siteUrl()` appends `?v=<hash>` to the glue, wasm, worker, pack and strings URLs. In dev the token stays and no query is added. Fonts keep plain URLs (they never change). `.nojekyll` is in the folder.
+
+**Build.** `scripts/build-static.sh` runs `scripts/build-web.sh` (`SKIP_BUILD=1` reuses the last build) and fills `build/site/` (gitignored, about 1.8 MB: wasm 0.87, pack 0.72, js 0.11, rest small). It stops if a token is left, `index.html` has an absolute path, or the folder holds a `.map`, `.bin`, `.cue`, `.chd`, `.iso`, `.ogg` or `.wav`.
+
+**Deploy.** `pages.yml` runs on push to `main` and by hand: Rust stable + wasm32 target, `wasm-bindgen` 0.2.129 (prebuilt release, same version as `Cargo.lock`), Bun, `scripts/build-static.sh` (`cargo build -j 4`), then `upload-pages-artifact` and `deploy-pages`. Repository setting: Pages source "GitHub Actions".
+
+**Check.** `bun web/test/static.ts` serves `build/site` under `/snatcher-wasm-port/` with a plain server (no special header, 404 for the rest) on port 5350 and checks: 0 console errors, 0 failed requests, no `/assets` request, step 1 only on a first visit, pt-BR switch. `FULL=1` also imports the local disc and plays (about 35 s for the import, the pack fetched, frames drawn). `SITE_URL=<url>` checks a live site instead. Screenshots go to `work/shots/pages/` (gitignored: they show the game).
+
 ## 5. Tests
 (The importer tests are in section 8: `cargo test --release -p sncore --test import` and `bun web/test/import.ts`.)
 `scripts/test-web.sh [outdir]`: `bun test web/test/` (pacer, picked-folder recognition), then headless Chrome (chrome-headless-shell from
 `~/.cache/puppeteer`): `ui.ts` (overlay, menu pause, hidden-tab pause, volumes, mono/stereo, stop commands, LRU, save import/export and
 save event, picked-folder run, degraded assets, phone width 360x640, screenshots to the out dir), `shot.ts newgame` and `shot.ts scene=SP01:0`
-`autosave.ts` (section 9), (exit code 1 on any console error, page error or HTTP >= 400). Missing-file 404s of optional audio are expected console noise in real use.
+`autosave.ts` (section 9), `static.ts` (section 10; run by hand, it needs `build/site`), (exit code 1 on any console error, page error or HTTP >= 400). Missing-file 404s of optional audio are expected console noise in real use.
 
 ## 6. Controllers (Xbox, PlayStation, Nintendo Switch) and button icons
 Code: `web/src/gamepads.ts` (families, layouts, maps, prompt resolution; pure, unit-tested), `web/src/input.ts` (`scan()`, last device, capture),

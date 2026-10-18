@@ -4,6 +4,8 @@
 
 Play **Snatcher** (the 1994 Sega CD version, USA) in your web browser, using your own copy of the game.
 
+**Play in your browser: https://markzuel.com/snatcher-wasm-port/**
+
 This is not an emulator. The game's engine was rebuilt from scratch so that it runs natively in the browser. It reads
 the original disc and plays it as the console did, with the same pictures, music and voices.
 
@@ -20,7 +22,7 @@ the original disc and plays it as the console did, with the same pictures, music
 
 ## How to play
 
-1. Open the page (see "Running the page" below).
+1. Open https://markzuel.com/snatcher-wasm-port/ (or run the page yourself, see "For developers" below).
 2. Press **Import disc image** and choose your `.cue` file **together with** its `.bin` file(s). You can also drag them onto the page.
 3. Wait a few seconds while the disc is checked and copied into the browser.
 4. Press **Play**.
@@ -47,10 +49,10 @@ The copy kept in the browser takes about 1.1 GB. You can remove it at any time f
 In the shooting scenes, aim with the mouse and click to fire. Gamepads work as soon as you press a button,
 and their buttons can be changed in the menu.
 
-## Running the page
+## For developers
 
-There is no public website yet, so for now the page runs on your own computer.
-You need [Rust](https://rustup.rs) and [Bun](https://bun.sh). Then, in a terminal, inside this folder:
+The public website is built from this repository by a GitHub Actions workflow on every push to `main`.
+To run the page on your own computer you need [Rust](https://rustup.rs) and [Bun](https://bun.sh). Then, in a terminal, inside this folder:
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -59,9 +61,8 @@ scripts/build-web.sh
 bun web/server.ts
 ```
 
-Open http://localhost:5300 in your browser (tested in Chrome).
-
-## For developers
+Open http://localhost:5300 in your browser (tested in Chrome). To build the same static folder that the website
+uses (`build/site/`), run `scripts/build-static.sh`.
 
 Technical notes, the reverse engineering of the original game and the test tools are in [`docs/`](docs/).
 Good places to start: [`docs/PROGRESS.md`](docs/PROGRESS.md) and [`docs/re/web.md`](docs/re/web.md).

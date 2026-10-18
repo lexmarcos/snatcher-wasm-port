@@ -29,6 +29,10 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
   Web front end: canvas, input, WebAudio (CD/FM/voice/PCM), saves in localStorage.
   Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
+## Resume here: public site on GitHub Pages (2026-10-18, docs/re/web.md section 10)
+The page is published at https://markzuel.com/snatcher-wasm-port/ (sub-path of the owner's custom domain; the repo sets no domain). `scripts/build-static.sh` builds `build/site/` (page, wasm, pt-BR pack, styles, font; no game data, no maps); `.github/workflows/pages.yml` deploys it on every push to `main`.
+All page URLs are relative (`web/src/urls.ts`), a build hash goes into the JS, wasm, pack and CSS URLs (no stale pairs after a deploy), and the served-assets probe is switched off in the static page (a meta tag) so a first visit shows only step 1 and no console error. `bun web/test/static.ts` (`FULL=1` imports the local disc and plays) checks the folder under a sub-path with a header-less static server.
+
 ## Resume here: autosave (2026-10-18, docs/re/web.md section 9)
 The page saves the running game by itself and offers "Continue where you left off" in the start window (primary button beside Play). **Design: a snapshot of the whole engine state** at a safe point (not the game's own 0x1C0-byte save block,
 which cannot restore a menu or a message): `core/src/snap.rs` (codec, `snap_struct!` checks every field at compile time), `engine/src/snapshot.rs` (`safe_point`, `snapshot`, `restore`, header with format, layout fingerprint, disc digest, language and pack hash, checksum),
