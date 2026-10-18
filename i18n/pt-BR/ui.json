@@ -34,7 +34,7 @@
     "ov.nofiles": "Nenhum arquivo do jogo encontrado nessa seleção.",
     "ov.nofiles2": "Foram examinados {n} arquivos. Escolha a pasta que contém a pasta \"files\" extraída (assets/raw) ou a pasta assets inteira.",
     "ov.nolocal": "Nenhum arquivo local do jogo encontrado.",
-    "ov.nolocal2": "{err}. Escolha a pasta extraída abaixo, ou faça a extração e inicie bun web/server.ts (veja o README).",
+    "ov.nolocal2": "{err}. Importe a imagem do seu disco abaixo (.cue + .bin), ou escolha uma pasta extraída, ou faça a extração e inicie bun web/server.ts (veja o README).",
     "ov.fail": "Não foi possível iniciar: {e}",
     "ov.language": "Idioma",
     "src.server": "servidor local (./assets)",

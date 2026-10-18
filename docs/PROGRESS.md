@@ -29,6 +29,17 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
   Web front end: canvas, input, WebAudio (CD/FM/voice/PCM), saves in localStorage.
   Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
+## Resume here: disc image import in the browser (2026-10-17, docs/re/web.md section 8)
+A player with the disc image opens the page, picks (or drops) the `.cue` + `.bin` file(s) and plays; no extraction pipeline. Done: multi-FILE cue parser + sector layout
+(`core/src/disc.rs`), the importer (`core/src/import.rs`: Sega header + SHA-256 disc check, ISO9660 files, boot code, PCM voices/banks/drums, CD-DA, FM manifest by a chip-less driver run),
+wasm bindings (`engine/src/importer.rs`), worker + OPFS cache + imported Source (`web/src/{import.worker,imported,cache}.ts`), overlay UI with progress, drag and drop, storage
+usage, persist request, remove button, en + pt-BR strings, FM sounds rendered in the background (priority to what the game asks), CD-DA copied into the cache (option to skip).
+Tests: `cargo test --release -p sncore --test import` (byte-for-byte vs `assets/raw`, CD vs the WAVs, voices/banks/drums vs the WAVs, all 122 FM vs the WAVs with `SNT_FULL=1`,
+single vs multi-bin, wrong-disc errors with synthetic images), `bun test web/test` (`imported.test.ts`), `bun web/test/import.ts` (headless Chrome, `/assets` off, screenshots in `work/shots/import/`).
+Tools: `snt import-disc <cue> <outdir>`, `snt split-cue <cue> <outdir> <name>` (Redump-style multi-bin copy), `snt extract` now accepts multi-bin cues.
+Open: CHD input (decode in wasm or `chdman` first), a static production build (the page needs `/pkg`, `/dist`, `/i18n` served; no `/assets`), other regions / editions (add their serial + digest
+to `import::KnownDisc` once a dump is available), FM background rendering could use a second worker, a persisted `FileSystemFileHandle` for the CD music (Chromium) instead of copying 490 MB.
+
 ## Resume here
 oracle2 (2026-10-15, `docs/re/oracle2.md`): a second, **real-BIOS** oracle (Genesis Plus GX + Sega CD BIOS US v1.10, deterministic, ~735 frames/s, same trace format, `ORACLE=2` for the fid/shoot tools)
 confirms the HLE oracle: 12/12 reference screens pixel-identical, the message-box palette split dark, Act 1 session 106/106 queues identical HLE vs real BIOS, engine 106/106. It found what the HLE cannot show:

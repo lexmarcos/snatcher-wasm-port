@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Web front end checks: unit tests (pacer, picked-folder recognition, gamepad families/maps/prompts), then headless Chrome runs against a dev
-# server (started here on PORT, default 5301, unless one is already listening there).
+# Web front end checks: unit tests (pacer, picked-folder recognition, gamepad families/maps/prompts, cue/bin picking), then headless Chrome runs against a dev
+# server (started here on PORT, default 5301, unless one is already listening there). The disc importer run (test/import.ts, own server on 5320 with /assets off,
+# about 8 minutes) only happens when the local disc work/snatcher.cue exists; SKIP_IMPORT=1 skips it.
 # usage: scripts/test-web.sh [outdir-for-screenshots]
 set -euo pipefail
 cd "$(dirname "$0")/../web"
@@ -17,3 +18,6 @@ bun test/lang.ts "$out"
 bun test/pads.ts "$out"
 bun test/shot.ts newgame "$out/shot-newgame.png" 180
 bun test/shot.ts "scene=SP01:0" "$out/shot-sp01.png" 200
+if [ -z "${SKIP_IMPORT:-}" ] && [ -f ../work/snatcher.cue ]; then
+  bun test/import.ts "$out/import"
+fi

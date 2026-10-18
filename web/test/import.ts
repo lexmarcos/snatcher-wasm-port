@@ -181,11 +181,12 @@ for (const fl of flavours) {
   // FM background rendering
   const fmT0 = Date.now();
   await page.waitForFunction(() => (window as any).snatcherImport.worker.fmComplete, { timeout: 900000, polling: 500 });
-  const fmInfo = await page.evaluate(() => { const w = (window as any).snatcherImport.worker; return { ms: w.fmMs, total: w.fmTotal }; });
+  const fmInfo = await page.evaluate(() => { const w = (window as any).snatcherImport.worker; return { ms: w.fmMs, total: w.fmTotal, heapImport: w.importHeap, heapFm: w.fmHeap }; });
+  console.log(`  worker wasm heap: after the import ${(fmInfo.heapImport / 2 ** 20).toFixed(0)} MB, after the FM rendering ${(fmInfo.heapFm / 2 ** 20).toFixed(0)} MB`);
   console.log(`  FM sounds rendered in the browser (worker, background): ${fmInfo.total} sounds in ${(fmInfo.ms / 1000).toFixed(1)} s (waited ${((Date.now() - fmT0) / 1000).toFixed(0)} s more after Play)`);
   check(`${fl.name}: all FM sounds are cached`, fmInfo.total === 122);
   console.log(`  peak RSS over import + FM rendering + game: ${peak.toFixed(0)} MB (${peakTop})`);
-  results[fl.name] = { importMs: Math.round(stats.ms), fmMs: Math.round(fmInfo.ms), idleRssMB: Math.round(baseline), importPeakRssMB: Math.round(importPeak), overallPeakRssMB: Math.round(peak) };
+  results[fl.name] = { importMs: Math.round(stats.ms), fmMs: Math.round(fmInfo.ms), wasmHeapImportMB: Math.round(fmInfo.heapImport / 2 ** 20), wasmHeapFmMB: Math.round(fmInfo.heapFm / 2 ** 20), idleRssMB: Math.round(baseline), importPeakRssMB: Math.round(importPeak), overallPeakRssMB: Math.round(peak) };
   const cache = await page.evaluate(async () => {
     const d = await (await navigator.storage.getDirectory()).getDirectoryHandle("snatcher-import-v1");
     let n = 0, total = 0;
@@ -218,11 +219,11 @@ for (const fl of flavours) {
     check(`${fl.name}: new game (Junker HQ) from the cache, 0 imports in this page`, runs === 0, `runs=${runs}`);
     await audioIsBitExact(page, fl.name + " (cache)");
     await waitFrames(page, 300);
-    const snd2 = await page.evaluate(() => { const a = (window as any).snatcher.audio; return { state: a.ctx?.state, music: !!a.fmMusic, missing: [...a.missing], fmMusic: a.fmMusic?.id }; });
-    check(`${fl.name}: new game has music from the cache and nothing is missing`, snd2.state === "running" && snd2.missing.length === 0, JSON.stringify(snd2));
+    const snd2 = await page.evaluate(() => { const a = (window as any).snatcher.audio; return { state: a.ctx?.state, buffers: a.cache.size, playing: !!a.fmMusic || !!a.cdSrc || !!a.voiceSrc || a.pcmSfxSrc.size > 0 || a.fmSfx.size > 0, missing: [...a.missing] }; });
+    check(`${fl.name}: new game: sounds were loaded from the cache and nothing is missing`, snd2.state === "running" && snd2.buffers > 0 && snd2.missing.length === 0, JSON.stringify(snd2));
     await shot(page, `${fl.name}-6-newgame.png`);
-    const assetReqs = requests.slice(before).filter((p) => p.startsWith("/assets/"));
-    check(`${fl.name}: no request for /assets was made`, assetReqs.length === 0, assetReqs.slice(0, 3).join(", "));
+    const assetReqs = requests.slice(before).filter((p) => p.startsWith("/assets/") && p !== "/assets/raw/filelist.tsv"); // that one is the page's probe for a served copy (404 here)
+    check(`${fl.name}: nothing but the served-copy probe was requested under /assets`, assetReqs.length === 0, assetReqs.slice(0, 3).join(", "));
     // ---- remove
     await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
     await page.waitForSelector("#btnClear:not([hidden])", { timeout: 20000 });
@@ -245,7 +246,8 @@ for (const fl of flavours) {
 console.log("\n=== wrong inputs ===");
 {
   const tmp = mkdtempSync(join(tmpdir(), "snimport-"));
-  const w = (n: string, d: string | Buffer) => { const p = join(tmp, n); writeFileSync(p, d); return p; };
+  let caseNo = 0; // every case has its own directory (all of them name their image game.bin)
+  const w = (n: string, d: string | Buffer) => { const dir = join(tmp, String(caseNo)); mkdirSync(dir, { recursive: true }); const p = join(dir, n); writeFileSync(p, d); return p; };
   const cleanCue = 'FILE "game.bin" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n';
   const zeros = Buffer.alloc(2352 * 40);
   const mode1 = (title: string, serial: string, region: string) => {
@@ -256,22 +258,25 @@ console.log("\n=== wrong inputs ===");
     h.copy(b, 16);
     return b;
   };
-  const cases: Array<[string, string[], RegExp]> = [
-    ["only a .bin, no .cue", [w("a.bin", zeros)], /No \.cue file/],
-    ["cue without its .bin", [w("b.cue", cleanCue)], /game\.bin/],
-    ["two cues", [w("c1.cue", cleanCue), w("c2.cue", cleanCue), w("game.bin", zeros)], /More than one \.cue/],
-    ["not a cue file", [w("d.cue", "hello world"), w("game.bin", zeros)], /cannot be used|no TRACK/i],
-    ["not a Sega CD disc", [w("e.cue", cleanCue), w("game.bin", zeros)], /not a Sega CD disc/],
-    ["another Sega CD game", [w("f.cue", cleanCue), w("game.bin", mode1("SONIC CD", "GM MK-4407 -00", "U"))], /not Snatcher/],
-    ["another edition of Snatcher", [w("g.cue", cleanCue), w("game.bin", mode1("SNATCHER", "GM T-95015 -00", "J"))], /another edition of Snatcher.*T-95015/],
-    ["right serial, other region", [w("h.cue", cleanCue), w("game.bin", mode1("SNATCHER", "GM T-95035 -00", "E"))], /Wrong region code/],
-    ["image cut short", [w("i.cue", cleanCue), w("game.bin", Buffer.alloc(2352 * 40 + 100))], /cue sheet does not match|multiple of 2352/],
-    ["not a raw image (plain 2048-byte data)", [w("j.cue", cleanCue), w("game.bin", Buffer.alloc(2352 * 40, 7))], /not a raw 2352|not a Sega/],
+  // (a raw MODE1 image whose first sector is blank has valid sync patterns but no SEGADISCSYSTEM)
+  const cases: Array<[string, () => string[], RegExp]> = [
+    ["only a .bin, no .cue", () => [w("a.bin", zeros)], /No \.cue file/],
+    ["cue without its .bin", () => [w("b.cue", cleanCue)], /game\.bin/],
+    ["two cues", () => [w("c1.cue", cleanCue), w("c2.cue", cleanCue), w("game.bin", zeros)], /More than one \.cue/],
+    ["not a cue file", () => [w("d.cue", "hello world"), w("game.bin", zeros)], /cannot be used|no TRACK/i],
+    ["not a Sega CD disc", () => [w("e.cue", cleanCue), w("game.bin", mode1("", "", "").fill(0, 16, 2064))], /not a Sega CD disc/],
+    ["another Sega CD game", () => [w("f.cue", cleanCue), w("game.bin", mode1("SONIC CD", "GM MK-4407 -00", "U"))], /not Snatcher/],
+    ["another edition of Snatcher", () => [w("g.cue", cleanCue), w("game.bin", mode1("SNATCHER", "GM T-95015 -00", "J"))], /another edition of Snatcher.*T-95015/],
+    ["right serial, other region", () => [w("h.cue", cleanCue), w("game.bin", mode1("SNATCHER", "GM T-95035 -00", "E"))], /Wrong region code/],
+    ["image cut short", () => [w("i.cue", cleanCue), w("game.bin", Buffer.alloc(2352 * 40 + 100))], /cue sheet does not match|multiple of 2352/],
+    ["not a raw image (plain 2048-byte data)", () => [w("j.cue", cleanCue), w("game.bin", Buffer.alloc(2352 * 40, 7))], /not a raw 2352|not a Sega/],
   ];
   await launch();
   const page = await open(browser);
   await page.waitForSelector("#btnImport", { timeout: 20000 });
-  for (const [name, files, re] of cases) {
+  for (const [name, mk, re] of cases) {
+    caseNo++;
+    const files = mk();
     await page.evaluate(() => { const e = document.getElementById("impStatus")!; e.className = "dim"; e.textContent = ""; });
     await (await page.$("#discPick"))!.uploadFile(...files);
     const st = await waitImport(page).catch(() => ({ st: "TIMEOUT", cls: "" }));

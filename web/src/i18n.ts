@@ -23,7 +23,7 @@ export const UI_EN = {
   "ov.saves": "Saves", "ov.import": "Import saves…", "ov.export": "Export saves", "ov.controls": "Controls",
   "ov.using": "Using: {label}", "ov.nofiles": "No game files found in that selection.",
   "ov.nofiles2": "Looked at {n} files. Pick the folder that contains the extracted \"files\" folder (assets/raw) or the whole assets folder.",
-  "ov.nolocal": "No local game files found.", "ov.nolocal2": "{err}. Choose the extracted folder below, or run the extraction and start bun web/server.ts (see README).",
+  "ov.nolocal": "No local game files found.", "ov.nolocal2": "{err}. Import your disc image below (.cue + .bin), or choose an extracted folder, or run the extraction and start bun web/server.ts (see README).",
   "ov.fail": "Could not start: {e}", "ov.language": "Language",
   // sources
   "src.server": "local server (./assets)", "src.picked": "picked folder",

@@ -61,6 +61,8 @@ export class ImportWorker {
   fmDone = 0; fmTotal = 0; fmComplete = false;
   /** wall time of the background FM rendering in this page visit (ms), 0 until it finished */
   fmMs = 0; private fmT0 = 0;
+  /** size of the wasm heap of the worker after the import / after the FM rendering (bytes; for the memory notes in docs/re/web.md) */
+  importHeap = 0; fmHeap = 0;
 
   private get worker(): Worker {
     if (!this.w) {
@@ -73,11 +75,11 @@ export class ImportWorker {
   private message(m: any) {
     switch (m.type) {
       case "progress": this.onProgress?.(m); break;
-      case "imported": this.job?.ok(m.meta); this.job = null; break;
+      case "imported": this.importHeap = m.wasmHeap ?? 0; this.job?.ok(m.meta); this.job = null; break;
       case "error": this.job?.fail(m.error); this.job = null; break;
       case "fm-progress": this.fmDone = m.done; this.fmTotal = m.total; this.onFm?.(m.done, m.total, false); break;
       case "fm-done": for (const f of this.fmWait.get(m.id) ?? []) f(); this.fmWait.delete(m.id); break;
-      case "fm-complete": this.fmComplete = true; this.fmMs = performance.now() - this.fmT0; this.onFm?.(this.fmTotal, this.fmTotal, true); this.finishFm(); break;
+      case "fm-complete": this.fmHeap = m.wasmHeap ?? 0; this.fmComplete = true; this.fmMs = performance.now() - this.fmT0; this.onFm?.(this.fmTotal, this.fmTotal, true); this.finishFm(); break;
       case "fm-error": this.fmFailed = m.message; console.error("[fm]", m.message); this.finishFm(); break;
     }
   }
