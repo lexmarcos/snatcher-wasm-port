@@ -5,6 +5,7 @@ Code: `web/index.html`, `web/src/{main,sources,audio,input,pacer,saves}.ts`, `we
 framebuffer_ptr, take_events, debug_info). Build `scripts/build-web.sh`, tests `scripts/test-web.sh`.
 
 ## Status
+- **Design system** ("Junker HQ terminal", `docs/design-system.md`): all HTML screens (start overlay with every importer state, pause panel with tabs, toolbar, monitor frame, debug overlay) use `web/styles/system.css` and the self-hosted DotGothic16 (`web/fonts/`, served as `/fonts/`, `/styles/`). Checked by `web/test/design.ts` (run by `scripts/test-web.sh`). A static host must serve `web/styles/` and `web/fonts/` next to `index.html`, `dist/` and `pkg/`.
 - **Disc image import** (`.cue` + `.bin` picked or dropped, checked, extracted in a worker, cached in OPFS, played with no ogg step): done and tested, section 8.
 - **Done and tested** (`web/test/ui.ts`, `pace.test.ts`, `sources.test.ts`, `shot.ts` with `newgame` and `scene=SP01:0`, no console errors):
   start overlay (served assets or folder picker), menu (Esc, pauses), volume sliders, fullscreen, mute, pause on hidden tab,

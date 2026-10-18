@@ -109,7 +109,7 @@ export const UI_EN = {
   "ctl.also": " (also {k})", "ctl.sorspace": "S or Space",
   "ctl.web": "Web menu", "ctl.orEsc": " or Esc", "ctl.esc": "Esc",
   "ctl.gun": "Light gun", "ctl.mouse": "mouse",
-  "ctl.gunhelp": " Move to aim, left button = trigger, right button = second button (holster). Pressing any pad key switches back to the pad.",
+  "ctl.gunhelp": ": move to aim, left button = trigger, right button = second button (holster). Pressing any pad key switches back to the pad.",
   "ctl.misc": "Fullscreen / mute / debug",
   "pad.assign": "Assign…", "pad.press": "Press a button… (Esc cancels)", "pad.nonstd": " (non-standard mapping)",
   "pad.connected": "Connected: {list}.", "pad.none": "No gamepad detected. Press a button on it (browsers only show a pad after its first input).",

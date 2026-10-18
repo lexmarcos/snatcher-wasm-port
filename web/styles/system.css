@@ -48,7 +48,8 @@ body {
   font-kerning: none; -webkit-font-smoothing: none; font-smooth: never;
 }
 h1, h2, p, ul { margin: 0; }
-p, .line { max-width: 70ch; }
+p, .line { max-width: 70ch; text-wrap: pretty; }
+.slot { text-wrap: balance; }
 code { font: inherit; color: var(--bevel-hi); }
 .dim { color: var(--dim); }
 :focus-visible { outline: 2px solid var(--call); outline-offset: 2px; }
@@ -56,12 +57,12 @@ code { font: inherit; color: var(--bevel-hi); }
 
 /* ---------------------------------------------------------------- 3 components */
 /* bevel: --tl is the light edge, --br the dark one; inverting them presses the thing in */
-.bevel, .win, .btn, .tab, .strip, .slot, .meter, select, .tabpanel, #bar, #monitor, #debug, .lang button, input[type=checkbox] {
+.bevel, .win, .btn, .tab, .strip, .meter, select, .tabpanel, #bar, #monitor, #debug, .lang button, input[type=checkbox] {
   --tl: var(--bevel-hi); --br: var(--bevel-lo);
   border: var(--bw) solid var(--bevel-lo);
   box-shadow: inset var(--bw) var(--bw) 0 var(--tl), inset calc(-1 * var(--bw)) calc(-1 * var(--bw)) 0 var(--br);
 }
-.strip, .slot, .meter, select, .tabpanel, input[type=checkbox] { --tl: var(--bevel-lo); --br: var(--bevel-mid); } /* inset wells */
+.strip, .meter, select, .tabpanel, input[type=checkbox] { --tl: var(--bevel-lo); --br: var(--bevel-mid); } /* inset wells */
 
 /* window: beveled frame, title strip, field body */
 .win { background: var(--field); padding: var(--bw); width: 100%; max-width: 640px; margin: auto; }
@@ -165,7 +166,7 @@ input[type=range]:active::-webkit-slider-thumb { box-shadow: inset 2px 2px 0 var
 .meter progress { background: repeating-linear-gradient(90deg, var(--face) 0 24px, transparent 24px var(--block)); }
 
 /* drive slot: an inset dark slot with a dashed border that turns yellow while dragging */
-.slot { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 96px; padding: 16px; background: var(--bevel-lo); color: var(--dim); outline: 2px dashed var(--bevel-mid); outline-offset: -10px; }
+.slot { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 96px; padding: 16px; background: var(--bevel-lo); color: var(--dim); outline: 2px dashed var(--bevel-mid); outline-offset: -8px; } /* no bevel here: the dashed border alone says "slot" */
 .slot .when-drag { display: none; }
 .slot.drag { outline-color: var(--call); color: var(--call); }
 .slot.drag .when-drag { display: inline; }
@@ -184,6 +185,7 @@ input[type=range]:active::-webkit-slider-thumb { box-shadow: inset 2px 2px 0 var
 .ok { color: var(--ok); } .err { color: var(--alert); } .warn { color: var(--ink); }
 .dim.line { color: var(--dim); }
 .notes { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 4px; max-width: 70ch; }
+#srcStatus > div + div { color: var(--dim); }
 #srcStatus > div:first-child { color: var(--ink); }
 #srcStatus.ok > div:first-child { color: var(--ok); }
 #srcStatus.err > div:first-child { color: var(--alert); }
