@@ -181,6 +181,24 @@
     "tab.gamepad": "Gamepad",
     "tab.saves": "Saves",
     "pn.tabs": "Seções do menu",
-    "pn.map": "Mapa de botões"
+    "pn.map": "Mapa de botões",
+    "ov.continue": "Continuar de onde parou",
+    "auto.line": "Salvamento automático de {when}: ato {act}, {play} de jogo.",
+    "auto.line.noact": "Salvamento automático de {when}: {play} de jogo.",
+    "auto.none": "Ainda não há salvamento automático. O jogo salva sozinho em momentos tranquilos, como o menu de comandos.",
+    "auto.off": "O salvamento automático está desligado: nada novo é salvo.",
+    "auto.keep": "O salvamento automático de {when} fica até você apagá-lo.",
+    "auto.delete": "Apagar salvamento automático",
+    "auto.delete.confirm": "Clique de novo para apagar",
+    "auto.deleted": "Salvamento automático apagado.",
+    "auto.volatile": "O armazenamento do navegador está bloqueado: o salvamento automático dura só até esta página fechar.",
+    "auto.err.engine": "O salvamento automático veio de outra versão do motor do jogo, por isso foi removido. Aperte Jogar para começar de novo.",
+    "auto.err.disc": "O salvamento automático é de outro disco, por isso foi removido. Aperte Jogar para começar de novo.",
+    "auto.err.lang": "O salvamento automático foi feito em outro idioma ou com outra tradução, por isso foi removido. Aperte Jogar para começar de novo.",
+    "auto.err.bad": "O salvamento automático está danificado, por isso foi removido. Aperte Jogar para começar de novo.",
+    "pn.autosave": "Salvamento automático",
+    "pn.autosave.title": "Salva o jogo sozinho em momentos tranquilos: o menu de comandos ou uma mensagem que espera um botão. Seus quatro slots de save não são tocados.",
+    "msg.autosaved": "salvo automaticamente",
+    "msg.autosave.fail": "falha no salvamento automático"
   }
 }

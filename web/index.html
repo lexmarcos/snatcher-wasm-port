@@ -63,8 +63,10 @@
       <div id="ovAfter" hidden>
       <h2 class="strip"><span class="num" aria-hidden="true">2</span><span data-i18n="ov.step2">Play</span></h2>
       <div class="row">
+        <button id="btnContinue" class="btn primary big" type="button" hidden data-i18n="ov.continue">Continue where you left off</button>
         <button id="btnPlay" class="btn primary big" type="button" disabled data-i18n="ov.play">Play</button>
       </div>
+      <p id="autoStatus" class="line dim" role="status"></p>
       <p id="srcStatus" class="line dim" data-i18n="ov.invite">Import your disc in step 1, then press Play.</p>
       <p id="impFm" class="line dim" role="status"></p>
       <ul id="notes" class="notes"></ul>
@@ -78,6 +80,8 @@
               <button id="ovExport" class="btn" type="button" data-i18n="ov.export">Export saves</button>
             </div>
             <p id="ovSaves" class="note"></p>
+            <div class="row"><button id="ovAutoDelete" class="btn" type="button" hidden data-i18n="auto.delete">Delete autosave</button></div>
+            <p id="ovAuto" class="note"></p>
           </div>
         </details>
         <details>
@@ -167,6 +171,9 @@
         </div>
         <p id="pnSaves" class="note"></p>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
+        <label class="check"><input type="checkbox" id="autoBox" checked> <span data-i18n="pn.autosave" data-i18n-title="pn.autosave.title">Autosave</span></label>
+        <div id="pnAuto" class="line dim" role="status"></div>
+        <div class="row"><button id="pnAutoDelete" class="btn" type="button" data-i18n="auto.delete">Delete autosave</button></div>
       </div>
     </div>
   </section>

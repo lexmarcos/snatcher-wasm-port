@@ -139,6 +139,22 @@ export const UI_EN = {
   "tab.saves": "Saves",
   "pn.tabs": "Menu sections",
   "pn.map": "Button map",
+  // autosave (docs/re/web.md section 9)
+  "ov.continue": "Continue where you left off",
+  "auto.line": "Autosave from {when}: act {act}, {play} played.",
+  "auto.line.noact": "Autosave from {when}: {play} played.",
+  "auto.none": "No autosave yet. The game saves itself at quiet moments, such as the command menu.",
+  "auto.off": "Autosave is off: nothing new is saved.",
+  "auto.keep": "The autosave from {when} stays until you delete it.",
+  "auto.delete": "Delete autosave", "auto.delete.confirm": "Click again to delete", "auto.deleted": "Autosave deleted.",
+  "auto.volatile": "Browser storage is blocked: the autosave lasts only until this page closes.",
+  "auto.err.engine": "The autosave came from another version of the game engine, so it was removed. Press Play to start again.",
+  "auto.err.disc": "The autosave belongs to another disc, so it was removed. Press Play to start again.",
+  "auto.err.lang": "The autosave was made in another language or with another translation, so it was removed. Press Play to start again.",
+  "auto.err.bad": "The autosave is damaged, so it was removed. Press Play to start again.",
+  "pn.autosave": "Autosave",
+  "pn.autosave.title": "Save the game by itself at quiet moments: the command menu, or a message that waits for a button. Your four save slots are not touched.",
+  "msg.autosaved": "autosaved", "msg.autosave.fail": "autosave failed",
 } as const;
 
 export type UiKey = keyof typeof UI_EN;

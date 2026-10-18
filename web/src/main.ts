@@ -11,6 +11,7 @@ import {
 import { controlIcon, dpadIcon, mouseIcon, stickIcon } from "./icons";
 import { Pacer } from "./pacer";
 import { SaveStore, SLOTS } from "./saves";
+import { AutosaveStore, Autosaver, PREF_KEY, readPref, reasonKey, type AutoRecord } from "./autosave";
 import { pickedSource, probeServed, type Source } from "./sources";
 import { clearCache, fmtBytes, opfsAvailable, readMeta, requestPersist, storageInfo } from "./cache";
 import { ImportedSource, ImportWorker, resolvePick, type Pick } from "./imported";
@@ -248,6 +249,7 @@ function renderDynamic() {
   btnClear.textContent = T("imp.remove"); void refreshStorage(); refreshImportButtons();
   if (altLines) showAlt(altLines, altCls);
   if (!busy) btnPlay.textContent = T("ov.play");
+  refreshAuto();
 }
 async function applyLanguage(l: Lang, persist = true) {
   wantLang = l;
@@ -361,7 +363,8 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyF") { toggleFullscreen(); e.preventDefault(); }
   else if (e.code === "KeyM") { toggleMute(); e.preventDefault(); }
 });
-document.addEventListener("visibilitychange", () => { if (document.hidden) audio?.suspend(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) { audio?.suspend(); void autosaver.flush(); } });
+addEventListener("pagehide", () => { void autosaver.flush(); });
 
 input.onSelect = () => { if (panelOpen && !capturing) closePanel(); else openPanel(); };
 
@@ -370,6 +373,83 @@ const btnPlay = $<HTMLButtonElement>("btnPlay"), btnPick = $<HTMLButtonElement>(
 const srcStatus = $("srcStatus");
 let current: Source | null = null, servedSrc: Source | null = null;
 let busy = false;
+
+// ---------- autosave (docs/re/web.md section 9) ----------
+// One snapshot of the running game in IndexedDB, apart from the four save slots. Saved at quiet moments (command menu, a message that waits for a
+// button) and when the page is hidden; "Continue where you left off" restores it. On by default; the choice is kept in localStorage (snatcher.autosave.on).
+const autoBox = $<HTMLInputElement>("autoBox"), btnContinue = $<HTMLButtonElement>("btnContinue"), autoStatus = $("autoStatus");
+const pnAuto = $("pnAuto"), ovAuto = $("ovAuto"), pnAutoDelete = $<HTMLButtonElement>("pnAutoDelete"), ovAutoDelete = $<HTMLButtonElement>("ovAutoDelete");
+const autoStore = new AutosaveStore();
+let autoOn = readPref((k) => ls.get(k));
+let autoRec: AutoRecord | null = null;
+/** why the last autosave was thrown away, shown under the buttons until the next start */
+let autoDropped: UiKey | null = null;
+const autosaver = new Autosaver(autoStore, () => game, () => ({ fm: audio?.mono.fm ?? false, pcm: audio?.mono.pcm ?? false }), (rec) => {
+  if (rec) { autoRec = rec; autoDropped = null; setMsg("msg.autosaved"); } else setMsg("msg.autosave.fail");
+  note("autostore", "warn", autoStore.volatile ? T("auto.volatile") : null);
+  refreshAuto();
+});
+autosaver.on = autoOn;
+autoBox.checked = autoOn;
+(window as any).snatcherAutosave = { store: autoStore, saver: autosaver, record: () => autoRec }; // for the tests, also while the start window is open
+autoBox.onchange = () => { autoOn = autoBox.checked; autosaver.on = autoOn; ls.set(PREF_KEY, autoOn ? "1" : "0"); refreshAuto(); };
+
+const autoWhen = (rec: AutoRecord) => new Date(rec.stamp).toLocaleString(wantLang === "pt-BR" ? "pt-BR" : "en", { dateStyle: "medium", timeStyle: "short" });
+function playText(hms: string): string { // "HH:MM:SS" (game clock) -> "1 h 05 min" / "25 min 12 s" / "40 s"
+  const [h, m, s] = hms.split(":").map(Number);
+  return h > 0 ? `${h} h ${String(m).padStart(2, "0")} min` : m > 0 ? `${m} min ${String(s).padStart(2, "0")} s` : `${s} s`;
+}
+function autoLine(rec: AutoRecord): string {
+  const vars = { when: autoWhen(rec), act: rec.act, play: playText(rec.play) };
+  return T(rec.act > 0 ? "auto.line" : "auto.line.noact", vars);
+}
+/** The Continue button, the status lines of the start window and of the Saves tab; called whenever the autosave, its setting or the start state changes. */
+function refreshAuto() {
+  const show = !!autoRec && !!current && !importing;
+  btnContinue.hidden = !show; btnContinue.disabled = busy;
+  btnPlay.classList.toggle("primary", !show); // Continue is the primary action when there is an autosave
+  autoStatus.className = "line " + (autoDropped ? "warn" : "dim");
+  autoStatus.textContent = autoDropped ? T(autoDropped) : show ? autoLine(autoRec!) : "";
+  const lines: string[] = [];
+  if (autoRec) lines.push(autoOn ? autoLine(autoRec) : T("auto.keep", { when: autoWhen(autoRec) }));
+  else if (autoOn) lines.push(T("auto.none"));
+  if (!autoOn) lines.push(T("auto.off"));
+  if (autoStore.volatile) lines.push(T("auto.volatile"));
+  pnAuto.replaceChildren(...lines.map((t) => { const d = document.createElement("div"); d.textContent = t; return d; }));
+  ovAuto.textContent = autoRec ? autoLine(autoRec) : "";
+  for (const b of [pnAutoDelete, ovAutoDelete]) b.hidden = !autoRec;
+}
+let autoDelArmed = 0;
+async function deleteAuto() {
+  if (!autoDelArmed) {
+    for (const x of [pnAutoDelete, ovAutoDelete]) x.textContent = T("auto.delete.confirm");
+    autoDelArmed = window.setTimeout(() => { autoDelArmed = 0; for (const x of [pnAutoDelete, ovAutoDelete]) x.textContent = T("auto.delete"); }, 4000);
+    return;
+  }
+  clearTimeout(autoDelArmed); autoDelArmed = 0;
+  for (const x of [pnAutoDelete, ovAutoDelete]) x.textContent = T("auto.delete");
+  await autoStore.clear(); autoRec = null; autoDropped = null;
+  setMsg("auto.deleted"); refreshAuto();
+}
+pnAutoDelete.onclick = () => void deleteAuto(); ovAutoDelete.onclick = () => void deleteAuto();
+/** Throw the stored autosave away with a plain message (another engine build or disc, or damage). */
+async function dropAuto(code: string) {
+  await autoStore.clear(); autoRec = null;
+  autoDropped = code.startsWith("lang") ? "auto.err.lang" : reasonKey(code);
+  refreshAuto();
+}
+/** Read the stored autosave and check that this engine build understands it. */
+async function loadAuto() {
+  autoRec = await autoStore.get();
+  if (autoRec) {
+    try {
+      const { pkg } = await wasmP;
+      const h = JSON.parse(pkg.snapshot_header(autoRec.data));
+      if (!h.ok) await dropAuto(h.error);
+    } catch { /* no engine yet: the restore checks again */ }
+  }
+  refreshAuto();
+}
 
 function lineBlock(host: HTMLElement, lines: string[], cls: string) {
   host.className = "line " + cls;
@@ -388,8 +468,9 @@ function refreshStage() {
   // disc: nothing yet, only the import; imported: a disc is in this browser, only Play and the rest; ready: a served / picked copy, both steps
   const stage = !current && !importedSrc ? "disc" : importedSrc && !importing ? "imported" : "ready";
   $("ovWin").dataset.stage = stage; $("ovAfter").hidden = stage === "disc"; $("ovStep1").hidden = stage === "imported";
+  refreshAuto();
 }
-function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; refreshImportButtons(); }
+function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; btnContinue.disabled = b; refreshImportButtons(); }
 const invite = () => showSourceT(() => [T("ov.invite")], "dim");
 function selectSource(src: Source) {
   current = src;
@@ -554,6 +635,7 @@ btnWipe.onclick = async () => {
   importedSrc?.dispose(); importedSrc = null;
   try {
     if (opfsAvailable()) await clearCache();
+    await AutosaveStore.wipe(); // the autosave (IndexedDB) goes with everything else; "Remove imported data" keeps it
     try { for (const k of Object.keys(localStorage)) if (k.startsWith("snatcher")) localStorage.removeItem(k); } catch { /* blocked storage: nothing kept there */ }
     try { sessionStorage.clear(); } catch { /* ignore */ }
     location.replace(location.pathname); // reload without ?params: the page opens as a first visit
@@ -609,8 +691,16 @@ const wasmP = loadWasm();
 wasmP.catch((e) => { note("wasm", "err", T("note.noengine", { e: String(e) })); });
 
 btnPlay.onclick = () => { if (current && !busy) void start(current); };
+btnContinue.onclick = async () => {
+  const rec = autoRec;
+  if (!current || busy || !rec) return;
+  autoDropped = null;
+  // the snapshot holds the screen in the language it was made in: continue in that language
+  if (rec.pt !== (wantLang === "pt-BR")) await applyLanguage(rec.pt ? "pt-BR" : "en", false);
+  void start(current, rec);
+};
 
-async function start(src: Source) {
+async function start(src: Source, resume?: AutoRecord) {
   setBusy(true);
   try {
     const { pkg, wasm } = await wasmP;
@@ -657,13 +747,19 @@ async function start(src: Source) {
       }
     }
     // CD-DA tracks are checked lazily (they are big); a missing one is reported when the game asks for it.
-    if (params.has("scene")) g.debug_jump(params.get("scene")!);
+    if (resume) {
+      // "Continue": the engine takes the autosave back (screen, scripts, menus, music position); the page restores the sound mode the game had set
+      const err: string = g.restore(resume.data);
+      if (err) { try { g.free(); } catch { /* ignore */ } out.stopCd(); await dropAuto(err); setBusy(false); return; }
+      out.setSoundMode("fm", resume.mono.fm); out.setSoundMode("pcm", resume.mono.pcm);
+    } else if (params.has("scene")) g.debug_jump(params.get("scene")!);
     else if (params.has("newgame")) g.new_game();
     else g.boot();
 
     memory = wasm.memory; game = g; audio = out; input.game = g; input.enabled = true;
+    autosaver.adopt(g, !!resume);
     src.start?.();
-    (window as any).snatcher = { game, audio, input, store, notes, source: src, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
+    (window as any).snatcher = { game, audio, input, store, autosaver, autoStore, autoRecord: () => autoRec, memory, started: { frame: JSON.parse(g.debug_info()).frame, fb: fbHash(g), resumed: !!resume }, notes, source: src, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
     applyPrompt();
     overlayOpen = false; overlay.hidden = true;
     note("wasm", "ok", null);
@@ -701,9 +797,23 @@ function frame(now: number) {
     return;
   }
   audio?.syncCd(game.cd_position()); // CD-DA audio follows the engine's CD clock (the subtitles use it)
+  autosaver.poll();
   img.data.set(new Uint8Array(memory!.buffer, game.framebuffer_ptr(), W * H * 4));
   ctx.putImageData(img, 0, 0);
-  if (dbgBox.checked) debugEl.textContent = game.debug_info() + "\n" + (audio?.debugInfo() ?? "");
+  if (dbgBox.checked) debugEl.textContent = game.debug_info() + "\n" + (audio?.debugInfo() ?? "") + "\n" + autosaveDebug();
+}
+
+/** FNV-1a of the engine's frame buffer (tests compare the screen a restore brings back with the screen at the time of the save). */
+function fbHash(g: any): number {
+  const b = new Uint8Array(memory!.buffer, g.framebuffer_ptr(), W * H * 4);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < b.length; i++) h = Math.imul(h ^ b[i], 0x01000193) >>> 0;
+  return h;
+}
+
+function autosaveDebug(): string {
+  const s = autosaver.stats;
+  return `autosave: ${autoOn ? "on" : "off"}, ${game.autosave_reason() || "safe point"}, saved ${s.saves}x, last ${s.lastBytes} B in ${s.lastTotalMs.toFixed(1)} ms (engine ${s.lastSnapMs.toFixed(2)} ms)`;
 }
 
 function handleEvent(e: any) {
@@ -743,6 +853,7 @@ function handleEvent(e: any) {
   }
   if (cached) showImp(foundLine(cached), "ok");
   refreshImportButtons(); void refreshStorage();
+  await loadAuto();
   setMsg(first ? "msg.ready" : "msg.waiting");
   // headless/dev shortcuts skip the overlay (and its click): ?newgame, ?scene=SP01:0, ?autostart
   if (first && (params.has("scene") || params.has("newgame") || params.has("autostart"))) await start(first);
