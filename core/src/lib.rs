@@ -12,6 +12,7 @@ pub mod prompt;  // button-prompt icons (controllers)
 pub mod gfxpatch; // pt-BR picture substitution (decoded-blob patches)
 pub mod i18n;    // translation: markup, pt-BR glyphs, pack, text layout rules
 pub mod vwrap;   // voice subtitle layouts and run-time wrapping
+pub mod snap;    // binary codec for engine snapshots (autosave)
 
 pub fn be16(d: &[u8], o: usize) -> u16 { u16::from_be_bytes([d[o], d[o + 1]]) }
 pub fn be32(d: &[u8], o: usize) -> u32 { u32::from_be_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]) }

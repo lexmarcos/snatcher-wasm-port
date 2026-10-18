@@ -57,6 +57,10 @@ impl SubMem {
         self.regions.retain(|r| r.0 != base);
         self.regions.push((base, bytes));
     }
+    /// The mapped regions as (base, bytes), for snapshots.
+    pub fn regions(&self) -> &[(u32, Vec<u8>)] { &self.regions }
+    /// Drop every region whose base is not in `keep` (a restore maps the others again).
+    pub fn retain_bases(&mut self, keep: &[u32]) { self.regions.retain(|r| keep.contains(&r.0)); }
     /// Decode the LZKN1 blob at sub address `addr`; with a pt-BR picture patch installed the redrawn bytes replace the original ones.
     pub fn decomp(&self, addr: u32) -> Result<(Vec<u8>, usize), lzkn::LzError> {
         let s = self.slice_at(addr).ok_or(lzkn::LzError::Truncated)?;
@@ -223,6 +227,8 @@ pub fn scene_chunks(mem: &SubMem, rec: u32) -> Vec<Chunk> {
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Sprite { pub y: i16, pub size: u8, pub link: u8, pub attr: u16, pub x: i16 }
 
+crate::snap_struct!(Sprite { y, size, link, attr, x });
+
 #[derive(Clone)]
 pub struct Vdp {
     pub vram: Vec<u8>,
@@ -248,6 +254,8 @@ pub struct Vdp {
     /// Per-line raster program from the main-CPU display logic (None = static frame).
     pub raster: Option<raster::Raster>,
 }
+
+crate::snap_struct!(Vdp { vram, cram, cram_b, split_line, plane_a, plane_b, plane_w, plane_h, hscroll_a, hscroll_b, vscroll_a, vscroll_b, sprites, display, backdrop, raster });
 
 impl Default for Vdp {
     fn default() -> Self {
@@ -495,6 +503,8 @@ pub struct Display {
     /// Sprite list built by main-CPU code (M:$FFED00, DMA'd by M:0xFF179C when $E048 = 0).
     pub main_sat: Vec<Sprite>,
 }
+
+crate::snap_struct!(Display { vdp, sub, main, main_only, main_sat });
 
 impl Default for Display {
     fn default() -> Self {

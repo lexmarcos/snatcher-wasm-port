@@ -34,7 +34,7 @@ pub struct Ix {
     pub gun_x: i32,
     pub gun_y: i32,
     pub gun_buttons: u8,
-    gun_prev: u8,
+    pub(crate) gun_prev: u8,
     pub shoot: Option<crate::shoot::Shoot>,
     /// fidelity harness: sub RNG seeded from this counter before every frame-handler run (None = normal)
     pub rng_seq: Option<u32>,
@@ -56,6 +56,11 @@ pub struct Ix {
     pub ptr_logged: bool,
 }
 
+// A snapshot keeps the interaction state that a safe point can have. Skipped: the front end's gun readings and the PCM lengths (it sets them), the
+// text-entry and shooting states (never at a safe point, `Engine::safe_point`) and the fidelity harness overrides.
+sncore::snap_struct!(Ix { typed, gun_prev, pcm_busy, pcm_ch_until, gun_cal_done, ptr_moving, closing, ptr_logged }
+    skip { entry, gun_present, gun_x, gun_y, gun_buttons, shoot, rng_seq, sfx_len, force_in, force_gun });
+
 // ------------------------------------------------------------------ object helpers
 
 /// Write the integer part of an object's X (word at +6) – `move.w v,$6(a0)`.
@@ -71,6 +76,7 @@ fn y_lo(e: &Engine, slot: usize) -> u8 { (e.disp.sub.objs[slot & 63].y >> 16) as
 pub fn sfx_1c(e: &mut Engine, n: u16) {
     e.regs.set_b(0x980F, if n == 0x3D { 0 } else { n as u8 });
     e.sfx_left = if n == 0x3D { 0 } else { e.fm_done_len(n, false).unwrap_or(u32::MAX) }; // oracle: sfx 0x1D done flag 19-20 frames
+    e.track_fm(n, false);
     e.out.push(Out::Fm { id: n, music: false }); // queue cmd 1C = FM sfx (docs/re/audio.md §5)
 }
 

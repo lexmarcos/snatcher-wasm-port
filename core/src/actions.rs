@@ -5,6 +5,8 @@
 //! Nothing here contains game data: tables are read from the SUBCODE.BIN bytes at runtime.
 
 pub const SUBCODE_BASE: u32 = 0xD400;
+use crate::snap::Snap;
+
 /// 1bpp 8x8 font, glyph = code - 0x20 (S:0x14B7C).
 pub const FONT_ADDR: u32 = 0x14B7C;
 /// Advance widths, one byte per glyph (S:0x14EAC).
@@ -87,6 +89,8 @@ pub struct TextWindow {
     stream: Vec<u8>,
     pos: usize,
 }
+
+crate::snap_struct!(TextWindow { pix, busy, paused, counter, delay, colour, x, y, fixed, tall, dirty_rows, stream, pos });
 
 impl Default for TextWindow { fn default() -> Self { Self::new() } }
 
@@ -233,6 +237,8 @@ pub struct MessageBox {
     pub tall: bool,
 }
 
+crate::snap_struct!(MessageBox { state, speaker, pos, colour, line_y, end, stop, keep_anim, name_y, wide_mode, wait_idx, wait_cnt, tall });
+
 impl MessageBox {
     /// `spk_word` = first command argument (lo byte = speaker+1), `text_off` = second.
     pub fn new(spk_word: u16, text_off: u16, wide_mode: u8) -> Self {
@@ -351,6 +357,20 @@ pub struct Input {
 }
 
 impl Input {
+    /// Snapshot of the running state (the button-config table comes from SUBCODE and is not stored).
+    pub fn put_state(&self, w: &mut crate::snap::Writer) {
+        w.tag("Input");
+        let Input { config, cfg_table: _, prev_held, counters, held, pressed, repeat } = self;
+        config.put(w); prev_held.put(w); counters.put(w); held.put(w); pressed.put(w); repeat.put(w);
+    }
+    /// Read a state written by [`Input::put_state`] without touching `self` (apply it with [`Input::set_state`]).
+    pub fn get_state(r: &mut crate::snap::Reader) -> crate::snap::SnapResult<(usize, u8, [u8; 8], u8, u8, u8)> {
+        Ok((Snap::get(r)?, Snap::get(r)?, Snap::get(r)?, Snap::get(r)?, Snap::get(r)?, Snap::get(r)?))
+    }
+    pub fn set_state(&mut self, s: (usize, u8, [u8; 8], u8, u8, u8)) {
+        let (config, prev_held, counters, held, pressed, repeat) = s;
+        self.config = config.min(5); self.prev_held = prev_held; self.counters = counters; self.held = held; self.pressed = pressed; self.repeat = repeat;
+    }
     pub fn from_subcode(sc: &[u8]) -> Self {
         let t = sc_at(sc, BUTTON_CFG_ADDR);
         let mut cfg = [[0u8; 3]; 6];
@@ -480,6 +500,17 @@ pub struct TextMenu {
     k: [u8; 5],           // S:0x10CB8..0x10CBC: page1 items, page2 offset, wrap-up line, page2 last+1, max lines
     key_state: u8,        // $9713
     key_t0: u16,          // $9714
+}
+
+crate::snap_struct!(TextMenu { count, depth, page, cursor, lines, wide, k, key_state, key_t0 });
+impl crate::snap::Snap for MenuResult {
+    fn put(&self, w: &mut crate::snap::Writer) {
+        w.tag("MenuResult");
+        match self { MenuResult::Selected(n) => { w.buf.push(0); n.put(w); } MenuResult::Cancel => w.buf.push(1) }
+    }
+    fn get(r: &mut crate::snap::Reader) -> crate::snap::SnapResult<Self> {
+        match r.raw(1)?[0] { 0 => Ok(MenuResult::Selected(Snap::get(r)?)), 1 => Ok(MenuResult::Cancel), _ => Err("bad MenuResult".into()) }
+    }
 }
 
 impl TextMenu {

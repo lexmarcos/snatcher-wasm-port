@@ -11,6 +11,7 @@ pub mod menus;
 pub mod shoot;
 pub mod vsub;
 pub mod importer;
+pub mod snapshot;
 
 pub use game::{Engine, Out, H, W};
 
@@ -113,6 +114,8 @@ impl Game {
                 Out::PcmSfx { id, bank } => format!("{{\"t\":\"pcmsfx\",\"id\":{id},\"bank\":{bank}}}"),
                 Out::Save { slot, data } => format!("{{\"t\":\"save\",\"slot\":{slot},\"data\":\"{}\"}}", b64(&data)),
                 Out::Log(s) => format!("{{\"t\":\"log\",\"msg\":{:?}}}", s),
+                Out::MusicAt { track, at_ms } => format!("{{\"t\":\"music\",\"track\":{track},\"at\":{}}}", at_ms as f64 / 1000.0),
+                Out::FmAt { id, music, at_ms } => format!("{{\"t\":\"fm\",\"id\":{id},\"music\":{music},\"at\":{}}}", at_ms as f64 / 1000.0),
             });
         }
     }

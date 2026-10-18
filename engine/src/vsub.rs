@@ -43,6 +43,10 @@ pub struct VoiceSubs {
     /// why the last subtitle ended before its time (tests, `vsub_sweep`): the command number, or `END_*`
     pub ended_by: u16,
 }
+impl VoiceSubs {
+    /// Drop the subtitle on screen (a restored game starts without one).
+    pub(crate) fn reset(&mut self) { self.cur = None; self.last = None; self.win = None; }
+}
 /// `VoiceSubs::ended_by`: the time was up / a menu, message or another screen came up / the next clip has no subtitle.
 pub const END_TIME: u16 = 0x1000;
 pub const END_SCREEN: u16 = 0x1001;

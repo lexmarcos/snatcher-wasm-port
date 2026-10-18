@@ -7,6 +7,7 @@
 //! `vram_list_tick`.
 
 use super::{scene_chunks, Chunk, Sprite, SubMem, Vdp};
+use crate::snap::Snap;
 
 /// Events the display code raises for other subsystems (sound, CD sync …).
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +22,29 @@ pub enum Event {
     Byte7893(u8),
     /// $B6403 request: bit0 clear plane A (0xE000, 4 KiB), bit1 clear plane B (0xC000, 4 KiB).
     ClearPlanes(u8),
+}
+
+impl crate::snap::Snap for Event {
+    fn put(&self, w: &mut crate::snap::Writer) {
+        w.tag("Event");
+        match self {
+            Event::Sound { id, kind } => { w.buf.push(0); id.put(w); kind.put(w); }
+            Event::Periodic { id } => { w.buf.push(1); id.put(w); }
+            Event::ScreenMode(v) => { w.buf.push(2); v.put(w); }
+            Event::Byte7893(v) => { w.buf.push(3); v.put(w); }
+            Event::ClearPlanes(v) => { w.buf.push(4); v.put(w); }
+        }
+    }
+    fn get(r: &mut crate::snap::Reader) -> crate::snap::SnapResult<Self> {
+        Ok(match r.raw(1)?[0] {
+            0 => Event::Sound { id: Snap::get(r)?, kind: Snap::get(r)? },
+            1 => Event::Periodic { id: Snap::get(r)? },
+            2 => Event::ScreenMode(Snap::get(r)?),
+            3 => Event::Byte7893(Snap::get(r)?),
+            4 => Event::ClearPlanes(Snap::get(r)?),
+            _ => return Err("bad Event".into()),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -126,6 +150,12 @@ pub struct Runtime {
     /// next VBlank): tile channels on buffer 0 and the VRAM list wait while it is non-empty
     pub last_dma: u16,
 }
+
+crate::snap_struct!(Obj { active, blink_mask, flip, x, y, vx_set, vy_set, pal_override, prio, group, wait_time, flags, fast, rep, idx, delay, anim_table, script, frame, vx, vy, parent, child, sibling, f4e, hold });
+crate::snap_struct!(PalCh { kind, cnt, off, n, list, desc, steps });
+crate::snap_struct!(TileCh { kind, step, ptr });
+crate::snap_struct!(Scroll { mode, vel, delta, pos });
+crate::snap_struct!(Runtime { objs, palch, palch_rr, shadow, pal_dirty, vram_list, vram_delay, scroll, tilech, fx_a, fx_b, fx_reset, mail, mail_next, split_req, split_out, split_next, tilebuf, rng, frame, budget, cd_time, pause_groups, events, f7866, f788a, f788b, f7887, last_dma });
 
 impl Default for Runtime {
     fn default() -> Self {

@@ -45,6 +45,10 @@ pub struct MainDisplay {
     pub disp_off_carry: bool,
 }
 
+crate::snap_struct!(LineState { vscroll_a, vscroll_b, display, hscroll_zero });
+crate::snap_struct!(Raster { lines, pal_split, line_hscroll_b });
+crate::snap_struct!(MainDisplay { e060, e061, e062, e064, e066, e068, e06a, e06c, e06e, e070, e071, e076, e078, e07a, e07c, e07e, e080, e082, e084, e086, e08a, e036, e032, eb00, e700, wave, line_scroll, frame, disp_off_carry });
+
 impl MainDisplay {
     pub fn new() -> Self { MainDisplay { wave: vec![0; 128], ..Default::default() } }
 

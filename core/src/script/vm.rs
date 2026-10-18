@@ -129,6 +129,10 @@ pub struct Vm {
     depth_guard: u32,
 }
 
+crate::snap_struct!(Stack { cap, items });
+crate::snap_struct!(Action { cmd, args });
+crate::snap_struct!(Vm { save, pc, pending, scene, script_id, state, depth, leaf, marks, menu, path, calls, history, gosubs, d5, rng_a, rng_c, queue, depth_guard });
+
 fn rd(s: &[u8], o: usize) -> u16 {
     if o + 1 < s.len() { u16::from_be_bytes([s[o], s[o + 1]]) } else { 0xFFFF }
 }

@@ -34,6 +34,9 @@ pub const FILE_NAMES: [&str; 97] = [
 pub struct Regs { pub w: HashMap<u32, u16>, /// object snapshot bytes for the save block (S:0x14FB4), refreshed before every VM pass
     pub objsnap: Vec<u8> }
 
+sncore::snap_struct!(Regs { w, objsnap });
+sncore::snap_enum!(VmPhase { Pass, Draining, Menu, MenuOpen, MenuClose, Stopped, ExitSp });
+
 impl Regs {
     pub fn get(&self, a: u32) -> u16 { self.w.get(&a).copied().unwrap_or(0) }
     pub fn set(&mut self, a: u32, v: u16) { self.w.insert(a, v); }
@@ -87,6 +90,10 @@ pub enum Out {
     PcmSfx { id: u16, bank: u16 },
     Save { slot: u16, data: Vec<u8> },
     Log(String),
+    /// CD-DA track that is already `at_ms` into its play time (a restored session starts it there)
+    MusicAt { track: u16, at_ms: u32 },
+    /// FM sound that is already `at_ms` into its play time (looping music of a restored session)
+    FmAt { id: u16, music: bool, at_ms: u32 },
 }
 
 pub struct Engine {
@@ -116,14 +123,14 @@ pub struct Engine {
     pub sub_stall: u32,
     /// test harness: fixed VM random state (see `vm_pass`)
     pub fid_rng: bool,
-    menu_open_ready: u32,
+    pub(crate) menu_open_ready: u32,
     /// cursor move in progress: (frames, previous line, new line)
     pub menu_mv: Option<(u32, usize, usize)>,
     /// main `$E06E` after the last two ticks (`$788C` is the sub's 2-frame-late copy)
     pub e06e_hist: [u8; 2],
     /// input of the previous tick for the VM-thread menu loop
     pub menu_in: (u8, u8, u8),
-    menu_in_cur: (u8, u8, u8),
+    pub(crate) menu_in_cur: (u8, u8, u8),
     /// main `$E061` after the last two ticks (`$7892` is the sub's 2-frame-late copy, see `reg_7892`)
     pub e061_hist: [u8; 2],
     pub regs: Regs,
@@ -166,6 +173,12 @@ pub struct Engine {
     pub i18n: I18n,
     /// voice subtitles (engine/src/vsub.rs): a drawing overlay, never part of the game state
     pub vsub: crate::vsub::VoiceSubs,
+    /// game file loaded as the script (address 0x1A800); snapshots reload it from `files`
+    pub script_file: Option<u16>,
+    /// FM music now playing (id, frame it started) and the looping FM effects started since the last stop: what a restored
+    /// session has to start again (engine/src/snapshot.rs); mirrors what the front end does with `Out::Fm`
+    pub fm_music: Option<(u16, u64)>,
+    pub fm_loops: Vec<u16>,
 }
 
 /// Language state: when `pt` is set and a translation pack is loaded, message and menu text come from the pack (per string,
@@ -182,6 +195,8 @@ pub struct I18n {
     /// text area (from 0x3800) of the current script followed by the translated strings, and original offset -> translated offset
     area: Vec<u8>,
     map: HashMap<u16, u16>,
+    /// FNV hash of the installed pack: a snapshot made with another pack has other text offsets
+    pub pack_hash: u64,
 }
 
 impl I18n {
@@ -204,6 +219,7 @@ impl Engine {
             voice_left: 0, sfx_left: 0, voice_music_left: 0, cd_start: None, voice_len: HashMap::new(), fm_len: HashMap::new(), pcm_bank: 0, text_dirty: true,
             fb: vec![0; W * H * 4], trace: false,
             top: Top::Stopped, module: None, intro_part: 0, saves: [None, None, None, None], module_factory: Some(crate::modules::factory), ix: Default::default(), reboot_in: 0, i18n: I18n::default(), vsub: Default::default(),
+            script_file: None, fm_music: None, fm_loops: vec![],
         }
     }
 
@@ -712,6 +728,7 @@ impl Engine {
     /// Install a translation pack (`snt i18n-build`). Returns the number of translated strings.
     pub fn load_translation(&mut self, pack: &[u8]) -> Result<usize, String> {
         self.i18n.pack = sncore::i18n::Translation::parse(pack)?;
+        self.i18n.pack_hash = sncore::gfxpatch::fnv64(pack);
         self.i18n.gfx = if self.i18n.pack.gfx.is_empty() { None } else { Some(std::rc::Rc::new(self.i18n.pack.gfx.clone())) };
         self.sync_gfx();
         self.i18n.rebuild_names(&self.names);
@@ -720,7 +737,7 @@ impl Engine {
     }
 
     /// Rebuild the translated text area for the script that is loaded now.
-    fn i18n_refresh(&mut self, sp: Option<u8>) {
+    pub(crate) fn i18n_refresh(&mut self, sp: Option<u8>) {
         self.i18n.map.clear();
         self.i18n.area.clear();
         if !self.i18n.pt { return; }
@@ -1047,7 +1064,22 @@ impl Engine {
             self.regs.set_b(0x980F, flag);
             self.sfx_left = if flag == 0 { 0 } else { len.unwrap_or(u32::MAX) };
         }
+        self.track_fm(id, music);
         self.out.push(Out::Fm { id, music });
+    }
+
+    /// Remember what the front end is playing, so that a restored session can start it again (docs/re/web.md section 9).
+    /// Mirrors `AudioOut.fmCmd`: ids 0x3F-0x7A are music whatever the request says; 0xF1 stops all FM sound, 0xF2 / 0xFF the music;
+    /// a music id that already plays is not restarted.
+    pub(crate) fn track_fm(&mut self, id: u16, music: bool) {
+        let is_music = music || (0x3F..=0x7A).contains(&id);
+        match id {
+            0xF1 => { self.fm_music = None; self.fm_loops.clear(); }
+            0xF2 | 0xFF => self.fm_music = None,
+            0xF3 | 0xF4 => {}
+            _ if is_music => { if self.fm_music.map(|m| m.0) != Some(id) { self.fm_music = Some((id, self.frame)); } }
+            _ => if matches!(self.fm_len.get(&id), Some(None)) && !self.fm_loops.contains(&id) { self.fm_loops.push(id); },
+        }
     }
 
     fn cmd_load(&mut self, addr: u32, file: u16) {
@@ -1063,15 +1095,17 @@ impl Engine {
             return;
         };
         match addr {
-            0x1A800 => { self.script = data; self.i18n_refresh(sncore::script::sp_number(file)); }
-            0x28000 => {
-                let mut data = data;
-                // pt-BR: raw patches of the DATA file (sprite frames of the redrawn pictures, docs/i18n-graphics.md)
-                if let (Some(g), Some(name)) = (&self.mem.gfx, FILE_NAMES.get(file as usize)) { g.apply_file(name, &mut data); }
-                self.mem.map(gfx::DATA_BASE, data); self.data_file = Some(file);
-            }
+            0x1A800 => { self.script = data; self.script_file = Some(file); self.i18n_refresh(sncore::script::sp_number(file)); }
+            0x28000 => self.map_data_file(file, data),
             _ => {}
         }
+    }
+
+    /// Map a DATA file at 0x28000.
+    pub(crate) fn map_data_file(&mut self, file: u16, mut data: Vec<u8>) {
+        // pt-BR: raw patches of the DATA file (sprite frames of the redrawn pictures, docs/i18n-graphics.md)
+        if let (Some(g), Some(name)) = (&self.mem.gfx, FILE_NAMES.get(file as usize)) { g.apply_file(name, &mut data); }
+        self.mem.map(gfx::DATA_BASE, data); self.data_file = Some(file);
     }
 
     /// Sequencer command 0F (S:0x1027E): black-out unless palettes are kept, then
