@@ -255,6 +255,7 @@ for (const fl of flavours) {
     // ---- remove
     await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
     await page.waitForSelector("#btnClear:not([hidden])", { timeout: 20000 });
+    await sleep(500); // the start window opens in 320 ms (clip-path steps); clicks during the reveal would hit the clipped part
     await page.click("#btnClear");
     check(`${fl.name}: removing needs a second click`, /again/i.test(await text(page, "#btnClear")));
     await page.click("#btnClear");
