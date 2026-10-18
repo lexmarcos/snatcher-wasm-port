@@ -1,76 +1,75 @@
-# Snatcher (USA, Sega CD) – native web port
+# Snatcher Web Port
 
-A reimplementation of the Snatcher engine in Rust, compiled to WebAssembly, that plays the
-original game data from **your own disc image**. It is not an emulator: the script VM,
-sequencer and scene composer are rewritten from the reverse-engineered 68000 code.
+[Leia em português](README.pt-BR.md)
 
-No game data is included in this repository. `assets/`, `work/`, `*.chd/*.bin/*.cue` are ignored.
+Play **Snatcher** (the 1994 Sega CD version, USA) in your web browser, using your own copy of the game.
 
-The page can show the game in English (the disc's own text) or in Brazilian Portuguese: `i18n/pt-BR/` holds a fan
-translation of the text, the voice and CD music subtitles and the redrawn pictures, applied over your disc at run time.
+This is not an emulator. The game's engine was rebuilt from scratch so that it runs natively in the browser. It reads
+the original disc and plays it as the console did, with the same pictures, music and voices.
 
-## Play (the simple way): import your disc image in the browser
-You need the page served (see "Build" below) and your own disc image of **Snatcher (USA, Sega CD)** as `.cue` + `.bin` (one `.bin` for the
-whole disc, or one `.bin` per track as in Redump dumps). Then:
-1. Open the page and press **Import disc image (.cue + .bin)...**, select the `.cue` **and** all its `.bin` files together (or drop them on the page).
-2. Wait for the progress bar (4 to 14 s); press **Play**. The FM music is prepared in the background (about 80 s, shown in the toolbar); a sound the game needs earlier is rendered first.
-3. Next visits play at once: the import is stored in this browser (about 1.1 GB with the CD music; the page shows the space used and has a
-   **Remove imported data** button).
-Your files are read and processed in the browser only and are never uploaded. The importer checks that the disc is Snatcher (USA) and tells
-you if it is another disc, another region or edition, an incomplete image or a missing `.bin`. CHD images are not supported yet (convert them first:
-`chdman extractcd -i "Snatcher (USA).chd" -o snatcher.cue -ob snatcher.bin`). No extraction, ffmpeg or Python is needed on this path.
-Details and measurements: `docs/re/web.md` section 8.
+**No game files are included here.** You need your own disc image of Snatcher (USA, Sega CD).
 
-## Requirements (to build the page and for development)
-Rust (with `wasm32-unknown-unknown` target and `wasm-bindgen-cli 0.2.129`), `bun`. For the local extraction pipeline below also `chdman`, `ffmpeg`;
-for reverse engineering only: Python 3 with `capstone`, Ghidra 12.1.4.
+## What you get
 
-## Build
+* The whole game, from the title screen to the ending
+* English (the original text) or Brazilian Portuguese, switchable at any time
+* Portuguese subtitles for the voiced scenes and the spoken parts of the CD music
+* Keyboard, gamepad (Xbox, PlayStation, Switch) and mouse for the shooting scenes
+* Autosave, so you can pick up where you left off (you can turn it off)
+* Your files never leave your computer: everything happens inside the browser
+
+## How to play
+
+1. Open the page (see "Running the page" below).
+2. Press **Import disc image** and choose your `.cue` file **together with** its `.bin` file(s). You can also drag them onto the page.
+3. Wait a few seconds while the disc is checked and copied into the browser.
+4. Press **Play**.
+
+On your next visits the game is already there: just press **Play**, or **Continue where you left off**.
+
+The copy kept in the browser takes about 1.1 GB. You can remove it at any time from the start page
+(**Remove the files and clear the site**).
+
+**Have a `.chd` file?** It is not supported yet. Convert it first with
+`chdman extractcd -i "Snatcher (USA).chd" -o snatcher.cue -ob snatcher.bin`.
+
+## Controls
+
+| Keyboard | Action |
+|---|---|
+| Arrow keys | Move / choose |
+| Z, X, C (or A, S, D) | Buttons A, B, C |
+| Enter | Start |
+| Esc | Menu and pause (sound, screen, controls, saves) |
+| F | Full screen |
+| M | Mute |
+
+In the shooting scenes, aim with the mouse and click to fire. Gamepads work as soon as you press a button,
+and their buttons can be changed in the menu.
+
+## Running the page
+
+There is no public website yet, so for now the page runs on your own computer.
+You need [Rust](https://rustup.rs) and [Bun](https://bun.sh). Then, in a terminal, inside this folder:
+
 ```sh
-scripts/build-web.sh        # wasm engine + web front end (web/pkg, web/dist)
-bun web/server.ts           # http://localhost:5300/ (PORT=... to change); only serves the page, the wasm and ./assets if it exists
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129
+scripts/build-web.sh
+bun web/server.ts
 ```
 
-## Developer pipeline: extract the disc to files (optional; the importer above replaces it for players)
-```sh
-chdman extractcd -i "Snatcher (USA).chd" -o work/snatcher.cue -ob work/snatcher.bin
-cargo build --release
-./target/release/snt extract work/snatcher.bin work/snatcher.cue assets/raw   # assets/raw/{files,header.bin,ip.bin,filelist.tsv}; multi-bin cues work too
-scripts/convert-music.sh                                          # CD-DA -> assets/web/music/trackNN.ogg
-./target/release/snt audio-pcm assets/raw/files assets/audio      # voices, banks, drum kit, pcm.json
-./target/release/snt audio-fm  assets/raw assets/audio            # FM songs + effects, fm.json (~1.5 min)
-python3 -I re/py/audio_encode.py assets/audio                     # -> assets/audio/web/**.ogg + json
-```
-`./target/release/snt import-disc work/snatcher.cue outdir` runs the importer natively into a directory of streams (what the browser stores);
-`snt split-cue work/snatcher.cue work/split "Snatcher (USA)"` makes a Redump-style multi-bin copy for tests.
+Open http://localhost:5300 in your browser (tested in Chrome).
 
-The page opens a start overlay. If the server finds `assets/raw` it offers **Play**; otherwise (or in addition) you can import a disc image
-(above) or **Choose extracted folder...** to load the files from a folder you pick in the browser (best: the whole `assets` folder;
-it needs `raw/files`, optionally `raw/header.bin`, `raw/ip.bin`, `audio/web`, `web/music`). Nothing is uploaded,
-and missing optional files only produce a note (sound off, boot logo screens skipped). Details: `docs/re/web.md`.
+## For developers
 
-URL parameters: `?newgame` (skip title/intro), `?scene=SP01:0` (debug scene jump), `?autostart` (skip the overlay),
-`?debug` (engine state overlay, also F1). Tests: `scripts/test-web.sh [outdir]` (unit tests + headless Chrome UI
-checks + `web/test/shot.ts` screenshots; uses port 5301, or `PORT`); `cargo test --release -p sncore --test import` and `bun web/test/import.ts`
-(importer: byte-for-byte against the reference extraction, headless Chrome with `/assets` off; skip cleanly without the local disc).
-
-Controls: arrows = D-pad, Z/X/C (or A/S/D) = A/B/C, Space = B, Enter = Start; Xbox, PlayStation and Switch gamepads via the Gamepad API
-(per-family defaults, remappable in the menu; the game text shows the icon of the button of the last used device, see `docs/re/web.md` section 6).
-Light gun (shooting sections): mouse to aim, left button = trigger, right button = second button; any pad key switches
-back to the pad. Esc = menu (pauses; volume sliders, smooth scaling, save export/import, controls), F = fullscreen,
-M = mute, F1 = debug. The game pauses while the tab is hidden. Saves live in `localStorage` (`snatcher.save.N`);
-export/import them as JSON from the menu.
+Technical notes, the reverse engineering of the original game and the test tools are in [`docs/`](docs/).
+Good places to start: [`docs/PROGRESS.md`](docs/PROGRESS.md) and [`docs/re/web.md`](docs/re/web.md).
 
 ## Legal
-This is an independent fan project, not affiliated with or endorsed by Konami or Sega. Snatcher is © Konami;
-Sega and Sega CD are trademarks of Sega. The names are used only to say which game and disc this works with.
-To play you need your own copy of the game. The MIT licence (`LICENSE`) covers this project's own code and text;
-it grants no rights to the game. The DotGothic16 font subset in `web/fonts/` is under the SIL Open Font License (`web/fonts/OFL.txt`).
 
-## Documentation
-- `docs/PROGRESS.md` – milestones, current state, next steps.
-- `docs/RE_NOTES.md` and `docs/re/*.md` – reverse-engineering notes with evidence.
-- `docs/re/oracle.md`, `docs/re/oracle2.md` – the two dev-only test oracles (BIOS-free HLE; real Sega CD BIOS on Genesis Plus GX, needs your own BIOS image).
-- `docs/voice-inventory.md` – every voice clip (1162 clips, 83 min): where it plays, whether text is shown, duration; subtitle feasibility. `scripts/voice-inventory.sh` rebuilds it.
-- `docs/re/web.md` – web front end (sources, audio graph, saves, tests, status).
-- `re/README.md` – disassembly/Ghidra workflow.
+This is an independent fan project. It is not affiliated with or endorsed by Konami or Sega.
+Snatcher is © Konami. Sega and Sega CD are trademarks of Sega. To play you need your own copy of the game.
+
+The project's own code and text are under the MIT licence ([`LICENSE`](LICENSE)); it gives no rights to the game itself.
+The DotGothic16 font in `web/fonts/` is under the SIL Open Font License ([`web/fonts/OFL.txt`](web/fonts/OFL.txt)).
