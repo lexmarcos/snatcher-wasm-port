@@ -156,7 +156,7 @@ async function fmStart() {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(CACHE_DIR);
     while ((fmQueue.length || fmWanted.length) && !fmStopped) {
       let id = fmWanted.shift();
-      if (id === undefined || fmDone.has(id)) id = undefined;
+      if (id !== undefined && fmDone.has(id)) { post({ type: "fm-done", id }); continue; }
       if (id === undefined) id = fmQueue.find((x) => !fmDone.has(x));
       if (id === undefined) break;
       fmQueue = fmQueue.filter((x) => x !== id);

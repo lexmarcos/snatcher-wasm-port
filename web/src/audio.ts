@@ -55,6 +55,8 @@ export class AudioOut {
   cache = new BufferCache();
   pcm: Json = null;
   fm: Json = null;
+  /** Optional hook for sources that hold decoded audio (the disc importer): returns the AudioBuffer for a path, or undefined to use `read` + decodeAudioData. */
+  direct: ((path: string, ctx: BaseAudioContext) => Promise<AudioBuffer | null> | undefined) | null = null;
   /** Called once per file that could not be loaded/decoded (path relative to assets/). */
   onMissing: ((path: string) => void) | null = null;
   missing = new Set<string>();
@@ -140,8 +142,9 @@ export class AudioOut {
     let p = this.cache.get(path);
     if (!p) {
       if (this.missing.has(path)) return Promise.resolve(null);
-      p = this.read(path)
-        .then((b) => (b ? this.ensure().decodeAudioData(b) : Promise.reject(new Error("not found"))))
+      const ctx = this.ensure();
+      p = (this.direct?.(path, ctx) ?? this.read(path).then((b) => (b ? ctx.decodeAudioData(b) : null)))
+        .then((b) => (b ? b : Promise.reject(new Error("not found"))))
         .catch(() => {
           this.cache.drop(path);
           if (!this.missing.has(path)) { this.missing.add(path); this.onMissing?.(path); }

@@ -16,6 +16,12 @@ export interface Source {
   audio(path: string): Promise<ArrayBuffer | null>;
   /** Human-readable lines describing what was found. */
   summary(): string[];
+  /** Sources that hold decoded audio (the disc importer's cache) hand out AudioBuffers directly; undefined = not handled, use `audio()` + decodeAudioData. */
+  direct?(path: string, ctx: BaseAudioContext): Promise<AudioBuffer | null> | undefined;
+  /** Called once the game runs (the importer starts its background FM rendering here). */
+  start?(): void;
+  /** Called when the source is replaced or removed. */
+  dispose?(): void;
 }
 
 /** Files the engine never needs (PCMLD_01.BIN is the big PCM loader image, played via the audio pipeline instead). */

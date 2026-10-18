@@ -43,6 +43,10 @@
   .icon { display: inline-flex; vertical-align: middle; margin-right: 4px; } .icon svg { display: block; } .iconlabel { margin-right: 2px; }
   kbd { background: #1b2029; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: inherit; }
   details > summary { cursor: pointer; color: var(--accent); }
+  .drop { border: 1px dashed var(--line); border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+  .drop.drag { border-color: var(--accent); background: #0f2227; }
+  progress { width: 100%; height: 14px; accent-color: var(--accent); }
+  #impProg { margin: 8px 0; }
   .check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
   @media (max-width: 480px) { .card { padding: 12px; } body { font-size: 13px; } }
 </style>
@@ -55,6 +59,7 @@
     <button id="btnMute" type="button" aria-pressed="false" title="Mute audio (M)" data-i18n-title="bar.mute.title">Mute (M)</button>
     <button id="btnFull" type="button" title="Fullscreen (F)" data-i18n-title="bar.full.title" data-i18n="bar.full">Fullscreen (F)</button>
     <span id="msg" role="status" aria-live="polite" data-i18n="msg.loading">loading…</span>
+    <span id="bgStatus" class="dim" role="status"></span>
   </div>
 </div>
 <div id="debug"></div>
@@ -72,6 +77,25 @@
       <input id="pick" type="file" webkitdirectory multiple hidden>
     </div>
     <p class="dim" data-i18n-html="ov.help">Choose the folder you extracted from your disc (the project's <code>assets</code> folder works best: it holds <code>raw/files</code>, <code>raw/header.bin</code>, <code>raw/ip.bin</code> and the audio in <code>audio/web</code> and <code>web/music</code>). Files are read in this page only.</p>
+    <h2 data-i18n="ov.disc">Disc image</h2>
+    <div id="impBox" class="drop">
+      <p data-i18n-html="imp.help">Pick your disc image: the <code>.cue</code> file together with its <code>.bin</code> file(s), all at once, or drop them on this page. The game is imported once and then plays straight from this browser.</p>
+      <p class="ok" data-i18n="imp.privacy">Your files are read and processed in this browser tab only and are never uploaded. The imported data stays in this browser's private storage until you remove it.</p>
+      <div class="row">
+        <button id="btnImport" type="button" data-i18n="imp.button">Import disc image (.cue + .bin)…</button>
+        <input id="discPick" type="file" multiple accept=".cue,.bin,.img,.iso" hidden>
+        <button id="btnCancel" type="button" hidden data-i18n="imp.cancel">Cancel</button>
+      </div>
+      <label class="check"><input type="checkbox" id="impCd" checked> <span data-i18n="imp.cd">Keep the CD music in browser storage (about 490 MB more; otherwise the music needs your files again on each visit)</span></label>
+      <div id="impProg" hidden><progress id="impBar" max="1000" value="0" aria-labelledby="impPhase"></progress><div id="impPhase" class="dim" role="status"></div></div>
+      <p id="impStatus" class="dim" role="status"></p>
+      <p id="impFm" class="dim" role="status"></p>
+      <div class="row">
+        <button id="btnUseCache" type="button" hidden data-i18n="imp.use">Use imported data</button>
+        <button id="btnClear" type="button" hidden data-i18n="imp.remove">Remove imported data</button>
+      </div>
+      <p id="impStorage" class="dim"></p>
+    </div>
     <ul id="notes" class="notes"></ul>
     <h2 data-i18n="ov.saves">Saves</h2>
     <div class="row">

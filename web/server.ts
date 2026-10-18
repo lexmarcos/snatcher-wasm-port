@@ -20,7 +20,7 @@ Bun.serve({
     let path = decodeURIComponent(url.pathname);
     let file: string | null = null;
     if (path === "/" || path === "/index.html") file = join(root, "index.html");
-    else if (path.startsWith("/assets/")) file = safe(assets, path.slice(8));
+    else if (path.startsWith("/assets/")) file = process.env.NO_ASSETS ? null : safe(assets, path.slice(8)); // NO_ASSETS=1: behave like a host without extracted data (importer tests)
     // translation: the page strings (i18n/pt-BR/ui.json) and the engine's pack (built by scripts/build-web.sh, `snt i18n-build`)
     else if (path === "/i18n/pt-BR.pack") file = join(i18n, "build", "pt-BR.pack");
     else if (path === "/i18n/pt-BR/ui.json") file = join(i18n, "pt-BR", "ui.json");

@@ -366,7 +366,7 @@ pub fn import<I: DiscIo, S: Sink>(cue_text: &str, file_bytes: &[u64], io: I, sin
     // ---- is it the right data? (before the long steps)
     let digest = files_digest(&mut digest_items);
     if digest != SNATCHER_USA.digest {
-        return Err(ImportError::new("digest", format!("{digest} (a different dump or modified files; expected the data of {})", SNATCHER_USA.title)));
+        return Err(ImportError::new("digest", digest));
     }
 
     // ---- banks and drum kit -> sfx.pcm, manifest pcm.json

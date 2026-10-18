@@ -66,7 +66,64 @@ both -> `pcmMix`; all -> `master`. Sliders: Music = CD + FM music, Voice = voice
   their own reference. Missing files are remembered (no refetch loop) and reported once through `onMissing`.
 - Relative mixer levels FM/PCM/CD stay HYPOTHESES (all unity), as in audio.md.
 
+## 8. Disc image import (`imported.ts`, `import.worker.ts`, `cache.ts`, `core/src/import.rs`, `engine/src/importer.rs`)
+The simple path for a player: open the page, press **Import disc image (.cue + .bin)** (or drop the files on the page), press Play. No local
+extraction pipeline, no ffmpeg, no server data. Everything runs in the browser; nothing is uploaded (the page says so in the overlay).
+
+**Input.** One multi-file picker (`<input type=file multiple accept=".cue,.bin,.img,.iso">`) or drag and drop on the overlay (files or a folder).
+`resolvePick` finds the one `.cue`, asks Rust (`cue_files`) for the `FILE` names and matches them with the picked files by name (case
+insensitive, folders ignored). A renamed single image is accepted when it is the only image picked. Layouts: single bin (chdman) and
+Redump multi-bin (one `FILE` per track, `INDEX 00 00:00:00` / `INDEX 01 00:02:00` inside each file). `PREGAP` (not stored in a file) and
+`INDEX 00` handling is in `disc::Cue::layout` (unit tests in `core/src/disc.rs`): a track runs from its INDEX 01 to the next track's
+INDEX 00 of the same file (or the end of its file), so the pregap of the next track never belongs to this one, in both layouts.
+Not supported: CHD, `MODE2`, `WAVE` audio files (clear messages).
+
+**Lazy reads.** The Rust importer reads the image through `DiscIo::read(file, offset, buf)`. In the browser that is `FileReaderSync` on
+`File.slice` inside a Web Worker (sectors in pieces of 256), so the 625 MB image is never in memory, in JS or in wasm: the wasm heap
+holds only the small game files (about 2 MB) and one 600 KB piece at a time. Output goes to OPFS through synchronous access handles, also
+in pieces.
+
+**Disc check** (`import::check_header`, then a digest). Sector 0 must start with `SEGADISCSYSTEM`; the title must be SNATCHER; serial
+`GM T-95035` and region field `J` (what the Snatcher (USA) dump has, offset 0x1F0). Distinct messages: not a Sega CD image, another Sega
+CD game, another edition of Snatcher (serial shown), region code changed, truncated / wrong-size / non-raw image, `.bin` missing. Then a
+SHA-256 over the header, IP and every ISO9660 file (`files_digest`: sorted `name\tsize\tsha256` lines) must equal
+`SNATCHER_USA.digest` (checked right after the data track has been read, before the long steps). The digest was cross-checked with an
+independent Python script over `assets/raw`. Only the hash is in the repository.
+
+**What is produced** (table in the module doc of `core/src/import.rs`): `files.pack` (the 99 game files, byte-identical to `snt extract`),
+`header.bin`, `ip.bin`, `voices.pcm` (1197 clips minus banks, signed 8-bit mono), `sfx.pcm` (banks and drum kit), `cdda.pcm` (the raw
+2352-byte-per-sector audio of the 20 tracks), `pcm.json` / `fm.json` (same fields as the pipeline's, plus `at: [stream, offset, bytes]`),
+`meta.json` (last). The front end never touches ogg: `ImportedSource.direct()` builds `AudioBuffer`s from these bytes
+(`AudioOut.direct` hook): s8 voices/banks (value / 128), 16-bit stereo for FM (48 kHz) and CD (44.1 kHz) converted piece by piece into
+the channel arrays, so a 7 minute track needs the AudioBuffer (148 MB as float32) plus 1 MB, not two copies.
+
+**FM audio.** Rendered with the Rust port of the 68000 FM driver + YM2612 (`FmRenderer`), in the worker. Measured natively: all 122 sounds
+~90 s, one 6 minute loop (song 6c) 7 s; in the browser see section 8.1. Decision: the manifest (`fm.json`: exact length, loop start/end,
+loop kind of every sound) is produced during the import in about 1 s by running the 68000 driver **without** the chip
+(`render::render_dry`; neither the driver nor the loop detector reads the chip; tested equal to the full render for all 122 sounds and
+equal to the old `fm.json`). The engine therefore has every length at once and the game starts when the import ends. The audio of each
+sound is then rendered in the background (shortest first), one file per sound in the cache, with a status in the bar ("preparing music
+n/122"); a sound the game asks for before its turn is moved to the front (`fm-want`) and `audio.fmCmd` waits for it like for a slow
+download. When all are cached the worker is terminated (its wasm heap, up to ~150 MB for the longest loop, is released). A later visit
+renders only what is missing. The renderer keeps only a short window of chip samples (resampling to 48 kHz while rendering: peak for the
+6 minute loop 144 MB instead of 232 MB, output identical, tested against the old WAVs).
+
+**Cache** (`cache.ts`): OPFS directory `snatcher-import-v1`. `meta.json` is written last, so a failed or cancelled import leaves nothing
+(the directory is removed); a started FM file is valid only when its size equals `frames * 4`. `navigator.storage.persist()` is requested at
+import (the browser may refuse; the page shows whether it was granted) and the overlay shows `navigator.storage.estimate()` usage and the
+size of the imported data. **Remove imported data** (second click confirms) deletes the directory. Free space is checked before the import
+(needs about 175 MB + 560 MB FM + 490 MB CD).
+**CD-DA: copy or keep a handle?** Default: copy the raw sectors into the cache (490 MB), because a `File` picked with `<input type=file>`
+cannot be kept across visits and a persisted `FileSystemFileHandle` (Chromium only, needs `showOpenFilePicker` and a permission prompt each visit)
+would not work in Firefox / Safari. The checkbox "Keep the CD music in browser storage" turns the copy off: the import is then 490 MB smaller, the
+music plays this session from the picked files (`s16Buffer` on the `File`), and on the next visit the tracks are reported missing until the disc is
+imported again. Sizes of a full import: files 2 MB + voices 81 MB + effects 2 MB + CD 486 MB + FM about 538 MB = about 1.1 GB.
+
+### 8.1 Measurements (headless Chrome, this laptop; `web/test/import.ts`)
+See the end of this section, filled from the last run.
+
 ## 5. Tests
+(The importer tests are in section 8: `cargo test --release -p sncore --test import` and `bun web/test/import.ts`.)
 `scripts/test-web.sh [outdir]`: `bun test web/test/` (pacer, picked-folder recognition), then headless Chrome (chrome-headless-shell from
 `~/.cache/puppeteer`): `ui.ts` (overlay, menu pause, hidden-tab pause, volumes, mono/stereo, stop commands, LRU, save import/export and
 save event, picked-folder run, degraded assets, phone width 360x640, screenshots to the out dir), `shot.ts newgame` and `shot.ts scene=SP01:0`

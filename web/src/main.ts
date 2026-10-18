@@ -12,6 +12,8 @@ import { controlIcon, dpadIcon, mouseIcon, stickIcon } from "./icons";
 import { Pacer } from "./pacer";
 import { SaveStore, SLOTS } from "./saves";
 import { pickedSource, probeServed, type Source } from "./sources";
+import { clearCache, fmtBytes, opfsAvailable, readMeta, requestPersist, storageInfo } from "./cache";
+import { ImportedSource, ImportWorker, resolvePick, type Pick } from "./imported";
 import { T, applyStatic, getLang, parseLang, setUiDict, type Lang, type UiKey } from "./i18n";
 
 const W = 256, H = 224;
@@ -238,6 +240,8 @@ function renderDynamic() {
   applyMute(); refreshSaves(); renderControls(); renderPadMap(); renderNotes(); updateSoundMode();
   if (msgState) msg.textContent = T(msgState.key, msgState.vars);
   if (srcLines) showSource(srcLines(), srcCls);
+  if (impLine) showImp(impLine, impCls);
+  btnClear.textContent = T("imp.remove"); void refreshStorage();
   if (!busy) btnPlay.textContent = T("ov.play");
 }
 async function applyLanguage(l: Lang, persist = true) {
@@ -355,11 +359,12 @@ function showSource(extra: string[] = [], cls = "dim") {
 /** Status lines are produced by a function so that they can be rebuilt in the other language. */
 let srcLines: (() => string[]) | null = null, srcCls = "dim";
 function showSourceT(lines: () => string[], cls = "dim") { srcLines = lines; srcCls = cls; showSource(lines(), cls); }
-function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; }
+function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; btnImport.disabled = b || importing; }
 function selectSource(src: Source) {
   current = src;
   showSourceT(() => [T("ov.using", { label: src.label }), ...src.summary()], src.gameFiles().length ? "ok" : "err");
   btnPlay.textContent = T("ov.play"); setBusy(false); btnPlay.focus();
+  refreshImportButtons();
 }
 
 btnPick.onclick = () => pick.click();
@@ -374,6 +379,153 @@ pick.onchange = () => {
   }
   selectSource(src);
 };
+
+// ---------- disc image import (docs/re/web.md section 8): .cue + .bin file(s) -> cache in OPFS -> "imported" Source ----------
+const btnImport = $<HTMLButtonElement>("btnImport"), discPick = $<HTMLInputElement>("discPick"), impCd = $<HTMLInputElement>("impCd");
+const impBox = $("impBox"), impProg = $("impProg"), impBar = $<HTMLProgressElement>("impBar"), impPhase = $("impPhase");
+const impStatus = $("impStatus"), impFm = $("impFm"), impStorage = $("impStorage"), bgStatus = $("bgStatus");
+const btnUseCache = $<HTMLButtonElement>("btnUseCache"), btnClear = $<HTMLButtonElement>("btnClear"), btnCancel = $<HTMLButtonElement>("btnCancel");
+const importer = new ImportWorker();
+let importedSrc: ImportedSource | null = null;
+let importing = false;
+const importStats = { runs: 0, lastMs: 0, worker: importer };
+(window as any).snatcherImport = importStats;
+
+/** Import status line: a function so that it is rebuilt when the language changes. */
+let impLine: (() => string) | null = null, impCls = "dim";
+function showImp(line: (() => string) | null, cls = "dim") { impLine = line; impCls = cls; impStatus.className = cls; impStatus.textContent = line ? line() : ""; }
+const PHASES = ["header", "files", "voices", "fm", "cd", "done"] as const;
+const phaseText = (p: string) => T(`imp.phase.${(PHASES as readonly string[]).includes(p) ? p : "files"}` as UiKey);
+
+async function refreshStorage() {
+  if (!opfsAvailable()) { impStorage.textContent = ""; return; }
+  const si = await storageInfo();
+  impStorage.textContent = T("imp.storage", { used: fmtBytes(si.used), quota: fmtBytes(si.quota), cache: fmtBytes(si.cache), persist: si.persisted ? T("imp.persist.yes") : T("imp.persist.no") });
+  impStorage.dataset.cache = String(si.cache);
+}
+function refreshImportButtons() {
+  btnUseCache.hidden = !importedSrc || current === importedSrc || importing;
+  btnClear.hidden = !importedSrc || importing;
+  btnCancel.hidden = !importing;
+}
+function fmStatus(text: string | null) {
+  bgStatus.textContent = text ?? "";
+  impFm.textContent = text ?? "";
+}
+async function openCached(): Promise<ImportedSource | null> {
+  const meta = await readMeta();
+  if (!meta) return null;
+  const src = await new ImportedSource(meta, importer, null).init();
+  src.onStatus = fmStatus;
+  importedSrc = src;
+  return src;
+}
+function foundLine(src: ImportedSource) { return () => T("imp.found", { title: src.meta.title, size: fmtBytes(Object.values(src.meta.streams).reduce((a, b) => a + b, 0)) }); }
+
+/** Message for an import / pick error: `imp.err.<code>` with the details. */
+function errText(code: string, detail: string, extra: Record<string, string | number> = {}): string {
+  const key = ("imp.err." + code) as UiKey;
+  return T(key, { detail, ...extra });
+}
+
+async function runImport(picked: File[]) {
+  if (importing || busy || !picked.length) return;
+  if (!opfsAvailable()) { showImp(() => T("imp.nosupport"), "err"); return; }
+  importing = true; setBusy(false); refreshImportButtons();
+  impProg.hidden = true;
+  try {
+    const { pkg } = await wasmP;
+    showImp(() => T("imp.reading"), "dim");
+    const pick = await resolvePick(picked, (text) => JSON.parse(pkg.cue_files(text)));
+    if (!("cueText" in pick)) { showImp(() => errText(pick.code, pick.detail, { n: picked.length }), "err"); return; }
+    const copyCd = impCd.checked;
+    // storage: the import needs about 175 MB, 490 MB more for the CD music, ~560 MB for the FM sounds rendered afterwards
+    try {
+      const est = await navigator.storage.estimate();
+      const free = (est.quota ?? Infinity) - (est.usage ?? 0), need = (175 + 560 + (copyCd ? 490 : 0)) * 2 ** 20;
+      if (free < need) { showImp(() => T("imp.nospace", { need: fmtBytes(need), free: fmtBytes(Math.max(0, free)) }), "err"); return; }
+    } catch { /* no estimate: try anyway */ }
+    await requestPersist(); // must come from this click; the browser may say no
+    importStats.runs++;
+    importedSrc?.dispose(); importedSrc = null; refreshImportButtons();
+    const t0 = performance.now();
+    impProg.hidden = false; impBar.value = 0; impPhase.textContent = phaseText("header");
+    showImp(() => pick.notes.join("; "), "dim");
+    const meta = await importer.import(pick, copyCd, (p) => {
+      impBar.value = Math.round((p.done / Math.max(1, p.total)) * 1000); // max=1000
+      impPhase.textContent = `${phaseText(p.phase)} ${Math.round((p.done / Math.max(1, p.total)) * 100)}%`;
+    });
+    importStats.lastMs = performance.now() - t0;
+    const src = await new ImportedSource(meta, importer, copyCd ? null : pick.files).init();
+    src.onStatus = fmStatus;
+    importedSrc = src;
+    selectSource(src);
+    src.start(); // FM sounds are rendered in the background from now on
+    showImp(() => T("imp.done", { s: (importStats.lastMs / 1000).toFixed(1) }), "ok");
+  } catch (e: any) {
+    const code = e?.code ?? "io", detail = e?.detail ?? String(e?.message ?? e);
+    showImp(() => code === "cancelled" ? T("imp.err.cancelled") : errText(code, detail), code === "cancelled" ? "warn" : "err");
+    importedSrc = await openCached().catch(() => null);
+  } finally {
+    importing = false; impProg.hidden = true; setBusy(false); refreshImportButtons(); void refreshStorage();
+  }
+}
+
+btnImport.onclick = () => { discPick.value = ""; discPick.click(); };
+discPick.onchange = () => { void runImport(Array.from(discPick.files ?? [])); };
+btnCancel.onclick = async () => { importer.cancel(); try { await clearCache(); } catch { /* ignore */ } };
+btnUseCache.onclick = () => { if (importedSrc) selectSource(importedSrc); };
+let clearArmed = 0;
+btnClear.onclick = async () => {
+  if (!clearArmed) {
+    btnClear.textContent = T("imp.remove.confirm");
+    clearArmed = window.setTimeout(() => { clearArmed = 0; btnClear.textContent = T("imp.remove"); }, 4000);
+    return;
+  }
+  clearTimeout(clearArmed); clearArmed = 0; btnClear.textContent = T("imp.remove");
+  importedSrc?.dispose();
+  if (current === importedSrc) { current = null; btnPlay.disabled = true; showSource([]); }
+  importedSrc = null;
+  try { await clearCache(); showImp(() => T("imp.removed"), "ok"); } catch (e) { showImp(() => errText("io", String(e)), "err"); }
+  refreshImportButtons(); void refreshStorage(); void impFm;
+};
+
+// drag and drop of the files (or of the folder that holds them) anywhere on the overlay
+async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
+  const entries = Array.from(dt.items ?? []).map((i) => (i.kind === "file" ? (i as any).webkitGetAsEntry?.() ?? null : null));
+  if (!entries.some((e) => e?.isDirectory)) return Array.from(dt.files);
+  const out: File[] = [];
+  const readDir = async (d: any, depth: number) => {
+    const r = d.createReader();
+    for (;;) {
+      const batch: any[] = await new Promise((ok, no) => r.readEntries(ok, no));
+      if (!batch.length) break;
+      for (const e of batch) {
+        if (e.isFile) out.push(await new Promise<File>((ok, no) => e.file(ok, no)));
+        else if (e.isDirectory && depth < 2) await readDir(e, depth + 1);
+      }
+    }
+  };
+  for (const e of entries) {
+    if (!e) continue;
+    if (e.isFile) out.push(await new Promise<File>((ok, no) => e.file(ok, no)));
+    else await readDir(e, 0);
+  }
+  return out;
+}
+const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+let dragDepth = 0;
+overlay.addEventListener("dragenter", (e) => { if (hasFiles(e)) { dragDepth++; impBox.classList.add("drag"); e.preventDefault(); } });
+overlay.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+overlay.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) impBox.classList.remove("drag"); });
+overlay.addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; impBox.classList.remove("drag");
+  if (!overlayOpen) return;
+  void filesFromDrop(e.dataTransfer!).then((f) => runImport(f));
+});
+addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); }); // a file dropped outside the card must not navigate away
+addEventListener("drop", (e) => { if (hasFiles(e)) e.preventDefault(); });
 
 async function loadWasm() {
   const pkg: any = await import(/* @vite-ignore */ "/pkg/snengine.js" as string);
@@ -415,6 +567,7 @@ async function start(src: Source) {
     for (const n of SLOTS) { const b = store.bytes(n); if (b) g.set_save(n, b); }
     // audio
     const out = new AudioOut((p) => src.audio(p));
+    if (src.direct) out.direct = (p, c) => src.direct!(p, c);
     let missingCount = 0;
     out.onMissing = (p) => { missingCount++; note("audiofiles", "warn", T("note.audio", { n: missingCount, last: p })); };
     for (const [, kind] of VOLS) out.setVolume(kind, volume[kind] / 100);
@@ -436,7 +589,8 @@ async function start(src: Source) {
     else g.boot();
 
     memory = wasm.memory; game = g; audio = out; input.game = g; input.enabled = true;
-    (window as any).snatcher = { game, audio, input, store, notes, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
+    src.start?.();
+    (window as any).snatcher = { game, audio, input, store, notes, source: src, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
     applyPrompt();
     overlayOpen = false; overlay.hidden = true;
     note("wasm", "ok", null);
@@ -503,9 +657,14 @@ function handleEvent(e: any) {
   fit();
   await applyLanguage(wantLang, false);
   const r = await probeServed();
+  const cached = await openCached().catch(() => null);
+  const first: Source | null = r.src ?? cached;
   if (r.src) selectSource(r.src);
-  else { showSourceT(() => [T("ov.nolocal"), T("ov.nolocal2", { err: r.error ? T(r.error as UiKey) : "" })], "warn"); setBusy(false); btnPick.focus(); }
-  setMsg(r.src ? "msg.ready" : "msg.waiting");
+  else if (cached) selectSource(cached);
+  else { showSourceT(() => [T("ov.nolocal"), T("ov.nolocal2", { err: r.error ? T(r.error as UiKey) : "" })], "warn"); setBusy(false); btnImport.focus(); }
+  if (cached) showImp(foundLine(cached), "ok");
+  refreshImportButtons(); void refreshStorage();
+  setMsg(first ? "msg.ready" : "msg.waiting");
   // headless/dev shortcuts skip the overlay (and its click): ?newgame, ?scene=SP01:0, ?autostart
-  if (r.src && (params.has("scene") || params.has("newgame") || params.has("autostart"))) await start(r.src);
+  if (first && (params.has("scene") || params.has("newgame") || params.has("autostart"))) await start(first);
 })();
