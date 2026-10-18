@@ -179,13 +179,13 @@ for (const fl of flavours) {
   await shot(page, `${fl.name}-3-imported.png`);
   if (fl.name === "single-bin") {
     await dshot(page, "import-imported-ready.png");
-    const lab = await page.evaluate(() => ({ t: document.getElementById("btnImport")!.textContent, d: (document.getElementById("btnImport") as HTMLButtonElement).disabled, c: document.getElementById("btnClear")!.textContent, ch: document.getElementById("btnClear")!.hidden }));
-    check(`${fl.name}: the import button now reads Imported and Remove imported data is offered`, lab.t === "Imported" && lab.d && lab.c === "Remove imported data" && !lab.ch, JSON.stringify(lab));
+    const lab = await page.evaluate(() => ({ step1: (document.getElementById("ovStep1") as HTMLElement).hidden, stage: document.getElementById("ovWin")!.dataset.stage, st: document.getElementById("srcStatus")!.textContent, c: document.getElementById("btnClear")!.textContent, ch: document.getElementById("btnClear")!.hidden }));
+    check(`${fl.name}: once imported the import part is hidden, the result is told under Play and Remove imported data is offered`, lab.step1 && lab.stage === "imported" && /Imported in/.test(lab.st ?? "") && lab.c === "Remove imported data" && !lab.ch, JSON.stringify(lab));
     check(`${fl.name}: Play is focused when the import ends`, await page.evaluate(() => document.activeElement?.id === "btnPlay"));
   }
   check(`${fl.name}: after the import step 2 (Play) is shown`, await page.evaluate(() => !document.getElementById("ovAfter")!.hidden));
   const summary = await text(page, "#srcStatus");
-  check(`${fl.name}: source is the imported disc`, /imported disc/.test(summary) && /Snatcher \(USA\)/.test(summary), summary.slice(0, 120));
+  check(`${fl.name}: Play tells the imported disc (Snatcher (USA)) and the import result`, /Imported in/.test(summary) && /Snatcher \(USA\)/.test(summary), summary.slice(0, 120));
   const storageLine = await text(page, "#impStorage");
   check(`${fl.name}: storage used is shown`, /Browser storage: .* used of .*Imported data: .*Persistent storage:/.test(storageLine), storageLine);
 
@@ -227,13 +227,37 @@ for (const fl of flavours) {
     await page.keyboard.press("Escape");
   }
 
+  if (!fl.reloadCheck) {
+    // ---- clear the site: imported disc + every snatcher.* key, then a first visit
+    await page.goto(`http://localhost:${port}/`, { waitUntil: "load" }); // back to the start window (the game is running)
+    await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 30000 }); await sleep(500);
+    await page.evaluate(() => { localStorage.setItem("snatcher.test", "1"); localStorage.setItem("snatcher.save.7", "AAAA"); localStorage.setItem("other.app", "kept"); });
+    await page.click("#wipeBox > summary"); await sleep(100);
+    await page.evaluate(() => document.getElementById("wipeBox")!.scrollIntoView({ block: "center" }));
+    await dshot(page, "import-wipe-open.png");
+    await page.click("#langOvPt"); await sleep(300);
+    await dshot(page, "import-wipe-open-pt.png");
+    await page.click("#langOvEn"); await sleep(300);
+    await page.click("#btnWipe");
+    check(`${fl.name}: clearing the site needs a second click`, /again/i.test(await text(page, "#btnWipe")));
+    await Promise.all([page.waitForNavigation({ waitUntil: "load", timeout: 30000 }), page.click("#btnWipe")]);
+    await page.waitForSelector("#btnImport", { timeout: 20000 }); await sleep(500);
+    const w = await page.evaluate(async () => {
+      let opfs = true; try { await (await navigator.storage.getDirectory()).getDirectoryHandle("snatcher-import-v1"); } catch { opfs = false; }
+      return { opfs, keys: Object.keys(localStorage).filter((k) => k.startsWith("snatcher")) /* the fresh page may write its defaults again (snatcher.smooth) */, other: localStorage.getItem("other.app"), first: (document.getElementById("ovAfter") as HTMLElement).hidden && !(document.getElementById("ovStep1") as HTMLElement).hidden };
+    });
+    check(`${fl.name}: "clear everything" removes the imported disc and the site's keys, then opens as a first visit`, !w.opfs && !w.keys.includes("snatcher.test") && !w.keys.some((k) => k.startsWith("snatcher.save.")) && w.other === "kept" && w.first, JSON.stringify(w));
+    await shot(page, `${fl.name}-5-cleared.png`);
+  }
   if (fl.reloadCheck) {
     // ---- reload: no new import, plays from the cache
     const before = requests.length;
     await page.reload({ waitUntil: "load" });
     await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 30000 });
     const s2 = await text(page, "#srcStatus"), i2 = await text(page, "#impStatus");
-    check(`${fl.name}: after reload the imported disc is found and Play is enabled without picking files`, /imported disc/.test(s2) && /imported disc is in this browser/i.test(i2), `${s2.slice(0, 60)} | ${i2}`);
+    check(`${fl.name}: after reload the imported disc is found and Play is enabled without picking files`, /imported disc is in this browser/i.test(s2) && /imported disc is in this browser/i.test(i2), `${s2.slice(0, 60)} | ${i2}`);
+    check(`${fl.name}: after reload only Play and the rest are shown, not the import`, await page.evaluate(() => (document.getElementById("ovStep1") as HTMLElement).hidden && !(document.getElementById("ovAfter") as HTMLElement).hidden));
+    await sleep(500); // the start window opens in 320 ms
     await shot(page, `${fl.name}-5-reloaded.png`);
     await dshot(page, "import-cached-ready.png");
     await page.setViewport({ width: 360, height: 740 });
@@ -257,6 +281,7 @@ for (const fl of flavours) {
     await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
     await page.waitForSelector("#btnClear:not([hidden])", { timeout: 20000 });
     await sleep(500); // the start window opens in 320 ms (clip-path steps); clicks during the reveal would hit the clipped part
+    await page.click("#wipeBox > summary"); await sleep(100);
     await page.click("#btnClear");
     check(`${fl.name}: removing needs a second click`, /again/i.test(await text(page, "#btnClear")));
     await page.click("#btnClear");

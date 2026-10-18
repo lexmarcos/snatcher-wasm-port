@@ -384,7 +384,11 @@ function showAlt(lines: (() => string[]) | null, cls = "dim") { altLines = lines
 let srcLines: (() => string[]) | null = null, srcCls = "dim";
 function showSourceT(lines: () => string[], cls = "dim") { srcLines = lines; srcCls = cls; showSource(lines(), cls); }
 /** First visit (no game source yet): only step 1 is shown; step 2 and the folds appear once a source exists. */
-function refreshStage() { const disc = !current && !importedSrc; $("ovWin").dataset.stage = disc ? "disc" : "ready"; $("ovAfter").hidden = disc; }
+function refreshStage() {
+  // disc: nothing yet, only the import; imported: a disc is in this browser, only Play and the rest; ready: a served / picked copy, both steps
+  const stage = !current && !importedSrc ? "disc" : importedSrc && !importing ? "imported" : "ready";
+  $("ovWin").dataset.stage = stage; $("ovAfter").hidden = stage === "disc"; $("ovStep1").hidden = stage === "imported";
+}
 function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; refreshImportButtons(); }
 const invite = () => showSourceT(() => [T("ov.invite")], "dim");
 function selectSource(src: Source) {
@@ -505,7 +509,9 @@ async function runImport(picked: File[]) {
     importedSrc = src;
     selectSource(src);
     src.start(); // FM sounds are rendered in the background from now on
-    showImp(() => T("imp.done", { s: (importStats.lastMs / 1000).toFixed(1) }), "ok");
+    const done = () => T("imp.done", { s: (importStats.lastMs / 1000).toFixed(1) });
+    showImp(done, "ok");
+    showSourceT(() => [done(), ...src.summary()], "ok"); // step 1 is hidden from now on: the result is told under Play
   } catch (e: any) {
     const code = e?.code ?? "io", detail = e?.detail ?? String(e?.message ?? e);
     showImp(() => code === "cancelled" ? T("imp.err.cancelled") : errText(code, detail), code === "cancelled" ? "warn" : "err");
@@ -532,6 +538,29 @@ btnClear.onclick = async () => {
   importedSrc = null;
   try { await clearCache(); showImp(() => T("imp.removed"), "ok"); } catch (e) { showImp(() => errText("io", String(e)), "err"); }
   refreshImportButtons(); void refreshStorage(); void impFm;
+};
+
+// "Clear the site": the imported disc (OPFS) and every snatcher.* key of this origin (saves, gamepad buttons, settings), then a fresh first visit
+const btnWipe = $<HTMLButtonElement>("btnWipe"), wipeStatus = $("wipeStatus");
+let wipeArmed = 0;
+btnWipe.onclick = async () => {
+  if (!wipeArmed) {
+    btnWipe.textContent = T("ov.wipe.confirm");
+    wipeArmed = window.setTimeout(() => { wipeArmed = 0; btnWipe.textContent = T("ov.wipe.button"); }, 4000);
+    return;
+  }
+  clearTimeout(wipeArmed); wipeArmed = 0; btnWipe.disabled = true;
+  if (importing) importer.cancel();
+  importedSrc?.dispose(); importedSrc = null;
+  try {
+    if (opfsAvailable()) await clearCache();
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith("snatcher")) localStorage.removeItem(k); } catch { /* blocked storage: nothing kept there */ }
+    try { sessionStorage.clear(); } catch { /* ignore */ }
+    location.replace(location.pathname); // reload without ?params: the page opens as a first visit
+  } catch (e) {
+    btnWipe.disabled = false; btnWipe.textContent = T("ov.wipe.button");
+    wipeStatus.className = "line err"; wipeStatus.textContent = errText("io", String(e));
+  }
 };
 
 // drag and drop of the files (or of the folder that holds them) anywhere on the overlay
@@ -703,9 +732,10 @@ function handleEvent(e: any) {
   const r = await probeServed();
   servedSrc = r.src ?? null;
   const cached = await openCached().catch(() => null);
-  const first: Source | null = r.src ?? cached;
-  if (r.src) selectSource(r.src);
-  else if (cached) selectSource(cached);
+  // a disc imported in this browser wins over the dev server's ./assets: the player chose it
+  const first: Source | null = cached ?? r.src ?? null;
+  if (cached) { selectSource(cached); showSourceT(() => [foundLine(cached)(), ...cached.summary().slice(1)], "ok"); /* the found line already names the disc */ }
+  else if (r.src) selectSource(r.src);
   else {
     // a player without data gets an invitation, not an error; the probe's detail is for the developer, under "Other ways to load"
     invite(); showAlt(() => [T("ov.nolocal"), ...(r.error ? [T(r.error as UiKey)] : [])], "dim");

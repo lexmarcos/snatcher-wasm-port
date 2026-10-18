@@ -268,5 +268,9 @@ canvas:focus { outline: none; }
   .slot { min-height: 80px; }
 }
 
-/* first visit: step 1 stands alone, so its "1" marker is dropped */
-#ovWin[data-stage="disc"] .num { display: none; }
+/* one step alone (first visit: the import; disc already imported: Play) needs no number marker */
+#ovWin[data-stage="disc"] .num, #ovWin[data-stage="imported"] .num { display: none; }
+/* disc already imported: Play stands alone, its "Play" strip would only repeat the button */
+#ovWin[data-stage="imported"] #ovAfter > .strip:first-child { display: none; }
+/* clearing the site deletes saves: the button is marked with the alert colour on its outline (the label stays --ink for contrast on --face) */
+.btn.danger { outline: 2px solid var(--alert); outline-offset: -6px; }

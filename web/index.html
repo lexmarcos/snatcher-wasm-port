@@ -38,6 +38,8 @@
       <h1 id="ovWordmark" class="wordmark" data-i18n="ov.title">Snatcher</h1>
       <p class="intro" data-i18n="ov.intro">Play your own copy of Snatcher (USA, Sega CD) in this browser; nothing is uploaded.</p>
 
+      <!-- step 1, the import: hidden once a disc is imported in this browser (then only Play and the rest are shown) -->
+      <div id="ovStep1">
       <h2 class="strip"><span class="num" aria-hidden="true">1</span><span data-i18n="ov.step1">Your disc</span></h2>
       <div id="impBox" class="slot">
         <span class="when-idle" data-i18n-html="imp.help">Pick the <code>.cue</code> file and its <code>.bin</code> file(s) together, or drop them here.</span>
@@ -47,8 +49,6 @@
         <button id="btnImport" class="btn" type="button" data-i18n="imp.button">Import disc image…</button>
         <input id="discPick" type="file" multiple accept=".cue,.bin,.img,.iso" hidden>
         <button id="btnCancel" class="btn" type="button" hidden data-i18n="imp.cancel">Cancel</button>
-        <button id="btnUseCache" class="btn" type="button" hidden data-i18n="imp.use">Use imported data</button>
-        <button id="btnClear" class="btn" type="button" hidden data-i18n="imp.remove">Remove imported data</button>
       </div>
       <label class="check"><input type="checkbox" id="impCd" checked> <span data-i18n="imp.cd">Keep the CD music in this browser (490 MB more).</span></label>
       <div id="impProg" hidden>
@@ -56,8 +56,8 @@
         <p id="impPhase" class="line" role="status"></p>
       </div>
       <p id="impStatus" class="line dim" role="status"></p>
-      <p id="impFm" class="line dim" role="status"></p>
       <p class="note" data-i18n="imp.privacy">Your files are read in this browser tab only and are never uploaded. The imported data stays in this browser until you remove it.</p>
+      </div>
 
       <!-- shown only once a game source exists (imported disc, served or picked copy): a first visit sees step 1 alone -->
       <div id="ovAfter" hidden>
@@ -66,6 +66,7 @@
         <button id="btnPlay" class="btn primary big" type="button" disabled data-i18n="ov.play">Play</button>
       </div>
       <p id="srcStatus" class="line dim" data-i18n="ov.invite">Import your disc in step 1, then press Play.</p>
+      <p id="impFm" class="line dim" role="status"></p>
       <ul id="notes" class="notes"></ul>
 
       <div class="folds">
@@ -88,11 +89,22 @@
           <div class="fold-body">
             <p data-i18n="ov.alt.folder">Already have the game files extracted? Choose that folder (the project's assets folder works best). The files are read in this page only.</p>
             <div class="row">
+              <button id="btnUseCache" class="btn" type="button" hidden data-i18n="imp.use">Use imported data</button>
               <button id="btnPick" class="btn" type="button" data-i18n="ov.pick">Choose extracted folder…</button>
               <input id="pick" type="file" webkitdirectory multiple hidden>
             </div>
             <div id="altStatus" class="line dim" role="status"></div>
             <p class="note" data-i18n-html="ov.alt.dev">Developers: after the extraction, <code>bun web/server.ts</code> serves <code>./assets</code> and this page selects it by itself.</p>
+          </div>
+        </details>
+        <details id="wipeBox">
+          <summary data-i18n="ov.wipe">Remove the files and clear the site</summary>
+          <div class="fold-body">
+            <p data-i18n="ov.wipe.disc">Remove only the imported disc: your saves and settings stay. Import the disc again to play.</p>
+            <div class="row"><button id="btnClear" class="btn" type="button" hidden data-i18n="imp.remove">Remove imported data</button></div>
+            <p data-i18n="ov.wipe.all">Clear the site: removes the imported disc, your saves, gamepad buttons and settings from this browser. Export your saves first to keep them.</p>
+            <div class="row"><button id="btnWipe" class="btn danger" type="button" data-i18n="ov.wipe.button">Clear everything</button></div>
+            <p id="wipeStatus" class="line dim" role="status"></p>
           </div>
         </details>
       </div>

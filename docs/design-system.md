@@ -100,7 +100,11 @@ Pressed = the two edges swap. Spacing steps are 8, 16, 24, 32 px.
   1 Your disc (drive slot with the instruction, Import disc image, CD music option, block meter and phase, status line, the honest privacy note);
   2 Play (primary button, one status line); folded rows; the browser-storage line. Importer states: idle, dragging, importing (meter), imported ("Imported" button, Remove imported data), cached ("Your imported disc is in this browser"), error (`.err` line), removing (second click, then "Removed").
   **First visit** (no imported disc, no served or picked copy): only step 1 is shown, without its "1" marker (`#ovWin[data-stage="disc"]`); step 2, the folded rows and the storage line
-  (`#ovAfter`) appear once a game source exists and hide again after "Remove imported data". Never a warning. The old "Game files / Choose extracted folder" block and the developer text live in
+  (`#ovAfter`) appear once a game source exists and hide again after "Remove imported data". Never a warning.
+  **Disc already imported** (`data-stage="imported"`): step 1 (`#ovStep1`, the import) is hidden, and so are the step markers and the "Play" strip; the window shows Play with
+  one status line (the imported disc, or the import result right after an import), the folded rows and the storage line. An imported disc wins over the dev server's `./assets`.
+  The last folded row, **Remove the files and clear the site**, holds "Remove imported data" (saves and settings stay) and "Clear everything" (the imported disc plus every
+  `snatcher.*` key of the origin: saves, gamepad buttons, settings; `.btn.danger`, alert outline, second click to confirm), which reloads the page as a first visit. The old "Game files / Choose extracted folder" block and the developer text live in
   **Other ways to load** (so a first-time visitor never sees them); when the dev server has `./assets`, that source is selected by itself and step 2 says so in one plain line.
 - **Pause panel**: the same window titled "Paused": Resume first and primary, the status notes right under it, then the tabs. Esc, the Menu button and the gamepad Select button still open and close it, and it still pauses the game.
 - **Toolbar, monitor, debug overlay**: sections 5.
