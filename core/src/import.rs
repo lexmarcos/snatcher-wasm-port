@@ -174,7 +174,7 @@ pub fn check_header(s0: &[u8]) -> Res<DiscInfo> {
         return Err(ImportError::new("edition", format!("serial {:?}, region {:?} (this port needs {} serial {})", h.serial, h.region, known.title, known.serial)));
     }
     if h.region != known.region {
-        return Err(ImportError::new("region", format!("region code {:?} (expected {:?})", h.region, known.region)));
+        return Err(ImportError::new("region", format!("{:?} (expected {:?})", h.region, known.region)));
     }
     Ok(DiscInfo { header: h, title })
 }

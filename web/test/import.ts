@@ -1,6 +1,6 @@
 // End-to-end test of the in-browser disc importer, in headless Chrome, with the dev server's /assets switched OFF (NO_ASSETS=1,
 // started here on PORT 5320 unless one is already listening there), so that only the importer can supply the game.
-//   bun web/test/import.ts [shots-dir]        default work/shots/import
+//   bun web/test/import.ts [shots-dir]        default work/shots/import;  ONLY=single-bin|multi-bin|wrong runs one part
 // Needs the local disc: work/snatcher.cue + .bin, and (to compare the sound) the reference extraction in assets/.
 //   A. single-bin cue picked with the file input: progress bar, import, Play, sound, audio bit-exact against the reference WAVs;
 //      then a page RELOAD: plays from the cache without a new import; storage line; "remove imported data".
@@ -134,8 +134,10 @@ const splitCue = join(splitDir, "Snatcher (USA).cue");
 if (existsSync(splitCue)) flavours.push({ name: "multi-bin", files: [splitCue, ...readdirSync(splitDir).filter((f) => f.endsWith(".bin")).sort().map((f) => join(splitDir, f))], drop: true, reloadCheck: false });
 else console.log("NOTE: work/split missing, multi-bin run skipped (snt split-cue work/snatcher.cue work/split \"Snatcher (USA)\")");
 
+const only = process.env.ONLY; // ONLY=single-bin | multi-bin | wrong: run just that part
 const results: Record<string, any> = {};
 for (const fl of flavours) {
+  if (only && only !== fl.name) continue;
   console.log(`\n=== ${fl.name}${fl.drop ? " (drag and drop)" : ""} ===`);
   await launch(); // own profile: nothing cached from the other run
   const page = await open(browser);
@@ -244,7 +246,7 @@ for (const fl of flavours) {
 
 // ---- C: wrong inputs (small synthetic files)
 console.log("\n=== wrong inputs ===");
-{
+if (!only || only === "wrong") {
   const tmp = mkdtempSync(join(tmpdir(), "snimport-"));
   let caseNo = 0; // every case has its own directory (all of them name their image game.bin)
   const w = (n: string, d: string | Buffer) => { const dir = join(tmp, String(caseNo)); mkdirSync(dir, { recursive: true }); const p = join(dir, n); writeFileSync(p, d); return p; };

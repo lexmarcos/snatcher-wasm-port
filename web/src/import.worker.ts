@@ -14,7 +14,7 @@ const post = (m: unknown) => (self as any).postMessage(m);
 
 let pkgP: Promise<any> | null = null;
 function wasm() {
-  pkgP ??= (async () => { const pkg: any = await import(/* @vite-ignore */ "/pkg/snengine.js" as string); pkg.exports = await pkg.default(); return pkg; })();
+  pkgP ??= (async () => { const pkg: any = await import(/* @vite-ignore */ "/pkg/snengine.js" as string); const exports = await pkg.default(); return { import_disc: pkg.import_disc, FmRender: pkg.FmRender, memory: exports.memory as WebAssembly.Memory }; })();
   return pkgP;
 }
 
@@ -94,7 +94,7 @@ async function doImport(cue: string, files: File[], copyCd: boolean) {
     };
     const metaJson: string = pkg.import_disc(cue, files.map((f) => f.size), copyCd, io);
     st.closeAll();
-    post({ type: "imported", meta: JSON.parse(metaJson), wasmHeap: pkg.exports.memory.buffer.byteLength });
+    post({ type: "imported", meta: JSON.parse(metaJson), wasmHeap: pkg.memory.buffer.byteLength });
   } catch (e: any) {
     streams?.closeAll();
     try { await root.removeEntry(CACHE_DIR, { recursive: true }); } catch { /* ignore */ }
@@ -173,7 +173,7 @@ async function fmStart() {
       // let queued messages (fm-want, fm-stop) in
       await new Promise((r) => setTimeout(r, 0));
     }
-    if (!fmStopped) post({ type: "fm-complete", wasmHeap: (await wasm()).exports.memory.buffer.byteLength });
+    if (!fmStopped) post({ type: "fm-complete", wasmHeap: (await wasm()).memory.buffer.byteLength });
   } catch (e: any) {
     post({ type: "fm-error", message: String(e?.message ?? e) });
   } finally { fmRunning = false; fm = null; }

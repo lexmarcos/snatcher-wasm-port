@@ -118,6 +118,9 @@ fn have_disc() -> bool {
     ok
 }
 
+/// The two tests that import into the shared `import-single` directory must not overlap (the harness runs tests in parallel).
+static DISC: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn import_to(cue: &Path, out: &Path, cd: bool) -> import::Summary {
     let text = fs::read_to_string(cue).unwrap();
     let c = sncore::disc::Cue::parse(&text).unwrap();
@@ -160,6 +163,7 @@ fn pack_index(meta: &str) -> Vec<(String, usize, usize)> {
 #[test]
 fn single_bin_import_equals_the_reference_extraction() {
     if !have_disc() { return }
+    let _g = DISC.lock().unwrap_or_else(|e| e.into_inner());
     let r = root();
     let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("import-single");
     let t = std::time::Instant::now();
@@ -300,6 +304,7 @@ fn parse_fm(s: &str) -> Fm {
 #[test]
 fn multi_bin_import_equals_single_bin() {
     if !have_disc() { return }
+    let _g = DISC.lock().unwrap_or_else(|e| e.into_inner());
     let r = root();
     let cue = r.join("work/split/Snatcher (USA).cue");
     if !cue.exists() { eprintln!("skipped: no work/split (make it with `snt split-cue work/snatcher.cue work/split \"Snatcher (USA)\"`)"); return }

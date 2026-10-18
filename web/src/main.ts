@@ -408,9 +408,11 @@ function refreshImportButtons() {
   btnClear.hidden = !importedSrc || importing;
   btnCancel.hidden = !importing;
 }
+let lastStorage = 0;
 function fmStatus(text: string | null) {
   bgStatus.textContent = text ?? "";
   impFm.textContent = text ?? "";
+  if (text === null || performance.now() - lastStorage > 5000) { lastStorage = performance.now(); void refreshStorage(); } // the cache grows with every sound
 }
 async function openCached(): Promise<ImportedSource | null> {
   const meta = await readMeta();

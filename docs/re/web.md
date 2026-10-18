@@ -119,8 +119,25 @@ would not work in Firefox / Safari. The checkbox "Keep the CD music in browser s
 music plays this session from the picked files (`s16Buffer` on the `File`), and on the next visit the tracks are reported missing until the disc is
 imported again. Sizes of a full import: files 2 MB + voices 81 MB + effects 2 MB + CD 486 MB + FM about 538 MB = about 1.1 GB.
 
-### 8.1 Measurements (headless Chrome, this laptop; `web/test/import.ts`)
-See the end of this section, filled from the last run.
+### 8.1 Measurements (headless Chrome 154, this laptop; `bun web/test/import.ts`, one fresh profile per run)
+| | single bin (file input) | Redump multi-bin, 21 files (drag and drop) |
+|---|---|---|
+| import, pick -> Play enabled (header check, 99 files, 1197 voices, banks, drums, FM manifest, 486 MB of CD audio copied, SHA-256) | 13.7 s | 12.5 s |
+| same import natively (`snt import-disc`, warm disk cache) | 2.2 s | |
+| FM audio of all 122 sounds, rendered in the worker in the background | 77.7 s | 77.6 s |
+| same natively (`snt audio-fm`, all 122) | ~90 s | |
+| browser RSS (whole process tree): idle page / peak during the import / peak over import + FM + 600 frames of play | 538 / 844 / 1067 MB | 541 / 799 / 1146 MB |
+| cache in OPFS (files 2 MB, voices 81, effects 2, CD 486, FM 538, manifests) | 1086 MB | 1086 MB |
+Decision on FM: a blocking full render would add 78 s to the first visit, a lazy per-sound render would make the first use of every long song wait
+2-10 s every session. Rendering everything once in the background with on-demand priority gets the player into the game after the 13 s import, and
+the cache makes every later visit instant. The longest single sound (6 minute loop, song 6c) takes 7 s natively and the whole set is not slower in the worker than natively
+(78 s against ~90 s), so a request for a sound that is not rendered yet waits for the one in progress (7 s at worst) plus its own render; the
+background queue starts with the shortest sounds.
+Memory: the image is read in pieces of 600 KB, so the import does not grow with the image size: the worker's wasm heap stays small (printed by the test:
+import, FM), the rest of the +300 MB over the idle page during the import is V8 / Chrome buffering of the pieces and of the OPFS writes. During play the
+renderer also holds the decoded `AudioBuffer`s (a 7 minute CD track = 148 MB as float32; the LRU in `audio.ts` caps them at 320 MB).
+Bit-exactness is checked in the browser as well: CD track 04, voice 41 and FM effect 01 (rendered in the browser) equal the reference WAVs sample
+for sample, both after the import and after a reload from the cache.
 
 ## 5. Tests
 (The importer tests are in section 8: `cargo test --release -p sncore --test import` and `bun web/test/import.ts`.)

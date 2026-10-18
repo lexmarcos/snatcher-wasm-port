@@ -76,7 +76,7 @@ export class ImportWorker {
     switch (m.type) {
       case "progress": this.onProgress?.(m); break;
       case "imported": this.importHeap = m.wasmHeap ?? 0; this.job?.ok(m.meta); this.job = null; break;
-      case "error": this.job?.fail(m.error); this.job = null; break;
+      case "error": this.job?.fail(m.error); this.job = null; this.terminate(); break; // a fresh worker (and wasm instance) for the next try
       case "fm-progress": this.fmDone = m.done; this.fmTotal = m.total; this.onFm?.(m.done, m.total, false); break;
       case "fm-done": for (const f of this.fmWait.get(m.id) ?? []) f(); this.fmWait.delete(m.id); break;
       case "fm-complete": this.fmHeap = m.wasmHeap ?? 0; this.fmComplete = true; this.fmMs = performance.now() - this.fmT0; this.onFm?.(this.fmTotal, this.fmTotal, true); this.finishFm(); break;
