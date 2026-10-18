@@ -10,7 +10,7 @@ No game data is included in this repository. `assets/`, `work/`, `*.chd/*.bin/*.
 You need the page served (see "Build" below) and your own disc image of **Snatcher (USA, Sega CD)** as `.cue` + `.bin` (one `.bin` for the
 whole disc, or one `.bin` per track as in Redump dumps). Then:
 1. Open the page and press **Import disc image (.cue + .bin)...**, select the `.cue` **and** all its `.bin` files together (or drop them on the page).
-2. Wait for the progress bar (about 10 s); press **Play**. The music is prepared in the background (a few minutes, shown in the toolbar).
+2. Wait for the progress bar (4 to 14 s); press **Play**. The FM music is prepared in the background (about 80 s, shown in the toolbar); a sound the game needs earlier is rendered first.
 3. Next visits play at once: the import is stored in this browser (about 1.1 GB with the CD music; the page shows the space used and has a
    **Remove imported data** button).
 Your files are read and processed in the browser only and are never uploaded. The importer checks that the disc is Snatcher (USA) and tells

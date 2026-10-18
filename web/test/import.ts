@@ -17,7 +17,7 @@ const out = process.argv[2] ?? join(root, "work/shots/import");
 mkdirSync(out, { recursive: true });
 const cue1 = join(root, "work/snatcher.cue"), bin1 = join(root, "work/snatcher.bin");
 const splitDir = join(root, "work/split");
-const port = process.env.PORT ?? "5320";
+const port = process.env.IMPORT_PORT ?? "5320"; // not PORT: test-web.sh exports PORT=5301 for its server, which does serve /assets
 const ref = join(root, "assets");
 if (!existsSync(cue1) || !existsSync(bin1)) { console.log("SKIP: work/snatcher.cue/.bin not present"); process.exit(0); }
 const haveRef = existsSync(join(ref, "raw/audio/track04.wav"));
