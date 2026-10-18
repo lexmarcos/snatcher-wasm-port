@@ -404,6 +404,8 @@ function autoLine(rec: AutoRecord): string {
   return T(rec.act > 0 ? "auto.line" : "auto.line.noact", vars);
 }
 /** The Continue button, the status lines of the start window and of the Saves tab; called whenever the autosave, its setting or the start state changes. */
+/** The last sentence of the source line: which button starts the game. */
+const goHint = () => T(btnContinue.hidden ? "ov.go.play" : "ov.go.cont");
 function refreshAuto() {
   const show = !!autoRec && !!current && !importing;
   btnContinue.hidden = !show; btnContinue.disabled = busy;
@@ -418,6 +420,7 @@ function refreshAuto() {
   pnAuto.replaceChildren(...lines.map((t) => { const d = document.createElement("div"); d.textContent = t; return d; }));
   ovAuto.textContent = autoRec ? autoLine(autoRec) : "";
   for (const b of [pnAutoDelete, ovAutoDelete]) b.hidden = !autoRec;
+  if (srcLines) showSource(srcLines(), srcCls); // the "press Play" hint names Continue when it is shown
 }
 let autoDelArmed = 0;
 async function deleteAuto() {
@@ -479,7 +482,7 @@ function selectSource(src: Source) {
   const cls = src.gameFiles().length ? "ok" : "err";
   if (src === importedSrc) showSourceT(() => [T("ov.using", { label: src.label }), ...src.summary()], cls);
   else { // a served or picked copy: one plain line here, the details under "Other ways to load"
-    showSourceT(() => [src === servedSrc ? T("ov.usinglocal") : T("ov.using", { label: src.label })], cls);
+    showSourceT(() => [src === servedSrc ? T("ov.usinglocal", { go: goHint() }) : T("ov.using", { label: src.label })], cls);
     showAlt(() => [T("ov.using", { label: src.label }), ...src.summary()], cls === "ok" ? "dim" : "err");
   }
   btnPlay.textContent = T("ov.play"); setBusy(false); btnPlay.focus();
@@ -551,7 +554,7 @@ async function openCached(): Promise<ImportedSource | null> {
   importedSrc = src;
   return src;
 }
-function foundLine(src: ImportedSource) { return () => T("imp.found", { title: src.meta.title, size: fmtBytes(Object.values(src.meta.streams).reduce((a, b) => a + b, 0)) }); }
+function foundLine(src: ImportedSource) { return () => T("imp.found", { title: src.meta.title, size: fmtBytes(Object.values(src.meta.streams).reduce((a, b) => a + b, 0)), go: goHint() }); }
 
 /** Message for an import / pick error: `imp.err.<code>` with the details. */
 function errText(code: string, detail: string, extra: Record<string, string | number> = {}): string {
@@ -592,7 +595,7 @@ async function runImport(picked: File[]) {
     importedSrc = src;
     selectSource(src);
     src.start(); // FM sounds are rendered in the background from now on
-    const done = () => T("imp.done", { s: (importStats.lastMs / 1000).toFixed(1) });
+    const done = () => T("imp.done", { s: (importStats.lastMs / 1000).toFixed(1), go: goHint() });
     showImp(done, "ok");
     showSourceT(() => [done(), ...src.summary()], "ok"); // step 1 is hidden from now on: the result is told under Play
   } catch (e: any) {
