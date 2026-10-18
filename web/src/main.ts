@@ -13,6 +13,7 @@ import { Pacer } from "./pacer";
 import { SaveStore, SLOTS } from "./saves";
 import { AutosaveStore, Autosaver, PREF_KEY, readPref, reasonKey, type AutoRecord } from "./autosave";
 import { pickedSource, probeServed, type Source } from "./sources";
+import { loadEngine, siteUrl } from "./urls";
 import { clearCache, fmtBytes, opfsAvailable, readMeta, requestPersist, storageInfo } from "./cache";
 import { ImportedSource, ImportWorker, resolvePick, type Pick } from "./imported";
 import { T, applyStatic, getLang, parseLang, setUiDict, type Lang, type UiKey } from "./i18n";
@@ -209,13 +210,13 @@ let uiCache: Record<string, string> | null = null;
 const packLoaded = new WeakSet<object>();
 async function fetchUi(): Promise<Record<string, string> | null> {
   if (uiCache) return uiCache;
-  try { const r = await fetch("/i18n/pt-BR/ui.json"); if (!r.ok) return null; const j = await r.json(); uiCache = j.strings ?? j; return uiCache; } catch { return null; }
+  try { const r = await fetch(siteUrl("i18n/pt-BR/ui.json")); if (!r.ok) return null; const j = await r.json(); uiCache = j.strings ?? j; return uiCache; } catch { return null; }
 }
 /** Install the pt-BR pack in an engine instance (once). */
 async function ensurePack(g: any): Promise<boolean> {
   if (packLoaded.has(g)) return true;
   try {
-    const r = await fetch("/i18n/pt-BR.pack");
+    const r = await fetch(siteUrl("i18n/pt-BR.pack"));
     if (!r.ok) return false;
     const n = g.load_translation(new Uint8Array(await r.arrayBuffer()));
     if (n < 0) return false;
@@ -688,9 +689,7 @@ addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); }); /
 addEventListener("drop", (e) => { if (hasFiles(e)) e.preventDefault(); });
 
 async function loadWasm() {
-  const pkg: any = await import(/* @vite-ignore */ "/pkg/snengine.js" as string);
-  const wasm = await pkg.default();
-  return { pkg, wasm };
+  return loadEngine();
 }
 const wasmP = loadWasm();
 wasmP.catch((e) => { note("wasm", "err", T("note.noengine", { e: String(e) })); });

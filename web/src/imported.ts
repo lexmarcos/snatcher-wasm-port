@@ -6,6 +6,7 @@
 import { cacheFile, cacheJson, type Meta } from "./cache";
 import type { GameFile, Source } from "./sources";
 import { T } from "./i18n";
+import { siteUrl } from "./urls";
 
 export interface Pick { cueName: string; cueText: string; files: File[]; notes: string[] }
 export type PickError = { code: "nocue" | "manycues" | "nobin" | "badcue" | "toobig"; detail: string };
@@ -66,7 +67,7 @@ export class ImportWorker {
 
   private get worker(): Worker {
     if (!this.w) {
-      const w = this.w = new Worker("/dist/import.worker.js", { type: "module" });
+      const w = this.w = new Worker(siteUrl("dist/import.worker.js"), { type: "module" });
       w.onmessage = (ev) => this.message(ev.data);
       w.onerror = (ev) => { this.job?.fail({ code: "io", detail: ev.message || "the import worker stopped" }); this.job = null; };
     }

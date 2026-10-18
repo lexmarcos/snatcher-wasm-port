@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/main.ts src/import.worker.ts --outdir dist --target browser --sourcemap=linked --external /pkg/snengine.js",
+    "build": "bun build src/main.ts src/import.worker.ts --outdir dist --target browser --sourcemap=linked ",
     "serve": "bun server.ts",
     "test": "bun test test/",
     "test:ui": "bun test/ui.ts"

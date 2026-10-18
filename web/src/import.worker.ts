@@ -8,13 +8,14 @@
 // Messages out: {type:"progress", phase, done, total}  {type:"imported", meta}  {type:"error", error}
 //               {type:"fm-progress", done, total}  {type:"fm-done", id}  {type:"fm-complete"}  {type:"fm-error", message}
 import { CACHE_DIR } from "./cache";
+import { loadEngine } from "./urls";
 
 declare const FileReaderSync: { new (): { readAsArrayBuffer(b: Blob): ArrayBuffer } };
 const post = (m: unknown) => (self as any).postMessage(m);
 
 let pkgP: Promise<any> | null = null;
 function wasm() {
-  pkgP ??= (async () => { const pkg: any = await import(/* @vite-ignore */ "/pkg/snengine.js" as string); const exports = await pkg.default(); return { import_disc: pkg.import_disc, FmRender: pkg.FmRender, memory: exports.memory as WebAssembly.Memory }; })();
+  pkgP ??= (async () => { const { pkg, wasm: exports } = await loadEngine(); return { import_disc: pkg.import_disc, FmRender: pkg.FmRender, memory: exports.memory as WebAssembly.Memory }; })();
   return pkgP;
 }
 

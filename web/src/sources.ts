@@ -3,6 +3,7 @@
 //  - picked: a folder chosen with <input webkitdirectory> (File objects, read lazily, never uploaded)
 // Nothing here talks to a remote host; game data is never bundled or published.
 import { T, type UiKey } from "./i18n";
+import { noServedAssets, siteUrl } from "./urls";
 
 export interface GameFile { name: string; read(): Promise<ArrayBuffer> }
 
@@ -35,9 +36,10 @@ async function getBuf(url: string): Promise<ArrayBuffer | null> {
 
 /** `error` is a UI string key (`err.*`), translated by the caller. */
 export async function probeServed(): Promise<{ src?: Source; error?: UiKey }> {
+  if (noServedAssets()) return {}; // static hosting (GitHub Pages): no served copy exists, so do not ask (a 404 would show in the console)
   let text: string;
   try {
-    const r = await fetch("/assets/raw/filelist.tsv");
+    const r = await fetch(siteUrl("assets/raw/filelist.tsv"));
     if (!r.ok) return { error: "err.noassets" };
     text = await r.text();
   } catch { return { error: "err.noserver" }; }
@@ -47,10 +49,10 @@ export async function probeServed(): Promise<{ src?: Source; error?: UiKey }> {
     get label() { return T("src.server"); },
     gameFiles: () => names.map((name) => ({
       name,
-      read: async () => { const b = await getBuf("/assets/raw/files/" + name); if (!b) throw new Error("missing " + name); return b; },
+      read: async () => { const b = await getBuf(siteUrl("assets/raw/files/" + name)); if (!b) throw new Error("missing " + name); return b; },
     })),
-    boot: (name) => getBuf("/assets/raw/" + name.toLowerCase()),
-    audio: (path) => getBuf("/assets/" + path),
+    boot: (name) => getBuf(siteUrl("assets/raw/" + name.toLowerCase())),
+    audio: (path) => getBuf(siteUrl("assets/" + path)),
     summary: () => [T("src.listed", { n: names.length })],
   };
   return { src };
