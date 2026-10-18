@@ -383,6 +383,8 @@ function showAlt(lines: (() => string[]) | null, cls = "dim") { altLines = lines
 /** Status lines are produced by a function so that they can be rebuilt in the other language. */
 let srcLines: (() => string[]) | null = null, srcCls = "dim";
 function showSourceT(lines: () => string[], cls = "dim") { srcLines = lines; srcCls = cls; showSource(lines(), cls); }
+/** First visit (no game source yet): only step 1 is shown; step 2 and the folds appear once a source exists. */
+function refreshStage() { const disc = !current && !importedSrc; $("ovWin").dataset.stage = disc ? "disc" : "ready"; $("ovAfter").hidden = disc; }
 function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; refreshImportButtons(); }
 const invite = () => showSourceT(() => [T("ov.invite")], "dim");
 function selectSource(src: Source) {
@@ -434,6 +436,7 @@ async function refreshStorage() {
   impStorage.dataset.cache = String(si.cache);
 }
 function refreshImportButtons() {
+  refreshStage();
   btnUseCache.hidden = !importedSrc || current === importedSrc || importing;
   btnClear.hidden = !importedSrc || importing;
   btnCancel.hidden = !importing;

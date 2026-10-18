@@ -267,3 +267,6 @@ canvas:focus { outline: none; }
   table.keys td:first-child { color: var(--dim); }
   .slot { min-height: 80px; }
 }
+
+/* first visit: step 1 stands alone, so its "1" marker is dropped */
+#ovWin[data-stage="disc"] .num { display: none; }

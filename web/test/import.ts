@@ -153,7 +153,7 @@ for (const fl of flavours) {
   check(`${fl.name}: no local files, Play disabled`, await page.$eval("#btnPlay", (e: any) => e.disabled));
   const privacy = await text(page, "#ovWin");
   check(`${fl.name}: the page says files are processed locally and never uploaded`, /never uploaded/i.test(privacy) && /nothing is uploaded/i.test(privacy) && /\.cue/.test(privacy));
-  check(`${fl.name}: first visit shows an invitation, not an error or warning`, await page.evaluate(() => !document.querySelector("#overlay .err, #overlay .warn") && /Import your disc/.test(document.getElementById("srcStatus")!.textContent ?? "")));
+  check(`${fl.name}: first visit shows step 1 only, no error or warning`, await page.evaluate(() => !document.querySelector("#overlay .err, #overlay .warn") && document.getElementById("ovAfter")!.hidden));
   await shot(page, `${fl.name}-1-overlay.png`);
   const baseline = rssTree().total;
   peak = 0;
@@ -183,6 +183,7 @@ for (const fl of flavours) {
     check(`${fl.name}: the import button now reads Imported and Remove imported data is offered`, lab.t === "Imported" && lab.d && lab.c === "Remove imported data" && !lab.ch, JSON.stringify(lab));
     check(`${fl.name}: Play is focused when the import ends`, await page.evaluate(() => document.activeElement?.id === "btnPlay"));
   }
+  check(`${fl.name}: after the import step 2 (Play) is shown`, await page.evaluate(() => !document.getElementById("ovAfter")!.hidden));
   const summary = await text(page, "#srcStatus");
   check(`${fl.name}: source is the imported disc`, /imported disc/.test(summary) && /Snatcher \(USA\)/.test(summary), summary.slice(0, 120));
   const storageLine = await text(page, "#impStorage");
@@ -264,6 +265,7 @@ for (const fl of flavours) {
     check(`${fl.name}: "remove imported data" empties the cache`, !left);
     await shot(page, `${fl.name}-7-removed.png`);
     await dshot(page, "import-removed.png");
+    check(`${fl.name}: after removal only step 1 is shown again`, await page.evaluate(() => document.getElementById("ovAfter")!.hidden));
     check(`${fl.name}: after removal the import button reads Import disc image again`, await page.evaluate(() => document.getElementById("btnImport")!.textContent === "Import disc image…" && !(document.getElementById("btnImport") as HTMLButtonElement).disabled));
     await page.reload({ waitUntil: "load" });
     await page.waitForSelector("#btnImport", { timeout: 20000 }); await sleep(500);

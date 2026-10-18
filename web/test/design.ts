@@ -86,9 +86,9 @@ async function touchTargets(page: Page, tag: string) {
   const page = await open(portA, 1000, 820);
   await page.waitForSelector("#btnImport", { timeout: 20000 }); await settle();
   await shot(page, "01-overlay-first-visit-en.png");
-  check("first visit: an invitation, no warning or error at the top", await page.evaluate(() => !document.querySelector("#overlay .win-body > .err, #overlay .win-body > .warn, #notes li") && /Import your disc/.test(document.getElementById("srcStatus")!.textContent ?? "")));
+  check("first visit: only step 1 is shown (step 2 and the folds are hidden), no warning or error", await page.evaluate(() => { const after = document.getElementById("ovAfter")!; const strips = Array.from(document.querySelectorAll("#ovWin .strip")).filter((e) => (e as HTMLElement).offsetParent); return after.hidden && strips.length === 1 && !document.querySelector("#overlay .win-body > .err, #overlay .win-body > .warn"); }));
   check("first visit: Play is disabled, the import button has the focus", await page.evaluate(() => (document.getElementById("btnPlay") as HTMLButtonElement).disabled && document.activeElement?.id === "btnImport"));
-  check("first visit: the developer text is inside a collapsed disclosure", await page.evaluate(() => { const d = document.getElementById("altBox") as HTMLDetailsElement; return !d.open && /bun web\/server\.ts/.test(d.textContent ?? "") && !/bun web\/server\.ts/.test(Array.from(document.querySelectorAll("#ovWin > .win-body > :not(.folds)")).map((e) => e.textContent).join(" ")); }));
+  check("first visit: the developer text is not shown", await page.evaluate(() => { const d = document.getElementById("altBox")!; return document.getElementById("ovAfter")!.contains(d) && !d.offsetParent && !/bun web\/server\.ts/.test(document.getElementById("ovWin")!.innerText); }));
   await typeScale(page, "overlay");
   // keyboard focus on a button: ring + cursor
   await page.keyboard.press("Tab"); await page.keyboard.down("Shift"); await page.keyboard.press("Tab"); await page.keyboard.up("Shift"); // back on the import button, by keyboard
@@ -100,17 +100,7 @@ async function touchTargets(page: Page, tag: string) {
   check("language toggle switches live", (await page.$eval("#ovWin .strip + p, .wordmark + .intro", (e) => e.textContent ?? "")).includes("Jogue") && (await page.$eval("#langOvPt", (e) => e.getAttribute("aria-pressed"))) === "true");
   await shot(page, "02-overlay-first-visit-pt.png");
   await typeScale(page, "overlay pt-BR");
-  // other ways to load, open (pt-BR is the longer text)
-  await page.click("#altBox > summary"); await sleep(100);
-  await shot(page, "05-overlay-other-ways-open-pt.png");
   await page.click("#langOvEn"); await sleep(300);
-  await shot(page, "05-overlay-other-ways-open-en.png");
-  await page.click("#altBox > summary");
-  // saves + controls rows open
-  for (const i of [1, 2]) await page.click(`.folds details:nth-child(${i}) > summary`);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await shot(page, "06-overlay-all-folds-open.png");
-  for (const i of [1, 2]) await page.click(`.folds details:nth-child(${i}) > summary`);
   // dragging
   await page.evaluate(() => { const dt = new DataTransfer(); dt.items.add(new File(["x"], "a.cue")); document.getElementById("overlay")!.dispatchEvent(new DragEvent("dragenter", { dataTransfer: dt, bubbles: true, cancelable: true })); });
   await sleep(100);
@@ -166,10 +156,6 @@ async function touchTargets(page: Page, tag: string) {
   await page.evaluate(() => document.getElementById("overlay")!.scrollTo(0, 0));
   await shot(page, "21-mobile-overlay-pt.png");
   check("360 px pt-BR: overlay has no horizontal scroll", await noHScroll(page));
-  await page.evaluate(() => { document.querySelectorAll(".folds details").forEach((d) => ((d as HTMLDetailsElement).open = true)); });
-  check("360 px pt-BR: folds open, still no horizontal scroll", await noHScroll(page));
-  await page.evaluate(() => document.getElementById("overlay")!.scrollTo(0, 99999));
-  await shot(page, "22-mobile-overlay-pt-folds.png");
   await page.close();
 }
 
@@ -179,6 +165,20 @@ if (haveAssets) {
   await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 20000 }); await settle();
   await shot(page, "07-overlay-ready-served.png");
   check("served assets are selected by themselves, with one plain line", await page.evaluate(() => document.getElementById("srcStatus")!.children.length === 1 && /found on this server/.test(document.getElementById("srcStatus")!.textContent ?? "")));
+  check("with a game source, step 2 and the folds are shown", await page.evaluate(() => !document.getElementById("ovAfter")!.hidden && document.getElementById("ovWin")!.dataset.stage === "ready"));
+  // other ways to load, open (pt-BR is the longer text)
+  await page.click("#langOvPt"); await sleep(300);
+  await page.click("#altBox > summary"); await sleep(100);
+  await shot(page, "05-overlay-other-ways-open-pt.png");
+  await page.click("#langOvEn"); await sleep(300);
+  await shot(page, "05-overlay-other-ways-open-en.png");
+  await page.click("#altBox > summary");
+  // saves + controls rows open
+  for (const i of [1, 2]) await page.click(`.folds details:nth-child(${i}) > summary`);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await shot(page, "06-overlay-all-folds-open.png");
+  for (const i of [1, 2]) await page.click(`.folds details:nth-child(${i}) > summary`);
+  await page.focus("#btnPlay");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
   await waitFrames(page, 300);

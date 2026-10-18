@@ -26,7 +26,7 @@
 
 <!-- start overlay: one centred window. Step 1 imports the disc image, step 2 plays; the rest is folded away -->
 <div id="overlay" class="modal desk" role="dialog" aria-modal="true" aria-labelledby="ovWordmark">
-  <section id="ovWin" class="win">
+  <section id="ovWin" class="win" data-stage="disc">
     <header class="win-title">
       <span class="win-name" data-i18n="ov.window">Web port</span>
       <div class="lang" role="group" aria-label="Language / Idioma">
@@ -59,6 +59,8 @@
       <p id="impFm" class="line dim" role="status"></p>
       <p class="note" data-i18n="imp.privacy">Your files are read in this browser tab only and are never uploaded. The imported data stays in this browser until you remove it.</p>
 
+      <!-- shown only once a game source exists (imported disc, served or picked copy): a first visit sees step 1 alone -->
+      <div id="ovAfter" hidden>
       <h2 class="strip"><span class="num" aria-hidden="true">2</span><span data-i18n="ov.step2">Play</span></h2>
       <div class="row">
         <button id="btnPlay" class="btn primary big" type="button" disabled data-i18n="ov.play">Play</button>
@@ -95,6 +97,7 @@
         </details>
       </div>
       <p id="impStorage" class="note"></p>
+      </div>
     </div>
   </section>
 </div>
