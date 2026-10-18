@@ -16,6 +16,7 @@ fi
 bun test/ui.ts "$out"
 bun test/lang.ts "$out"
 bun test/pads.ts "$out"
+bun test/design.ts "$out/design"   # design system screens and layout checks (own servers on 5330/5331)
 bun test/shot.ts newgame "$out/shot-newgame.png" 180
 bun test/shot.ts "scene=SP01:0" "$out/shot-sp01.png" 200
 if [ -z "${SKIP_IMPORT:-}" ] && [ -f ../work/snatcher.cue ]; then

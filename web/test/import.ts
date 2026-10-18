@@ -81,6 +81,10 @@ const frame = (page: Page) => page.evaluate(() => JSON.parse((window as any).sna
 const waitFrames = async (page: Page, n: number) => { const s = await frame(page); await page.waitForFunction((t) => JSON.parse((window as any).snatcher.game.debug_info()).frame >= t, { timeout: 120000, polling: 100 }, s + n); };
 const text = (page: Page, sel: string) => page.$eval(sel, (e) => e.textContent ?? "");
 const shot = (page: Page, name: string) => page.screenshot({ path: join(out, name) });
+// the states of the real importer also go to work/shots/design (design system review, see test/design.ts for the rest of the screens)
+const designOut = process.env.DESIGN_OUT ?? join(root, "work/shots/design");
+mkdirSync(designOut, { recursive: true });
+const dshot = (page: Page, name: string) => page.screenshot({ path: join(designOut, name) });
 
 /** Wait for the import to end (success line or error) and return what the status line says. */
 async function waitImport(page: Page, shotName?: string) {
@@ -88,7 +92,7 @@ async function waitImport(page: Page, shotName?: string) {
   const t0 = Date.now();
   while (Date.now() - t0 < 600000) {
     const st = await page.evaluate(() => ({ prog: !(document.getElementById("impProg") as HTMLElement).hidden, v: (document.getElementById("impBar") as HTMLProgressElement).value, st: document.getElementById("impStatus")!.textContent ?? "", cls: document.getElementById("impStatus")!.className, ph: document.getElementById("impPhase")!.textContent ?? "" }));
-    if (!shotDone && st.prog && st.v > 300) { await shot(page, shotName!); shotDone = true; console.log(`  progress ${st.v / 10}% – ${st.ph}`); }
+    if (!shotDone && st.prog && st.v > 300) { await shot(page, shotName!); await dshot(page, "import-importing-progress.png"); shotDone = true; console.log(`  progress ${st.v / 10}% – ${st.ph}`); }
     if (!st.prog && (st.cls.includes("ok") || st.cls.includes("err")) && st.st) return st;
     await sleep(100);
   }
@@ -147,8 +151,9 @@ for (const fl of flavours) {
   await page.waitForSelector("#btnImport", { timeout: 20000 });
   await sleep(500);
   check(`${fl.name}: no local files, Play disabled`, await page.$eval("#btnPlay", (e: any) => e.disabled));
-  const privacy = await text(page, "#impBox");
-  check(`${fl.name}: the page says files are processed locally and never uploaded`, /never uploaded/i.test(privacy) && /\.cue/.test(privacy));
+  const privacy = await text(page, "#ovWin");
+  check(`${fl.name}: the page says files are processed locally and never uploaded`, /never uploaded/i.test(privacy) && /nothing is uploaded/i.test(privacy) && /\.cue/.test(privacy));
+  check(`${fl.name}: first visit shows an invitation, not an error or warning`, await page.evaluate(() => !document.querySelector("#overlay .err, #overlay .warn") && /Import your disc/.test(document.getElementById("srcStatus")!.textContent ?? "")));
   await shot(page, `${fl.name}-1-overlay.png`);
   const baseline = rssTree().total;
   peak = 0;
@@ -172,6 +177,12 @@ for (const fl of flavours) {
   const importPeak = peak;
   await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 10000 });
   await shot(page, `${fl.name}-3-imported.png`);
+  if (fl.name === "single-bin") {
+    await dshot(page, "import-imported-ready.png");
+    const lab = await page.evaluate(() => ({ t: document.getElementById("btnImport")!.textContent, d: (document.getElementById("btnImport") as HTMLButtonElement).disabled, c: document.getElementById("btnClear")!.textContent, ch: document.getElementById("btnClear")!.hidden }));
+    check(`${fl.name}: the import button now reads Imported and Remove imported data is offered`, lab.t === "Imported" && lab.d && lab.c === "Remove imported data" && !lab.ch, JSON.stringify(lab));
+    check(`${fl.name}: Play is focused when the import ends`, await page.evaluate(() => document.activeElement?.id === "btnPlay"));
+  }
   const summary = await text(page, "#srcStatus");
   check(`${fl.name}: source is the imported disc`, /imported disc/.test(summary) && /Snatcher \(USA\)/.test(summary), summary.slice(0, 120));
   const storageLine = await text(page, "#impStorage");
@@ -208,6 +219,12 @@ for (const fl of flavours) {
   const snd = await page.evaluate(() => { const a = (window as any).snatcher.audio; return { state: a.ctx?.state, music: !!a.fmMusic || !!a.cdSrc, cached: a.cache.size, missing: [...a.missing] }; });
   check(`${fl.name}: audio context running, nothing missing`, snd.state === "running" && snd.missing.length === 0, JSON.stringify(snd));
   await shot(page, `${fl.name}-4-title.png`);
+  if (fl.name === "single-bin") {
+    await dshot(page, "import-playing-toolbar.png");
+    await page.keyboard.press("Escape");
+    await dshot(page, "import-paused-panel.png");
+    await page.keyboard.press("Escape");
+  }
 
   if (fl.reloadCheck) {
     // ---- reload: no new import, plays from the cache
@@ -215,8 +232,14 @@ for (const fl of flavours) {
     await page.reload({ waitUntil: "load" });
     await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 30000 });
     const s2 = await text(page, "#srcStatus"), i2 = await text(page, "#impStatus");
-    check(`${fl.name}: after reload the imported disc is found and Play is enabled without picking files`, /imported disc/.test(s2) && /Imported disc found/.test(i2), `${s2.slice(0, 60)} | ${i2}`);
+    check(`${fl.name}: after reload the imported disc is found and Play is enabled without picking files`, /imported disc/.test(s2) && /imported disc is in this browser/i.test(i2), `${s2.slice(0, 60)} | ${i2}`);
     await shot(page, `${fl.name}-5-reloaded.png`);
+    await dshot(page, "import-cached-ready.png");
+    await page.setViewport({ width: 360, height: 740 });
+    await sleep(200);
+    await dshot(page, "import-mobile-cached-ready.png");
+    check(`${fl.name}: 360 px cached state has no horizontal scroll`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.setViewport({ width: 1000, height: 820 });
     await page.goto(`http://localhost:${port}/?newgame`, { waitUntil: "load" });
     await page.waitForFunction(() => (window as any).snatcher, { timeout: 60000 });
     await waitFrames(page, 200);
@@ -239,6 +262,8 @@ for (const fl of flavours) {
     const left = await page.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("snatcher-import-v1"); return true; } catch { return false; } });
     check(`${fl.name}: "remove imported data" empties the cache`, !left);
     await shot(page, `${fl.name}-7-removed.png`);
+    await dshot(page, "import-removed.png");
+    check(`${fl.name}: after removal the import button reads Import disc image again`, await page.evaluate(() => document.getElementById("btnImport")!.textContent === "Import disc image…" && !(document.getElementById("btnImport") as HTMLButtonElement).disabled));
     await page.reload({ waitUntil: "load" });
     await page.waitForSelector("#btnImport", { timeout: 20000 }); await sleep(500);
     check(`${fl.name}: after removal Play is disabled again`, await page.$eval("#btnPlay", (e: any) => e.disabled));

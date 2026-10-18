@@ -133,7 +133,7 @@ const visible = (page: Page, sel: string) => page.$eval(sel, (e) => !(e as HTMLE
   const page = await open(1000, 760, true);
   await page.waitForSelector("#btnPick", { timeout: 15000 });
   await sleep(500);
-  check("no local files: Play disabled, note visible", await page.$eval("#btnPlay", (e: any) => e.disabled) && /No local game files/.test(await page.$eval("#srcStatus", (e) => e.textContent ?? "")));
+  check("no local files: Play disabled, an invitation (not a warning) at the top, the probe detail under Other ways to load", await page.$eval("#btnPlay", (e: any) => e.disabled) && /Import your disc/.test(await page.$eval("#srcStatus", (e) => e.textContent ?? "")) && /No game files on this server/.test(await page.$eval("#altStatus", (e) => e.textContent ?? "")));
   // a directory path makes Chrome fill the input like a real folder pick (with webkitRelativePath)
   const track = "track02.ogg";
   await (await page.$("#pick"))!.uploadFile(assets);

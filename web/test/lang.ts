@@ -1,6 +1,6 @@
 // Language switch checks in headless Chrome (needs the dev server and scripts/build-web.sh output incl. i18n/build/pt-BR.pack):
 //   PORT=5301 bun test/lang.ts [outdir]
-// Covers: ?lang=pt-BR (overlay in Portuguese, html lang), the selector (persisted in localStorage, back to English),
+// Covers: ?lang=pt-BR (overlay in Portuguese, html lang), the EN | PT-BR toggle (persisted in localStorage, back to English),
 // the engine: first message of a new game in pt-BR differs from English, switching during play, console errors.
 import puppeteer, { type Page } from "puppeteer-core";
 import { readdirSync } from "fs";
@@ -33,13 +33,13 @@ const canvasHash = (p: Page) => p.evaluate(() => { const c = document.getElement
   await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 15000 });
   check("html lang is pt-BR", await page.evaluate(() => document.documentElement.lang) === "pt-BR");
   check("Play button text is Jogar", (await page.$eval("#btnPlay", (e) => e.textContent)) === "Jogar");
-  check("overlay selector shows pt-BR", (await page.$eval("#langOv", (e: any) => e.value)) === "pt-BR");
+  check("overlay language toggle shows pt-BR as pressed", (await page.$eval("#langOvPt", (e) => e.getAttribute("aria-pressed"))) === "true" && (await page.$eval("#langOvEn", (e) => e.getAttribute("aria-pressed"))) === "false");
   await page.screenshot({ path: join(out, "lang-overlay-pt.png") });
-  await page.select("#langOv", "en");
+  await page.click("#langOvEn");
   await new Promise((r) => setTimeout(r, 300));
   check("switching to English restores Play", (await page.$eval("#btnPlay", (e) => e.textContent)) === "Play");
   check("choice is stored", await page.evaluate(() => localStorage.getItem("snatcher.lang")) === "en");
-  await page.select("#langOv", "pt-BR");
+  await page.click("#langOvPt");
   await new Promise((r) => setTimeout(r, 300));
   check("choice stored as pt-BR", await page.evaluate(() => localStorage.getItem("snatcher.lang")) === "pt-BR");
   await page.close();
