@@ -190,6 +190,7 @@ for (const [name, def, confirm, cancel] of [["xbox", PADS.xbox, 0, 1], ["dualsen
   await page.evaluate(() => (window as any).__press(0, 8)); await sleep(150);
   await page.evaluate(() => (window as any).__release(0, 8)); await sleep(100);
   check("View button opens the web menu (game paused)", await vis("#panel"));
+  await page.click("#tabGamepad"); // the button map lives in the Gamepad tab of the pause panel
   const rows = await page.$$eval("#padMapTable tr", (r) => r.length);
   check("remap table has 4 rows", rows === 4, String(rows));
   await page.screenshot({ path: join(out, "pads-menu.png") });
@@ -233,7 +234,7 @@ for (const [name, def, confirm, cancel] of [["xbox", PADS.xbox, 0, 1], ["dualsen
   // reset to defaults
   await page.evaluate(() => (window as any).__press(0, 8)); await sleep(150);
   await page.evaluate(() => (window as any).__release(0, 8)); await sleep(150);
-  await page.click("#padReset"); await sleep(100);
+  await page.click("#tabGamepad"); await page.click("#padReset"); await sleep(100);
   const rs = await page.evaluate(() => JSON.parse(localStorage.getItem("snatcher.padmaps")!).xbox);
   check("reset restores the defaults", rs.C === "south" && rs.B === "east" && rs.A === "west", JSON.stringify(rs));
   // original letters option

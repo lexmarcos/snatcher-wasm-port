@@ -31,6 +31,7 @@ const canvasHash = (p: Page) => p.evaluate(() => { const c = document.getElement
 {
   const page = await open("?lang=pt-BR");
   await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 15000 });
+  await new Promise((r) => setTimeout(r, 500)); // the start window opens in 320 ms; clicks during the reveal hit the clipped part
   check("html lang is pt-BR", await page.evaluate(() => document.documentElement.lang) === "pt-BR");
   check("Play button text is Jogar", (await page.$eval("#btnPlay", (e) => e.textContent)) === "Jogar");
   check("overlay language toggle shows pt-BR as pressed", (await page.$eval("#langOvPt", (e) => e.getAttribute("aria-pressed"))) === "true" && (await page.$eval("#langOvEn", (e) => e.getAttribute("aria-pressed"))) === "false");

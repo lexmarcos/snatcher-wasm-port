@@ -91,7 +91,7 @@ async function touchTargets(page: Page, tag: string) {
   check("first visit: the developer text is inside a collapsed disclosure", await page.evaluate(() => { const d = document.getElementById("altBox") as HTMLDetailsElement; return !d.open && /bun web\/server\.ts/.test(d.textContent ?? "") && !/bun web\/server\.ts/.test(Array.from(document.querySelectorAll("#ovWin > .win-body > :not(.folds)")).map((e) => e.textContent).join(" ")); }));
   await typeScale(page, "overlay");
   // keyboard focus on a button: ring + cursor
-  await page.keyboard.press("Tab"); await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab"); await page.keyboard.down("Shift"); await page.keyboard.press("Tab"); await page.keyboard.up("Shift"); // back on the import button, by keyboard
   const foc = await page.evaluate(() => { const a = document.activeElement as HTMLElement; const cs = getComputedStyle(a); const b = getComputedStyle(a, "::before"); return { id: a.id, outline: cs.outlineStyle + " " + cs.outlineWidth + " " + cs.outlineColor, color: cs.color, cursor: b.visibility }; });
   check("keyboard focus: 2 px yellow outline, yellow label, cursor shown", /solid 2px rgb\(248, 224, 56\)/.test(foc.outline) && foc.color === "rgb(248, 224, 56)" && foc.cursor === "visible", JSON.stringify(foc));
   await shot(page, "10-focus-visible.png");
