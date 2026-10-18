@@ -51,7 +51,7 @@ the call is redundant but harmless). Export = JSON `{format:"snatcher-web-saves"
 import validates format, slot range and length (>= 0x1C0, extra bytes dropped), reports rejected slots. The title screen reads the
 slots when it opens (`read_slots`, title.rs), so an import made before pressing Play is seen at once; one made while playing is
 seen the next time the title screen is entered (HYPOTHESIS: not tested in the running game). When localStorage is blocked, saves
-stay in memory and the menu says to export them.
+stay in memory and the menu says to export them. The autosave (section 9) is a separate store and is not part of this export.
 
 ## 4. Audio (`audio.ts`)
 Graph: CD -> `cdBus`; FM music -> `fmMusicBus`, FM sfx -> `fmSfxBus`, both -> `fmMix`; voices -> `voiceBus`, PCM sfx -> `pcmSfxBus`,
@@ -142,12 +142,83 @@ renderer also holds the decoded `AudioBuffer`s (a 7 minute CD track = 148 MB as 
 Bit-exactness is checked in the browser as well: CD track 04, voice 41 and FM effect 01 (rendered in the browser) equal the reference WAVs sample
 for sample, both after the import and after a reload from the cache.
 
+## 9. Autosave (`autosave.ts`, `engine/src/snapshot.rs`, `core/src/snap.rs`)
+The page saves the running game by itself at quiet moments, keeps it apart from the four save slots, and offers "Continue where you left off" in the start window.
+On by default; the check box "Autosave" is in the pause panel, tab Saves.
+
+### 9.1 Design chosen, and why
+What the game can do itself, and why it is not enough: the game's own SAVE writes the 0x1C0-byte block `$9C00..$9DBF` (S:0x14F12 `snapshot_full`, `Vm::snapshot_full`): play clock,
+button config, script id, the return pc of the SAVE node, the history stack, scene id, music id, 64 bytes of object flags, the story variables. CONTINUE (`Vm::from_save`) rebuilds a *scene*
+from that: it reloads the script and the scene and starts the music; the VM stacks, the menu path, the animation phases, the text window, the CD clock, the palette fades and the message
+state are not in the block, and a block can only be made where the script runs its SAVE node. It cannot restore the command menu the player was in.
+Options considered: (a) the game's block at every menu: not restorable, see above; (b) record the pad input from the start of the session and replay it at the next visit: the engine is deterministic
+(oracle-exact), but the replay grows with the play time (an hour is 216 000 frames), breaks when the engine changes, and the language / subtitle / audio-length settings would have to be replayed too;
+(c) **a snapshot of the whole engine state at a safe point, chosen**. The engine state is plain data (`Vm`, `Display` with the VDP and the object runtime, text window, message box, menu, registers, counters),
+about 54 KB for a screen, and it is exact: `engine/tests/snapshot.rs` proves that a restored engine runs on frame by frame like the original.
+`core/src/snap.rs` is a small codec (no dependencies, no derive): `snap_struct!` lists every field and destructures without `..`, so a field added later and not stored (or not skipped on purpose) is a compile error.
+Zero runs are stored compactly (a VRAM image is mostly zeros).
+
+What is stored (`snapshot.rs`, `engine_state!`): `Display` (VDP VRAM/CRAM/planes/sprites/raster, the object runtime, palette and tile channels, scroll, shadow palette, main-CPU display variables),
+`Vm` (script position, all six stacks, story variables = the save block, RNG), the sequencer (queue, step, timer), message box, text window bitmap and renderer, list menu and its cursor / pending move / closing state,
+the `Regs` map (every register the engine mirrors, the object snapshot bytes), the frame counter and play clock, the CD-DA start frame, voice / effect / jingle counters, the PCM bank, `Ix` (typed text, gun calibration flag, PCM channel ends),
+the `Input` state (held / pressed / repeat counters, button config number), the mapped DATA file number (the file itself is mapped again and pt-BR-patched), the script file number (the file is loaded again), extra mapped regions,
+and what the front end is playing (`fm_music`: id and start frame, `fm_loops`: looping FM effects).
+Not stored: the disc files and what is built from them (fonts, names, the script and DATA bytes), what the front end sets (button prompt style, voice / FM / PCM lengths, save slots, gun readings, the subtitle option, the language), the frame buffer
+(drawn again after a restore), pending events, the title / intro / ending modules.
+
+### 9.2 Safe points: when it saves
+`Engine::safe_point()` (reasons: `safe_check()`, shown in the debug overlay):
+1 = **the command menu waits for a key** (queue idle, no cursor move, no closing effect); 2 = **a message box waits for the confirm button** (text fully drawn).
+Never at a safe point (the last safe point stays): a voice clip or PCM effect playing (a front end cannot start a clip in the middle), a finite FM jingle or effect playing (looping FM music and effects are started again),
+the text-entry keypad / keyboard, pointer moves, shooting stages (a restore of the shooting state is not covered by the tests), a picture or screen reset still loading, a subtitle on screen, the title, the intro and the ending timelines, `sub_stall`.
+Front end (`Autosaver.poll`, once per frame, one call into the engine): a *rising edge* into a safe point marks a wanted save. It is written at once when the scene or script changed since the last save (at most once every 3 s: `MIN_GAP_MS`),
+otherwise when the last save is 30 s old (`EVERY_MS`). A page that is hidden or closed (`visibilitychange`, `pagehide`) saves the quiet moment it is at (at most once a second); if it is not at one, the last safe point stands.
+Nothing is saved while the start window or the pause panel is open (the game is not running) or while autosave is off.
+
+### 9.3 Where it lives
+IndexedDB, database `snatcher.autosave`, store `slot`, key `latest`: one record `{v, stamp, act, play, kind, pt, mono, frame, data}` (`data` = the snapshot, about 40-60 KB). Not localStorage: it is too big for that and not text.
+The on/off choice is `snatcher.autosave.on` ("0" = off, anything else or missing = on) in localStorage. Both may be blocked: with localStorage blocked the page still works (default on, the choice lasts for the visit);
+with IndexedDB blocked (`indexedDB` missing, private windows of some browsers) the autosave is kept in memory for the visit and the page says so (a warning note and a line in the Saves tab: "Browser storage is blocked: the autosave lasts only until this page closes").
+The four save slots (`snatcher.save.N`) are never read or written by the autosave. **Export / import of saves does not include the autosave**: the export is the game's own portable save block (any build can read it);
+an autosave is tied to one engine layout and one disc (it would be refused after the next engine change), is ten times bigger and is a convenience, not a save.
+"Clear everything" (start window, `btnWipe`) deletes the database as well as every `snatcher.*` key; "Remove imported data" (`btnClear`) removes only the disc and **keeps the autosave** (`web/test/import.ts` checks both).
+Turning autosave off keeps the existing autosave (Continue is still offered); the Saves tab and the start window's Saves row have a button "Delete autosave" with a second click to confirm. Nothing is deleted silently.
+
+### 9.4 Restore and its fidelity
+"Continue where you left off" (`btnContinue`): the page switches to the snapshot's language first (the screen and the message text offsets are language specific), starts the engine with the disc files, installs the pack, then `Game.restore(bytes)`
+replaces the state and the page restores the sound mode (`audio.mono`, saved with the record: it is audio state, not engine state). The first tick continues from the saved frame.
+Exact (checked frame by frame, pictures and engine events, English and pt-BR with subtitles, 9 scene roots of acts 1-3 plus a new game, menu and message points, `engine/tests/snapshot.rs`; and in the browser, same engine frame and same screen hash, `web/test/autosave.ts`):
+the picture, the script and menus, text window, the cursor, palette fades in progress, scroll and effects, RNG, the play clock, all counters. A restored message box can be confirmed at once.
+Approximated:
+- CD-DA music starts again at the engine's CD clock (`Out::MusicAt`, seconds since the track started): the audio and the engine clock agree to the usual drift correction (docs/re/audio.md, `cdclock.ts`); the first moments wait for the file to be decoded, the page starts "late" like on any track change.
+- FM music starts at the position the engine's frame count gives (`Out::FmAt`, wrapped into its loop). The engine does not know where the FM driver really is, so the position can differ from the original run by the usual FM timing error (the frame count is the game's clock; the rendered song is the driver's output); it is a musical position near the right one, not a sample-exact one.
+- Looping FM effects start from their beginning.
+- Held buttons: the pad state is stored, but a key held through the reload is a new press for the browser.
+Not restored by design: a voice clip in progress, a jingle, shooting. They are never saved, so Continue goes back to the last quiet moment before them (up to 30 s earlier than the exit, unless the page was hidden at a quiet moment).
+Known difference: an autosave is one slot; Play from the title and playing on will replace an older autosave at the next quiet moment (the start window says which autosave Continue would load).
+
+### 9.5 Versioning and bad autosaves
+Header (`snapshot.rs`): magic `SNAS`, format number (`FORMAT`), **layout fingerprint** (FNV of the type and field names of the stored state, computed by writing a default engine; any added, renamed or removed field changes it, so a deploy that does not touch the state keeps
+players' autosaves), **disc digest** (names, sizes and a sample of every loaded disc file; a re-dump of the same disc gives the same value), language flag and **translation pack hash**, kind, script, scene, play time, frame, payload length, and an FNV checksum of everything.
+The page checks format, fingerprint and checksum when it lists the autosave (`snapshot_header`), and disc, language and pack when it restores. A bad one is removed and the start window says why, in plain words:
+another engine version ("came from another version of the game engine"), another disc, another language or translation, damaged. Never a crash: `Engine::restore` decodes everything first and changes the engine only when all of it is valid and the needed files exist
+(`snapshot_refuses_and_reports` also checks that a failed restore leaves the engine unchanged). The game then stays on the start window (Play is available).
+
+### 9.6 Cost (measured, headless Chrome, this laptop, `bun web/test/autosave.ts`)
+COST_PLACEHOLDER
+
+### 9.7 Tests
+`cargo test --release -p snengine --test snapshot`: round trip at the first menu, the first message wait and points after scene changes in a new game (en and pt-BR with subtitles), 9 scene roots of acts 1-3 (FM and CD music, voices, 6 to 12 points each): after `restore` the next 600 to 700
+frames equal the original run in picture, engine events and (every 50 frames) full state bytes; the audio a restore starts again equals what the live engine was playing; refusals (not a safe point, other language, other disc file, other layout, other format, damage, truncation, a failed restore changes nothing).
+`core/src/snap.rs` unit tests (round trip, corrupt input, fingerprint). `web/test/autosave.ts` (headless Chrome, own server on 5340): first save in a new game, the record in IndexedDB and not in localStorage, save slots untouched, Continue (en, pt-BR) with the same engine frame and screen hash and the music back,
+hiding the page saves, toggle off = no new autosave although safe points go by, the setting persists, delete with a second click, "Clear everything", other engine / other disc / damaged autosave, localStorage blocked, IndexedDB blocked. Screenshots in `work/shots/autosave/`.
+
 ## 5. Tests
 (The importer tests are in section 8: `cargo test --release -p sncore --test import` and `bun web/test/import.ts`.)
 `scripts/test-web.sh [outdir]`: `bun test web/test/` (pacer, picked-folder recognition), then headless Chrome (chrome-headless-shell from
 `~/.cache/puppeteer`): `ui.ts` (overlay, menu pause, hidden-tab pause, volumes, mono/stereo, stop commands, LRU, save import/export and
 save event, picked-folder run, degraded assets, phone width 360x640, screenshots to the out dir), `shot.ts newgame` and `shot.ts scene=SP01:0`
-(exit code 1 on any console error, page error or HTTP >= 400). Missing-file 404s of optional audio are expected console noise in real use.
+`autosave.ts` (section 9), (exit code 1 on any console error, page error or HTTP >= 400). Missing-file 404s of optional audio are expected console noise in real use.
 
 ## 6. Controllers (Xbox, PlayStation, Nintendo Switch) and button icons
 Code: `web/src/gamepads.ts` (families, layouts, maps, prompt resolution; pure, unit-tested), `web/src/input.ts` (`scan()`, last device, capture),

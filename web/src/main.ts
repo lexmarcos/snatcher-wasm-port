@@ -449,6 +449,8 @@ async function loadAuto() {
     } catch { /* no engine yet: the restore checks again */ }
   }
   refreshAuto();
+  // Continue is the primary action: it takes the focus Play had (an overlay that is not open any more, or a focus the player moved, is left alone)
+  if (!btnContinue.hidden && overlayOpen && document.activeElement === btnPlay) btnContinue.focus();
 }
 
 function lineBlock(host: HTMLElement, lines: string[], cls: string) {

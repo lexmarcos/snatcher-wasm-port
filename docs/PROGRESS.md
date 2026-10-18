@@ -29,6 +29,17 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
   Web front end: canvas, input, WebAudio (CD/FM/voice/PCM), saves in localStorage.
   Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
+## Resume here: autosave (2026-10-18, docs/re/web.md section 9)
+The page saves the running game by itself and offers "Continue where you left off" in the start window (primary button beside Play). **Design: a snapshot of the whole engine state** at a safe point (not the game's own 0x1C0-byte save block,
+which cannot restore a menu or a message): `core/src/snap.rs` (codec, `snap_struct!` checks every field at compile time), `engine/src/snapshot.rs` (`safe_point`, `snapshot`, `restore`, header with format, layout fingerprint, disc digest, language and pack hash, checksum),
+wasm API `autosave_point / autosave_key / snapshot / snapshot_info / restore / snapshot_header`, front end `web/src/autosave.ts` (IndexedDB `snatcher.autosave`, throttle, bad-autosave messages) wired in `main.ts`.
+Safe points: the command menu waiting for a key, a message box waiting for the confirm button; never during a voice clip, PCM effect, finite FM jingle, text entry, shooting, picture loading, the title, intro and ending. Saved at a new safe point after a scene change (3 s apart at most),
+else every 30 s, and when the page is hidden or closed. Toggle "Autosave" (Saves tab, `snatcher.autosave.on`, default on), "Delete autosave" with a second click, "Clear everything" removes it, "Remove imported data" keeps it, the saves export does not include it.
+Restore is exact for the engine state and the picture (tests); the CD-DA and looping FM music start again at the engine clock's position (approximate for FM); voices and shooting are never saved. Cost: COST_SHORT.
+Tests: `cargo test --release -p snengine --test snapshot` (round trip at 50+ points, frames and events equal after 600-700 frames), `bun web/test/autosave.ts` (also in `scripts/test-web.sh`), `import.ts` checks the wipe / remove rules.
+Open: the shooting stages could be made safe once their state is covered by a test (the snapshot already holds the object runtime; `Shoot` and the gun registers are not stored); the intro / ending timelines are not saved; one autosave slot only (a second "previous" slot would protect against Play overwriting it);
+an FM music position from the real driver instead of the frame count; `pagehide` writes are not guaranteed to finish in every browser (the last safe-point save stands).
+
 ## Resume here: disc image import in the browser (2026-10-17, docs/re/web.md section 8)
 A player with the disc image opens the page, picks (or drops) the `.cue` + `.bin` file(s) and plays; no extraction pipeline. Done: multi-FILE cue parser + sector layout
 (`core/src/disc.rs`), the importer (`core/src/import.rs`: Sega header + SHA-256 disc check, ISO9660 files, boot code, PCM voices/banks/drums, CD-DA, FM manifest by a chip-less driver run),

@@ -232,6 +232,7 @@ for (const fl of flavours) {
     await page.goto(`http://localhost:${port}/`, { waitUntil: "load" }); // back to the start window (the game is running)
     await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 30000 }); await sleep(500);
     await page.evaluate(() => { localStorage.setItem("snatcher.test", "1"); localStorage.setItem("snatcher.save.7", "AAAA"); localStorage.setItem("other.app", "kept"); });
+    await page.evaluate(() => (window as any).snatcherAutosave.store.put({ v: 1, stamp: Date.now(), act: 1, play: "00:00:01", kind: 1, pt: false, mono: { fm: false, pcm: false }, data: new Uint8Array(200) })); // a stand-in autosave
     await page.click("#wipeBox > summary"); await sleep(100);
     await page.evaluate(() => document.getElementById("wipeBox")!.scrollIntoView({ block: "center" }));
     await dshot(page, "import-wipe-open.png");
@@ -246,6 +247,7 @@ for (const fl of flavours) {
       let opfs = true; try { await (await navigator.storage.getDirectory()).getDirectoryHandle("snatcher-import-v1"); } catch { opfs = false; }
       return { opfs, keys: Object.keys(localStorage).filter((k) => k.startsWith("snatcher")) /* the fresh page may write its defaults again (snatcher.smooth) */, other: localStorage.getItem("other.app"), first: (document.getElementById("ovAfter") as HTMLElement).hidden && !(document.getElementById("ovStep1") as HTMLElement).hidden };
     });
+    check(`${fl.name}: "clear everything" also removes the autosave`, (await page.evaluate(async () => await (window as any).snatcherAutosave.store.get())) === null);
     check(`${fl.name}: "clear everything" removes the imported disc and the site's keys, then opens as a first visit`, !w.opfs && !w.keys.includes("snatcher.test") && !w.keys.some((k) => k.startsWith("snatcher.save.")) && w.other === "kept" && w.first, JSON.stringify(w));
     await shot(page, `${fl.name}-5-cleared.png`);
   }
@@ -281,6 +283,7 @@ for (const fl of flavours) {
     await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
     await page.waitForSelector("#btnClear:not([hidden])", { timeout: 20000 });
     await sleep(500); // the start window opens in 320 ms (clip-path steps); clicks during the reveal would hit the clipped part
+    await page.evaluate(() => (window as any).snatcherAutosave.store.put({ v: 1, stamp: Date.now(), act: 1, play: "00:00:01", kind: 1, pt: false, mono: { fm: false, pcm: false }, data: new Uint8Array(200) })); // a stand-in autosave
     await page.click("#wipeBox > summary"); await sleep(100);
     await page.click("#btnClear");
     check(`${fl.name}: removing needs a second click`, /again/i.test(await text(page, "#btnClear")));
@@ -288,6 +291,7 @@ for (const fl of flavours) {
     await page.waitForFunction(() => /removed/i.test(document.getElementById("impStatus")!.textContent ?? ""), { timeout: 20000 });
     const left = await page.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("snatcher-import-v1"); return true; } catch { return false; } });
     check(`${fl.name}: "remove imported data" empties the cache`, !left);
+    check(`${fl.name}: "remove imported data" keeps the autosave`, (await page.evaluate(async () => await (window as any).snatcherAutosave.store.get())) !== null);
     await shot(page, `${fl.name}-7-removed.png`);
     await dshot(page, "import-removed.png");
     check(`${fl.name}: after removal only step 1 is shown again`, await page.evaluate(() => document.getElementById("ovAfter")!.hidden));

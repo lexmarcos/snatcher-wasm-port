@@ -78,7 +78,7 @@ Pressed = the two edges swap. Spacing steps are 8, 16, 24, 32 px.
 - **Button** (`.btn`): beveled block on `--face`, label centred, 24 px side gutters. Hover and keyboard focus show the **cursor** (a pixel ▶ in the left gutter, like the
   game's command menu) and turn the label `--call`. Focus also draws a 2 px `--call` outline (offset 2 px), so focus never relies on colour alone.
   Pressed inverts the bevel. Primary (`.btn.primary`): `--call` label and a 2 px `--call` outline inside the edge, cursor always shown. Disabled: `--field` face, `--dim` label, flat.
-  `.big` is the 48 px Play / Resume button. Toolbar buttons are 32 px; at 480 px and below every button is at least 44 px.
+  `.big` is the 48 px Play / Resume / Continue button. Toolbar buttons are 32 px; at 480 px and below every button is at least 44 px.
 - **Cursor**: `::before` mask, `visibility` toggled, so nothing shifts. Also used on tabs and disclosure rows.
 - **Meter** (`.meter` around a real `<progress max=1000>`): a row of 24 px blocks with 4 px gaps, `--call` for filled, `--face` for empty. The width is a whole number of blocks
   (`round(down, 100%, 28px)`) and `main.ts` `setProgress()` only sets values that end on a block edge, so the fill never shows a partial block. The `<progress>` keeps its role and values; the phase text is its label.
@@ -86,7 +86,7 @@ Pressed = the two edges swap. Spacing steps are 8, 16, 24, 32 px.
 - **Checkbox**: native `<input type=checkbox>` as a square inset box with a pixel check mark (mask), 24 px, in a 32 px (44 px on phones) label row.
 - **Select**: native `<select>` as an inset well with a pixel arrow.
 - **Drive slot** (`.slot`, id `impBox`): inset dark slot with a dashed `--bevel-mid` outline that turns `--call` (and the text changes to "Release to import") while dragging.
-- **Tabs** (`role=tablist`): Sound, Display, Controls, Gamepad, Saves. Roving tabindex; Left/Right wrap, Home/End jump, selection follows focus. The selected tab is pressed in, with a `--call` label and the cursor.
+- **Tabs** (`role=tablist`): Sound, Display, Controls, Gamepad, Saves. Roving tabindex; Left/Right wrap, Home/End jump, selection follows focus. The Saves tab holds Export saves / Import saves, the slot note, then the **Autosave** check box (`#autoBox`, on by default, title text explains the quiet moments and that the four slots are not touched), a status line (`#pnAuto`: the last autosave, or "Autosave is off: nothing new is saved." and "The autosave from ... stays until you delete it.", or the blocked-storage line) and the button "Delete autosave" (`#pnAutoDelete`). The selected tab is pressed in, with a `--call` label and the cursor.
 - **Disclosure rows** (`<details>`): Saves, Controls, Other ways to load; quiet rows between two `--bevel-mid` rules, collapsed by default.
 - **Status lines** (`.line`, `.notes li`): `.ok` (check), `.err` (cross), `.warn` (exclamation, `--ink`), `.dim`.
 - **Toolbar** (`#bar`, `role=toolbar`): small beveled buttons on a slim strip under the canvas, with the status text.
@@ -106,6 +106,10 @@ Pressed = the two edges swap. Spacing steps are 8, 16, 24, 32 px.
   The last folded row, **Remove the files and clear the site**, holds "Remove imported data" (saves and settings stay) and "Clear everything" (the imported disc plus every
   `snatcher.*` key of the origin: saves, gamepad buttons, settings; `.btn.danger`, alert outline, second click to confirm), which reloads the page as a first visit. The old "Game files / Choose extracted folder" block and the developer text live in
   **Other ways to load** (so a first-time visitor never sees them); when the dev server has `./assets`, that source is selected by itself and step 2 says so in one plain line.
+- **Continue where you left off** (`#btnContinue`, hidden until an autosave exists and a game source is chosen): a second `.btn.primary.big` in the Play row, in front of Play. With an autosave it is the primary action:
+  Play loses `.primary` (it keeps `.big`, a plain beveled button), and Continue takes the focus Play had. Under the row a dim status line (`#autoStatus`, `.line.dim`) says what Continue loads: "Autosave from Oct 18, 2026, 1:47 PM: act 1, 25 s played."
+  (pt-BR "Salvamento automático de 18 de out. de 2026, 13:47: ato 1, 25 s de jogo."; the act is left out when it is none of the three). An autosave that cannot be used (another engine version, another disc or language, damaged) is removed and the same place shows
+  a `.line.warn` sentence that says why and ends with "Press Play to start again." The Saves fold repeats the line (`#ovAuto`) and holds "Delete autosave" (`#ovAutoDelete`, second click to confirm, label changes to "Click again to delete").
 - **Pause panel**: the same window titled "Paused": Resume first and primary, the status notes right under it, then the tabs. Esc, the Menu button and the gamepad Select button still open and close it, and it still pauses the game.
 - **Toolbar, monitor, debug overlay**: sections 5.
 
@@ -121,6 +125,7 @@ Exactly one orchestrated moment: when the start window first appears it opens li
 Plain, player-facing, active voice, sentence case, English and pt-BR in `web/src/i18n.ts` and `i18n/pt-BR/ui.json`.
 Intro: one sentence (plays your own copy of Snatcher (USA, Sega CD) in the browser; nothing is uploaded). Step 1 says to pick the .cue and its .bin file(s) or drop them.
 Status lines say what happens and what to do next ("Imported in 41.2 s. Press Play. ..."). Errors say what went wrong and how to fix it, without apologising ("No .cue file among the 1 selected files (game.bin). Select the .cue and its .bin file(s) together.").
+Autosave copy: the setting is called **Autosave** (pt-BR "Salvamento automático"); the start-window button is **Continue where you left off** ("Continuar de onde parou"); the status line names the date, the act and the play time; a removed autosave says what was wrong and what to do ("Press Play to start again."); delete asks twice and says "Autosave deleted."; the toolbar line says "autosaved" after each save.
 Button labels are consistent through the flow: **Import disc image** -> Importing -> **Imported**; **Remove imported data** -> (second click) -> status "Removed". The honest note stays: the imported data stays in this browser until removed; the storage line stays.
 Arrows are not used on buttons.
 
