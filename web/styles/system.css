@@ -1,0 +1,267 @@
+/* Junker HQ terminal: the design system of the Snatcher web port (docs/design-system.md).
+   Order: 1 tokens, 2 base, 3 components, 4 screens, 5 motion and small screens.
+   Rules: radius 0, no blur anywhere, depth only from 2 px bevels, one font (DotGothic16) at multiples of 16 px,
+   yellow (--call) only for the primary action, the current item and progress, the dither only on the page background. */
+
+/* ---------------------------------------------------------------- 1 tokens */
+@font-face {
+  font-family: "DotGothic16";
+  src: url("../fonts/DotGothic16-subset.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: block;
+}
+:root {
+  --field: #0E1640;      /* window body (navy, not black) */
+  --desk: #070B24;       /* page background, drawn as the 2x2 dither with --field */
+  --bevel-hi: #9DB4F0;   /* light edge, top left */
+  --bevel-mid: #4A5E9A;  /* title strip, quiet edges */
+  --bevel-lo: #02041A;   /* dark edge, bottom right, inset wells */
+  --face: #26357A;       /* button face (derived: between --field and --bevel-mid) */
+  --ink: #E8ECF8;        /* text */
+  --dim: #8A97C4;        /* secondary text */
+  --call: #F8E038;       /* the colour of the speaker names: primary action, current item, progress */
+  --alert: #F05050;      /* errors only */
+  --ok: #58D888;         /* success lines only */
+
+  --bw: 2px;             /* bevel width */
+  --u: 8px;              /* spacing unit; steps are 8, 16, 24, 32 */
+  --block: 28px;         /* progress meter: 24 px block + 4 px gap */
+
+  /* pixel glyphs drawn as masks (the font has no triangle and no check mark); one colour per use */
+  --m-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v8H1zM2 1h1v6H2zM3 2h1v4H3zM4 3h1v2H4z'/%3E%3C/svg%3E");
+  --m-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M0 2h8v1H0zM1 3h6v1H1zM2 4h4v1H2zM3 5h2v1H3z'/%3E%3C/svg%3E");
+  --m-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M6 1h2v1H6zM5 2h2v1H5zM0 3h2v1H0zM4 3h2v1H4zM1 4h2v1H1zM3 4h2v1H3zM2 5h2v1H2z'/%3E%3C/svg%3E");
+  --m-cross: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M0 1h2v1H0zM1 2h2v1H1zM2 3h2v1H2zM3 4h2v1H3zM4 5h2v1H4zM5 6h2v1H5zM6 1h2v1H6zM5 2h2v1H5zM4 3h2v1H4zM2 4h2v1H2zM1 5h2v1H1zM0 6h2v1H0z'/%3E%3C/svg%3E");
+  --m-bang: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h2v5H3zM3 6h2v2H3z'/%3E%3C/svg%3E");
+  /* the 2x2 checker dither of --desk and --field, shown at 2 px per cell */
+  --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 2' shape-rendering='crispEdges'%3E%3Crect width='2' height='2' fill='%23070B24'/%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%230E1640'/%3E%3C/svg%3E");
+}
+
+/* ---------------------------------------------------------------- 2 base */
+* { box-sizing: border-box; border-radius: 0; }
+[hidden] { display: none !important; }
+html, body { margin: 0; min-height: 100%; }
+html { background: var(--desk); }
+body {
+  background-color: var(--desk); background-image: var(--dither); background-size: 4px 4px; image-rendering: pixelated;
+  color: var(--ink);
+  font: 16px/1.5 "DotGothic16", "MS Gothic", "Osaka-Mono", sans-serif;
+  font-kerning: none; -webkit-font-smoothing: none; font-smooth: never;
+}
+h1, h2, p, ul { margin: 0; }
+p, .line { max-width: 70ch; }
+code { font: inherit; color: var(--bevel-hi); }
+.dim { color: var(--dim); }
+:focus-visible { outline: 2px solid var(--call); outline-offset: 2px; }
+::selection { background: var(--call); color: var(--bevel-lo); }
+
+/* ---------------------------------------------------------------- 3 components */
+/* bevel: --tl is the light edge, --br the dark one; inverting them presses the thing in */
+.bevel, .win, .btn, .tab, .strip, .slot, .meter, select, .tabpanel, #bar, #monitor, #debug, .lang button, input[type=checkbox] {
+  --tl: var(--bevel-hi); --br: var(--bevel-lo);
+  border: var(--bw) solid var(--bevel-lo);
+  box-shadow: inset var(--bw) var(--bw) 0 var(--tl), inset calc(-1 * var(--bw)) calc(-1 * var(--bw)) 0 var(--br);
+}
+.strip, .slot, .meter, select, .tabpanel, input[type=checkbox] { --tl: var(--bevel-lo); --br: var(--bevel-mid); } /* inset wells */
+
+/* window: beveled frame, title strip, field body */
+.win { background: var(--field); padding: var(--bw); width: 100%; max-width: 640px; margin: auto; }
+.win-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--bevel-mid); padding: 4px 16px; min-height: 48px; }
+.win-name { font-size: 32px; line-height: 40px; font-weight: 400; margin: 0; color: var(--ink); }
+.win-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
+.wordmark { font-size: 64px; line-height: 64px; font-weight: 400; margin: 0; color: var(--ink); }
+.intro { color: var(--ink); }
+.note { color: var(--dim); }
+.row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+
+/* section head: a thin inset strip with a 16 px heading */
+.strip { display: flex; align-items: center; gap: 16px; min-height: 32px; padding: 0 16px; background: var(--bevel-lo); font-size: 16px; line-height: 24px; font-weight: 400; color: var(--ink); margin-top: 8px; }
+.num { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: var(--face); color: var(--ink); box-shadow: inset 2px 2px 0 var(--bevel-hi), inset -2px -2px 0 var(--bevel-mid); }
+
+/* button: a beveled block; hover and focus show the command-menu cursor and turn the label yellow; pressed inverts the bevel */
+.btn, .tab {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 40px; padding: 8px 24px; background: var(--face); color: var(--ink);
+  font: inherit; cursor: pointer; margin: 0;
+}
+.btn::before, .tab::before, summary::before {
+  content: ""; position: absolute; left: 4px; top: 50%; margin-top: -8px; width: 16px; height: 16px;
+  background: currentColor; -webkit-mask: var(--m-cursor) center / 16px 16px no-repeat; mask: var(--m-cursor) center / 16px 16px no-repeat;
+  visibility: hidden;
+}
+.btn:hover:not(:disabled), .btn:focus-visible, .tab:hover, .tab:focus-visible { color: var(--call); }
+.btn:hover:not(:disabled)::before, .btn:focus-visible::before, .tab:hover::before, .tab:focus-visible::before { visibility: visible; }
+.btn:active:not(:disabled), .tab:active { --tl: var(--bevel-lo); --br: var(--bevel-hi); }
+.btn:disabled { background: var(--field); color: var(--dim); cursor: default; --tl: var(--bevel-lo); --br: var(--bevel-mid); border-color: var(--bevel-mid); box-shadow: none; }
+.btn.primary { color: var(--call); outline: 2px solid var(--call); outline-offset: -6px; }
+.btn.primary::before { visibility: visible; }
+.btn.primary:disabled { color: var(--dim); outline: 0; }
+.btn.primary:disabled::before { visibility: hidden; }
+.btn.primary:focus-visible { outline-offset: 2px; }
+.btn.big { min-height: 48px; padding: 12px 32px 12px 40px; }
+.btn.big::before { left: 12px; }
+
+/* tabs: a real tablist; the selected tab is pressed in and yellow */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tab[aria-selected="true"] { --tl: var(--bevel-lo); --br: var(--bevel-hi); color: var(--call); background: var(--bevel-lo); }
+.tab[aria-selected="true"]::before { visibility: visible; }
+.tabpanel { background: var(--field); padding: 16px; display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
+
+/* language toggle in the title strip: EN | PT-BR */
+.lang { display: flex; gap: 0; flex: none; }
+.lang button { font: inherit; color: var(--ink); background: var(--face); min-height: 32px; min-width: 40px; padding: 0 8px; cursor: pointer; margin: 0; }
+.lang button + button { margin-left: -2px; }
+.lang button:hover { color: var(--call); }
+.lang button[aria-pressed="true"] { --tl: var(--bevel-lo); --br: var(--bevel-hi); background: var(--bevel-lo); color: var(--call); }
+
+/* select: an inset well with a pixel arrow */
+select {
+  appearance: none; -webkit-appearance: none; font: inherit; color: var(--ink); background-color: var(--bevel-lo); cursor: pointer;
+  min-height: 40px; padding: 0 40px 0 16px; max-width: 100%; margin: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 4' shape-rendering='crispEdges'%3E%3Cpath fill='%23E8ECF8' d='M0 0h8v1H0zM1 1h6v1H1zM2 2h4v1H2zM3 3h2v1H3z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 16px 8px;
+}
+select:hover { color: var(--call); }
+select option { background: var(--field); color: var(--ink); }
+label { cursor: default; }
+
+/* checkbox: a square beveled box with a pixel check mark */
+.check { display: flex; align-items: center; gap: 16px; min-height: 32px; max-width: 70ch; cursor: pointer; }
+.check:hover span { color: var(--call); }
+input[type=checkbox] { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0; background: var(--bevel-lo); cursor: pointer; position: relative; }
+input[type=checkbox]:checked::after { content: ""; position: absolute; inset: 0; background: var(--ink); -webkit-mask: var(--m-check) center / 16px 16px no-repeat; mask: var(--m-check) center / 16px 16px no-repeat; }
+input[type=checkbox]:disabled { background: var(--field); border-color: var(--bevel-mid); box-shadow: none; cursor: default; }
+input[type=checkbox]:disabled + span { color: var(--dim); }
+.check:has(input:disabled) { cursor: default; }
+
+/* range slider: segmented track (16 px period), the filled part is light, the thumb a beveled block; --v is set by main.ts */
+.sl { display: grid; grid-template-columns: 96px 1fr 56px; gap: 16px; align-items: center; min-height: 40px; }
+.sl output { text-align: right; color: var(--ink); }
+.sl label:hover { color: var(--call); }
+input[type=range] { appearance: none; -webkit-appearance: none; width: 100%; height: 40px; margin: 0; background: transparent; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track {
+  height: 16px; border: var(--bw) solid var(--bevel-lo);
+  background: repeating-linear-gradient(90deg, transparent 0 12px, var(--field) 12px 16px), linear-gradient(90deg, var(--bevel-hi) var(--v, 100%), var(--bevel-mid) var(--v, 100%));
+}
+input[type=range]::-moz-range-track {
+  height: 12px; border: var(--bw) solid var(--bevel-lo);
+  background: repeating-linear-gradient(90deg, transparent 0 12px, var(--field) 12px 16px), linear-gradient(90deg, var(--bevel-hi) var(--v, 100%), var(--bevel-mid) var(--v, 100%));
+}
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 32px; margin-top: -10px; background: var(--face); border: var(--bw) solid var(--bevel-lo); box-shadow: inset 2px 2px 0 var(--bevel-hi), inset -2px -2px 0 var(--bevel-mid); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 28px; background: var(--face); border: var(--bw) solid var(--bevel-lo); box-shadow: inset 2px 2px 0 var(--bevel-hi), inset -2px -2px 0 var(--bevel-mid); border-radius: 0; }
+input[type=range]:hover::-webkit-slider-thumb, input[type=range]:focus-visible::-webkit-slider-thumb { background: var(--call); }
+input[type=range]:hover::-moz-range-thumb, input[type=range]:focus-visible::-moz-range-thumb { background: var(--call); }
+input[type=range]:active::-webkit-slider-thumb { box-shadow: inset 2px 2px 0 var(--bevel-lo), inset -2px -2px 0 var(--bevel-hi); }
+
+/* progress: a block meter. The <progress> keeps its role and values; its fill is a row of discrete 24 px blocks.
+   main.ts only sets values that end on a block edge, and the width is a whole number of blocks. */
+.meter { padding: 4px; background: var(--bevel-lo); }
+.meter progress {
+  appearance: none; -webkit-appearance: none; display: block; border: 0; background: none; height: 24px;
+  width: calc(round(down, 100%, var(--block)) - 4px);
+}
+.meter progress::-webkit-progress-bar { background: repeating-linear-gradient(90deg, var(--face) 0 24px, transparent 24px var(--block)); }
+.meter progress::-webkit-progress-value { background: repeating-linear-gradient(90deg, var(--call) 0 24px, transparent 24px var(--block)); }
+.meter progress::-moz-progress-bar { background: repeating-linear-gradient(90deg, var(--call) 0 24px, transparent 24px var(--block)); }
+.meter progress { background: repeating-linear-gradient(90deg, var(--face) 0 24px, transparent 24px var(--block)); }
+
+/* drive slot: an inset dark slot with a dashed border that turns yellow while dragging */
+.slot { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 96px; padding: 16px; background: var(--bevel-lo); color: var(--dim); outline: 2px dashed var(--bevel-mid); outline-offset: -10px; }
+.slot .when-drag { display: none; }
+.slot.drag { outline-color: var(--call); color: var(--call); }
+.slot.drag .when-drag { display: inline; }
+.slot.drag .when-idle { display: none; }
+
+/* status lines: colour plus a pixel glyph, never colour alone */
+.line, .notes li { position: relative; padding-left: 0; }
+.line:empty, .notes:empty, .line[hidden] { display: none; }
+.line.ok, .notes li.ok, .line.err, .notes li.err, .notes li.warn, .line.warn { padding-left: 24px; }
+.line.ok::before, .notes li.ok::before, .line.err::before, .notes li.err::before, .notes li.warn::before, .line.warn::before {
+  content: ""; position: absolute; left: 0; top: 4px; width: 16px; height: 16px; background: currentColor;
+  -webkit-mask: var(--m-check) center / 16px 16px no-repeat; mask: var(--m-check) center / 16px 16px no-repeat;
+}
+.line.err::before, .notes li.err::before { -webkit-mask-image: var(--m-cross); mask-image: var(--m-cross); }
+.line.warn::before, .notes li.warn::before { -webkit-mask-image: var(--m-bang); mask-image: var(--m-bang); }
+.ok { color: var(--ok); } .err { color: var(--alert); } .warn { color: var(--ink); }
+.dim.line { color: var(--dim); }
+.notes { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 4px; max-width: 70ch; }
+#srcStatus > div:first-child { color: var(--ink); }
+#srcStatus.ok > div:first-child { color: var(--ok); }
+#srcStatus.err > div:first-child { color: var(--alert); }
+#impPhase { color: var(--ink); margin-top: 8px; }
+
+/* disclosure rows: quiet lines between two rules; the cursor marks them, the open row shows the down arrow */
+.folds { display: flex; flex-direction: column; margin-top: 8px; border-top: var(--bw) solid var(--bevel-mid); }
+details { border-bottom: var(--bw) solid var(--bevel-mid); }
+summary { position: relative; display: flex; align-items: center; min-height: 40px; padding: 8px 16px 8px 40px; cursor: pointer; list-style: none; color: var(--ink); }
+summary::-webkit-details-marker { display: none; }
+summary::before { visibility: visible; left: 12px; color: var(--dim); }
+details[open] > summary::before { -webkit-mask-image: var(--m-down); mask-image: var(--m-down); color: var(--ink); }
+summary:hover, summary:focus-visible { color: var(--call); }
+summary:hover::before, summary:focus-visible::before { color: var(--call); }
+.fold-body { padding: 8px 0 24px 0; display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
+
+/* controls table */
+table.keys { border-collapse: collapse; width: 100%; max-width: 70ch; }
+table.keys td { padding: 8px 16px 8px 0; vertical-align: top; border-bottom: 2px solid var(--bevel-lo); }
+table.keys tr:last-child td { border-bottom: 0; }
+table.keys td:first-child { color: var(--ink); width: 36%; }
+table.keys td:last-child { color: var(--ink); }
+table.keys .dim { color: var(--dim); }
+.icon { display: inline-flex; vertical-align: middle; margin-right: 8px; } .icon svg { display: block; } .iconlabel { margin-right: 2px; }
+kbd { font: inherit; color: var(--ink); background: var(--face); padding: 0 8px; box-shadow: inset 2px 2px 0 var(--bevel-hi), inset -2px -2px 0 var(--bevel-lo); }
+
+/* toolbar under the canvas: small beveled buttons on a slim strip */
+#bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 8px; padding: 4px 8px; background: var(--field); }
+#bar .btn { min-height: 32px; padding: 4px 24px; }
+#bar .btn[aria-pressed="true"] { --tl: var(--bevel-lo); --br: var(--bevel-hi); background: var(--bevel-lo); }
+#msg { color: var(--ink); padding: 0 8px; }
+#bgStatus { padding-right: 8px; }
+#bgStatus:empty { display: none; }
+
+/* monitor frame around the canvas: raised bezel, inset screen; integer scaling and pixelated rendering stay */
+#wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 8px; padding: 8px 16px; }
+#monitor { background: var(--bevel-mid); padding: 16px; line-height: 0; }
+canvas { image-rendering: pixelated; background: #000; display: block; max-width: 100%; box-shadow: 0 0 0 2px var(--bevel-lo), 1px 1px 0 3px var(--bevel-hi); }
+canvas.smooth { image-rendering: auto; }
+canvas:focus { outline: none; }
+:fullscreen #bar { display: none; }
+:fullscreen #monitor { padding: 0; border: 0; box-shadow: none; background: none; }
+:fullscreen canvas { box-shadow: none; }
+
+/* debug overlay: a small window */
+#debug { position: fixed; left: 8px; top: 8px; z-index: 20; display: none; white-space: pre; background: var(--field); padding: 8px 12px; pointer-events: none; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: hidden; color: var(--ink); line-height: 1.5; }
+
+/* ---------------------------------------------------------------- 4 screens */
+.modal { position: fixed; inset: 0; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 10; }
+.modal.desk { background-color: var(--desk); background-image: var(--dither); background-size: 4px 4px; image-rendering: pixelated; }
+#panel { background: rgba(7, 11, 36, .92); }
+#overlay .win-body { gap: 16px; }
+#impStorage:empty { display: none; }
+
+/* ---------------------------------------------------------------- 5 motion and small screens */
+/* The one orchestrated moment: the start window opens the way an 80s PC draws a window (stepped vertical reveal from the middle). */
+@keyframes win-open { from { clip-path: inset(50% 0 50% 0); } to { clip-path: inset(0 0 0 0); } }
+#ovWin { animation: win-open 320ms steps(8, end) 1 both; }
+@media (prefers-reduced-motion: reduce) { #ovWin { animation: none; } }
+
+@media (max-width: 480px) {
+  .modal { padding: 16px; }
+  #wrap { padding: 8px 8px; }
+  #monitor { padding: 8px; }
+  .win-body { padding: 16px; }
+  .win-title { padding: 4px 16px; gap: 8px; }
+  .wordmark { font-size: 48px; line-height: 48px; }
+  .btn, .tab, select, summary { min-height: 44px; }
+  #bar .btn { min-height: 44px; padding: 4px 24px; flex: 1 1 auto; }
+  .lang button { min-height: 44px; min-width: 44px; }
+  .check { min-height: 44px; }
+  input[type=range] { height: 44px; }
+  .sl { grid-template-columns: 1fr 56px; row-gap: 0; }
+  .sl label { grid-column: 1; } .sl output { grid-column: 2; grid-row: 1; } .sl input { grid-column: 1 / -1; }
+  .row > .btn { flex: 1 1 auto; }
+  table.keys, table.keys tbody, table.keys tr, table.keys td { display: block; width: 100%; }
+  table.keys tr { padding: 8px 0; border-bottom: 2px solid var(--bevel-lo); }
+  table.keys td, table.keys td:first-child { border: 0; padding: 0; width: 100%; }
+  table.keys td:first-child { color: var(--dim); }
+  .slot { min-height: 80px; }
+}

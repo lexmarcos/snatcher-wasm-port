@@ -20,7 +20,7 @@ const W = 256, H = 224;
 const params = new URLSearchParams(location.search);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const msg = $("msg"), canvas = $<HTMLCanvasElement>("screen"), ctx = canvas.getContext("2d")!, debugEl = $("debug");
-const bar = $("bar"), overlay = $("overlay"), panel = $("panel");
+const bar = $("bar"), overlay = $("overlay"), panel = $("panel"), monitor = $("monitor");
 const smoothBox = $<HTMLInputElement>("smooth"), dbgBox = $<HTMLInputElement>("dbg");
 
 // ---------- persistent per-viewer settings (localStorage may be blocked: everything works without it) ----------
@@ -47,8 +47,12 @@ function renderNotes() {
 // ---------- canvas scaling (integer scale in device pixels; fractional only when the window is smaller than 1x) ----------
 function fit() {
   const dpr = window.devicePixelRatio || 1;
-  const availW = innerWidth - 32;
-  const availH = innerHeight - (document.fullscreenElement ? 0 : bar.offsetHeight + 24);
+  // the monitor frame (bezel padding) and the toolbar are not part of the canvas: measure them instead of hard-coding
+  const mr = monitor.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
+  const frameX = mr.width - cr.width, frameY = mr.height - cr.height;
+  const fs = !!document.fullscreenElement;
+  const availW = innerWidth - (fs ? 0 : 32) - frameX;
+  const availH = innerHeight - (fs ? 0 : bar.offsetHeight + 24) - frameY;
   const raw = Math.min((availW * dpr) / W, (availH * dpr) / H);
   const s = raw >= 1 ? Math.floor(raw) : Math.max(0.25, raw);
   canvas.style.width = `${(W * s) / dpr}px`;
@@ -157,7 +161,7 @@ function renderPadMap() {
     const r = padMapTable.insertRow();
     r.insertCell().textContent = g === "START" ? what : T("pad.row", { what, g });
     iconCell(controlIcon(set, m[g]), CONTROL_NAMES[set][m[g]], r.insertCell());
-    const b = el("button", undefined, capturing === g ? T("pad.press") : T("pad.assign")); b.type = "button";
+    const b = el("button", "btn", capturing === g ? T("pad.press") : T("pad.assign")); b.type = "button";
     b.onclick = () => startCapture(g);
     r.insertCell().append(b);
   }
@@ -198,7 +202,7 @@ let crashed = false;
 type MsgState = { key: UiKey; vars?: Record<string, string | number> };
 let msgState: MsgState | null = null;
 function setMsg(key: UiKey, vars?: Record<string, string | number>) { msgState = { key, vars }; msg.textContent = T(key, vars); }
-const langOv = $<HTMLSelectElement>("langOv"), langPn = $<HTMLSelectElement>("langPn");
+const langBtns = Array.from(document.querySelectorAll<HTMLButtonElement>("button[data-lang]"));
 let wantLang: Lang = parseLang(params.get("lang")) ?? parseLang(ls.get("snatcher.lang")) ?? "en";
 let uiCache: Record<string, string> | null = null;
 const packLoaded = new WeakSet<object>();
@@ -241,21 +245,21 @@ function renderDynamic() {
   if (msgState) msg.textContent = T(msgState.key, msgState.vars);
   if (srcLines) showSource(srcLines(), srcCls);
   if (impLine) showImp(impLine, impCls);
-  btnClear.textContent = T("imp.remove"); void refreshStorage();
+  btnClear.textContent = T("imp.remove"); void refreshStorage(); refreshImportButtons();
+  if (altLines) showAlt(altLines, altCls);
   if (!busy) btnPlay.textContent = T("ov.play");
 }
 async function applyLanguage(l: Lang, persist = true) {
   wantLang = l;
   if (persist) ls.set("snatcher.lang", l);
   setUiDict(l, l === "pt-BR" ? await fetchUi() : null);
-  langOv.value = l; langPn.value = l;
+  for (const b of langBtns) b.setAttribute("aria-pressed", String(b.dataset.lang === l));
   applyVsub();
   applyStatic();
   renderDynamic();
   if (game) await syncEngineLanguage(game);
 }
-langOv.onchange = () => { void applyLanguage(langOv.value as Lang); };
-langPn.onchange = () => { void applyLanguage(langPn.value as Lang); };
+for (const b of langBtns) b.onclick = () => { void applyLanguage(b.dataset.lang as Lang); };
 
 function savesLabel(): string {
   const s = store.slots().map(([n]) => n);
@@ -297,8 +301,9 @@ for (const [id, kind] of VOLS) {
   const el = $<HTMLInputElement>(id), out = $(id + "O");
   const saved = Number(ls.get("snatcher.vol." + kind));
   volume[kind] = ls.get("snatcher.vol." + kind) !== null && isFinite(saved) ? Math.max(0, Math.min(100, saved)) : 100;
-  el.value = String(volume[kind]); out.textContent = `${volume[kind]}%`;
-  el.oninput = () => { volume[kind] = Number(el.value); out.textContent = `${el.value}%`; ls.set("snatcher.vol." + kind, el.value); audio?.setVolume(kind, volume[kind] / 100); };
+  const paint = () => { out.textContent = `${el.value}%`; el.style.setProperty("--v", `${el.value}%`); }; // --v: filled part of the segmented track
+  el.value = String(volume[kind]); paint();
+  el.oninput = () => { volume[kind] = Number(el.value); paint(); ls.set("snatcher.vol." + kind, el.value); audio?.setVolume(kind, volume[kind] / 100); };
 }
 let muted = ls.get("snatcher.mute") === "1";
 const btnMute = $("btnMute");
@@ -330,6 +335,20 @@ function closePanel() {
 function updateSoundMode() {
   $("soundMode").textContent = audio ? T("pn.sound", { fm: audio.mono.fm ? T("pn.mono") : T("pn.stereo"), pcm: audio.mono.pcm ? T("pn.mono") : T("pn.stereo") }) : "";
 }
+// tabs of the pause panel (WAI-ARIA tabs: arrow keys, Home and End move and select, only the selected tab is in the tab order)
+const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>("[role=tab]"));
+function selectTab(t: HTMLButtonElement, focus = false) {
+  for (const x of tabs) { const on = x === t; x.setAttribute("aria-selected", String(on)); x.tabIndex = on ? 0 : -1; $(x.getAttribute("aria-controls")!).hidden = !on; }
+  if (focus) t.focus();
+}
+for (const t of tabs) {
+  t.onclick = () => selectTab(t);
+  t.onkeydown = (e) => {
+    const i = tabs.indexOf(t);
+    const n = e.key === "ArrowRight" ? (i + 1) % tabs.length : e.key === "ArrowLeft" ? (i + tabs.length - 1) % tabs.length : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
+    if (n >= 0) { e.preventDefault(); selectTab(tabs[n], true); }
+  };
+}
 $("btnMenu").onclick = () => openPanel();
 $("pnResume").onclick = closePanel;
 panel.addEventListener("mousedown", (e) => { if (e.target === panel) closePanel(); });
@@ -349,20 +368,31 @@ input.onSelect = () => { if (panelOpen && !capturing) closePanel(); else openPan
 // ---------- start overlay ----------
 const btnPlay = $<HTMLButtonElement>("btnPlay"), btnPick = $<HTMLButtonElement>("btnPick"), pick = $<HTMLInputElement>("pick");
 const srcStatus = $("srcStatus");
-let current: Source | null = null;
+let current: Source | null = null, servedSrc: Source | null = null;
 let busy = false;
 
-function showSource(extra: string[] = [], cls = "dim") {
-  srcStatus.className = cls;
-  srcStatus.replaceChildren(...extra.map((t, i) => { const d = document.createElement("div"); d.textContent = t; if (!i) d.style.fontWeight = "bold"; return d; }));
+function lineBlock(host: HTMLElement, lines: string[], cls: string) {
+  host.className = "line " + cls;
+  host.replaceChildren(...lines.map((t) => { const d = document.createElement("div"); d.textContent = t; return d; }));
 }
+function showSource(extra: string[] = [], cls = "dim") { lineBlock(srcStatus, extra, cls); }
+/** Status of the "Other ways to load" disclosure (served copy, picked folder); rebuilt on a language change like the others. */
+const altStatus = $("altStatus");
+let altLines: (() => string[]) | null = null, altCls = "dim";
+function showAlt(lines: (() => string[]) | null, cls = "dim") { altLines = lines; altCls = cls; lineBlock(altStatus, lines ? lines() : [], cls); }
 /** Status lines are produced by a function so that they can be rebuilt in the other language. */
 let srcLines: (() => string[]) | null = null, srcCls = "dim";
 function showSourceT(lines: () => string[], cls = "dim") { srcLines = lines; srcCls = cls; showSource(lines(), cls); }
-function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; btnImport.disabled = b || importing; }
+function setBusy(b: boolean) { busy = b; btnPlay.disabled = b || !current; btnPick.disabled = b; refreshImportButtons(); }
+const invite = () => showSourceT(() => [T("ov.invite")], "dim");
 function selectSource(src: Source) {
   current = src;
-  showSourceT(() => [T("ov.using", { label: src.label }), ...src.summary()], src.gameFiles().length ? "ok" : "err");
+  const cls = src.gameFiles().length ? "ok" : "err";
+  if (src === importedSrc) showSourceT(() => [T("ov.using", { label: src.label }), ...src.summary()], cls);
+  else { // a served or picked copy: one plain line here, the details under "Other ways to load"
+    showSourceT(() => [src === servedSrc ? T("ov.usinglocal") : T("ov.using", { label: src.label })], cls);
+    showAlt(() => [T("ov.using", { label: src.label }), ...src.summary()], cls === "ok" ? "dim" : "err");
+  }
   btnPlay.textContent = T("ov.play"); setBusy(false); btnPlay.focus();
   refreshImportButtons();
 }
@@ -373,8 +403,8 @@ pick.onchange = () => {
   if (!files.length) return;
   const src = pickedSource(files);
   if (!src.gameFiles().length) {
-    showSourceT(() => [T("ov.nofiles"), T("ov.nofiles2", { n: files.length })], "err");
-    current = null; setBusy(false);
+    showAlt(() => [T("ov.nofiles"), T("ov.nofiles2", { n: files.length })], "err");
+    current = null; invite(); setBusy(false);
     return;
   }
   selectSource(src);
@@ -393,7 +423,7 @@ const importStats = { runs: 0, lastMs: 0, worker: importer };
 
 /** Import status line: a function so that it is rebuilt when the language changes. */
 let impLine: (() => string) | null = null, impCls = "dim";
-function showImp(line: (() => string) | null, cls = "dim") { impLine = line; impCls = cls; impStatus.className = cls; impStatus.textContent = line ? line() : ""; }
+function showImp(line: (() => string) | null, cls = "dim") { impLine = line; impCls = cls; impStatus.className = "line " + cls; impStatus.textContent = line ? line() : ""; }
 const PHASES = ["header", "files", "voices", "fm", "cd", "done"] as const;
 const phaseText = (p: string) => T(`imp.phase.${(PHASES as readonly string[]).includes(p) ? p : "files"}` as UiKey);
 
@@ -407,6 +437,15 @@ function refreshImportButtons() {
   btnUseCache.hidden = !importedSrc || current === importedSrc || importing;
   btnClear.hidden = !importedSrc || importing;
   btnCancel.hidden = !importing;
+  // one button, three labels: Import disc image -> Importing -> Imported (Remove imported data brings the first one back)
+  btnImport.textContent = importing ? T("imp.button.busy") : importedSrc ? T("imp.button.done") : T("imp.button");
+  btnImport.disabled = busy || importing || !!importedSrc;
+}
+/** Fill the block meter: the value always ends on a block edge (the meter is a whole number of 28 px blocks wide, see system.css). */
+function setProgress(frac: number) {
+  const n = Math.max(1, Math.round((impBar.clientWidth + 4) / 28));
+  const k = Math.min(n, Math.ceil(Math.min(1, frac) * n - 1e-9));
+  impBar.value = k <= 0 ? 0 : Math.round((1000 * (28 * k - 4)) / (28 * n - 4));
 }
 let lastStorage = 0;
 function fmStatus(text: string | null) {
@@ -451,10 +490,10 @@ async function runImport(picked: File[]) {
     importStats.runs++;
     importedSrc?.dispose(); importedSrc = null; refreshImportButtons();
     const t0 = performance.now();
-    impProg.hidden = false; impBar.value = 0; impPhase.textContent = phaseText("header");
+    impProg.hidden = false; setProgress(0); impPhase.textContent = phaseText("header");
     showImp(() => pick.notes.join("; "), "dim");
     const meta = await importer.import(pick, copyCd, (p) => {
-      impBar.value = Math.round((p.done / Math.max(1, p.total)) * 1000); // max=1000
+      setProgress(p.done / Math.max(1, p.total));
       impPhase.textContent = `${phaseText(p.phase)} ${Math.round((p.done / Math.max(1, p.total)) * 100)}%`;
     });
     importStats.lastMs = performance.now() - t0;
@@ -486,7 +525,7 @@ btnClear.onclick = async () => {
   }
   clearTimeout(clearArmed); clearArmed = 0; btnClear.textContent = T("imp.remove");
   importedSrc?.dispose();
-  if (current === importedSrc) { current = null; btnPlay.disabled = true; showSource([]); }
+  if (current === importedSrc) { current = null; btnPlay.disabled = true; invite(); }
   importedSrc = null;
   try { await clearCache(); showImp(() => T("imp.removed"), "ok"); } catch (e) { showImp(() => errText("io", String(e)), "err"); }
   refreshImportButtons(); void refreshStorage(); void impFm;
@@ -659,11 +698,16 @@ function handleEvent(e: any) {
   fit();
   await applyLanguage(wantLang, false);
   const r = await probeServed();
+  servedSrc = r.src ?? null;
   const cached = await openCached().catch(() => null);
   const first: Source | null = r.src ?? cached;
   if (r.src) selectSource(r.src);
   else if (cached) selectSource(cached);
-  else { showSourceT(() => [T("ov.nolocal"), T("ov.nolocal2", { err: r.error ? T(r.error as UiKey) : "" })], "warn"); setBusy(false); btnImport.focus(); }
+  else {
+    // a player without data gets an invitation, not an error; the probe's detail is for the developer, under "Other ways to load"
+    invite(); showAlt(() => [T("ov.nolocal"), ...(r.error ? [T(r.error as UiKey)] : [])], "dim");
+    setBusy(false); btnImport.focus();
+  }
   if (cached) showImp(foundLine(cached), "ok");
   refreshImportButtons(); void refreshStorage();
   setMsg(first ? "msg.ready" : "msg.waiting");

@@ -5,149 +5,156 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>Snatcher Web Port</title>
-<style>
-  :root { --bg: #08090c; --card: #10131a; --line: #252b36; --fg: #c8d0d8; --dim: #7c8694; --accent: #3fb8c8; --warn: #e0b050; --err: #e07070; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, Consolas, monospace; }
-  button, label.btn, select { font: inherit; color: var(--fg); background: #151922; border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
-  button:hover:not(:disabled), label.btn:hover { border-color: var(--accent); }
-  button:disabled { opacity: .45; cursor: default; }
-  button.primary { background: #123a42; border-color: var(--accent); color: #e8f6f8; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  #wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; gap: 8px; padding: 4px 16px; }
-  canvas { image-rendering: pixelated; background: #000; display: block; max-width: 100%; }
-  canvas.smooth { image-rendering: auto; }
-  canvas:focus { outline: none; }
-  #bar { display: flex; gap: 8px; align-items: center; color: var(--dim); flex-wrap: wrap; justify-content: center; }
-  #bar button { padding: 3px 8px; }
-  #msg { color: var(--accent); }
-  :fullscreen #bar { display: none; }
-  #debug { position: fixed; left: 8px; top: 8px; white-space: pre; background: rgba(0,0,0,.75); padding: 6px 8px; border-radius: 4px; display: none; pointer-events: none; font-size: 12px; max-width: calc(100vw - 16px); overflow: hidden; }
-  /* overlay + settings panel */
-  .modal { position: fixed; inset: 0; background: rgba(4,5,8,.92); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 16px; z-index: 10; }
-  .modal[hidden] { display: none; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; width: 100%; max-width: 560px; margin: auto; }
-  .card h1 { font-size: 18px; margin: 0 0 8px; color: #e8eef2; }
-  .card h2 { font-size: 13px; margin: 16px 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
-  .card p { margin: 6px 0; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
-  .dim { color: var(--dim); }
-  .ok { color: #7cc88a; } .warn { color: var(--warn); } .err { color: var(--err); }
-  ul.notes { margin: 6px 0; padding-left: 18px; }
-  ul.notes li { margin: 2px 0; }
-  .sl { display: grid; grid-template-columns: 70px 1fr 40px; gap: 8px; align-items: center; margin: 4px 0; }
-  .sl input { width: 100%; accent-color: var(--accent); }
-  table.keys { border-collapse: collapse; width: 100%; }
-  table.keys td { padding: 2px 6px 2px 0; vertical-align: top; }
-  table.keys td:first-child { color: var(--fg); white-space: nowrap; }
-  .icon { display: inline-flex; vertical-align: middle; margin-right: 4px; } .icon svg { display: block; } .iconlabel { margin-right: 2px; }
-  kbd { background: #1b2029; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: inherit; }
-  details > summary { cursor: pointer; color: var(--accent); }
-  .drop { border: 1px dashed var(--line); border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
-  .drop.drag { border-color: var(--accent); background: #0f2227; }
-  progress { width: 100%; height: 14px; accent-color: var(--accent); }
-  #impProg { margin: 8px 0; }
-  .check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
-  @media (max-width: 480px) { .card { padding: 12px; } body { font-size: 13px; } }
-</style>
+<!-- the design system ("Junker HQ terminal", docs/design-system.md): tokens, base, components, screens; font self-hosted in /fonts -->
+<link rel="preload" href="/fonts/DotGothic16-subset.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles/system.css">
 </head>
 <body>
 <div id="wrap">
-  <canvas id="screen" width="256" height="224" tabindex="0" role="img" aria-label="Snatcher game screen" data-i18n-label="canvas.label"></canvas>
-  <div id="bar" role="toolbar" aria-label="Game controls">
-    <button id="btnMenu" type="button" title="Settings, controls, saves (Esc)" data-i18n-title="bar.menu.title" data-i18n="bar.menu">Menu (Esc)</button>
-    <button id="btnMute" type="button" aria-pressed="false" title="Mute audio (M)" data-i18n-title="bar.mute.title">Mute (M)</button>
-    <button id="btnFull" type="button" title="Fullscreen (F)" data-i18n-title="bar.full.title" data-i18n="bar.full">Fullscreen (F)</button>
+  <div id="monitor">
+    <canvas id="screen" width="256" height="224" tabindex="0" role="img" aria-label="Snatcher game screen" data-i18n-label="canvas.label"></canvas>
+  </div>
+  <div id="bar" role="toolbar" aria-label="Game controls" data-i18n-label="bar.label">
+    <button id="btnMenu" class="btn" type="button" title="Settings, controls, saves (Esc)" data-i18n-title="bar.menu.title" data-i18n="bar.menu">Menu (Esc)</button>
+    <button id="btnMute" class="btn" type="button" aria-pressed="false" title="Mute audio (M)" data-i18n-title="bar.mute.title">Mute (M)</button>
+    <button id="btnFull" class="btn" type="button" title="Fullscreen (F)" data-i18n-title="bar.full.title" data-i18n="bar.full">Fullscreen (F)</button>
     <span id="msg" role="status" aria-live="polite" data-i18n="msg.loading">loading…</span>
     <span id="bgStatus" class="dim" role="status"></span>
   </div>
 </div>
 <div id="debug"></div>
 
-<!-- start overlay -->
-<div id="overlay" class="modal" role="dialog" aria-modal="true" aria-labelledby="ovTitle">
-  <div class="card">
-    <h1 id="ovTitle" data-i18n="ov.title">Snatcher – web port</h1>
-    <p data-i18n-html="ov.intro">A private, non-commercial preservation project: the game engine is rewritten for the browser and plays <b>your own</b> copy of the game data. No game data is included or uploaded; everything stays on this machine.</p>
-    <h2 data-i18n="ov.files">Game files</h2>
-    <p id="srcStatus" class="dim" data-i18n="ov.looking">Looking for local files…</p>
-    <div class="row">
-      <button id="btnPlay" class="primary" type="button" disabled data-i18n="ov.play">Play</button>
-      <button id="btnPick" type="button" data-i18n="ov.pick">Choose extracted folder…</button>
-      <input id="pick" type="file" webkitdirectory multiple hidden>
-    </div>
-    <p class="dim" data-i18n-html="ov.help">Choose the folder you extracted from your disc (the project's <code>assets</code> folder works best: it holds <code>raw/files</code>, <code>raw/header.bin</code>, <code>raw/ip.bin</code> and the audio in <code>audio/web</code> and <code>web/music</code>). Files are read in this page only.</p>
-    <h2 data-i18n="ov.disc">Disc image</h2>
-    <div id="impBox" class="drop">
-      <p data-i18n-html="imp.help">Pick your disc image: the <code>.cue</code> file together with its <code>.bin</code> file(s), all at once, or drop them on this page. The game is imported once and then plays straight from this browser.</p>
-      <p class="ok" data-i18n="imp.privacy">Your files are read and processed in this browser tab only and are never uploaded. The imported data stays in this browser's private storage until you remove it.</p>
+<!-- start overlay: one centred window. Step 1 imports the disc image, step 2 plays; the rest is folded away -->
+<div id="overlay" class="modal desk" role="dialog" aria-modal="true" aria-labelledby="ovWordmark">
+  <section id="ovWin" class="win">
+    <header class="win-title">
+      <span class="win-name" data-i18n="ov.window">Web port</span>
+      <div class="lang" role="group" aria-label="Language / Idioma">
+        <button id="langOvEn" type="button" data-lang="en" lang="en" aria-pressed="true">EN</button>
+        <button id="langOvPt" type="button" data-lang="pt-BR" lang="pt-BR" aria-pressed="false">PT-BR</button>
+      </div>
+    </header>
+    <div class="win-body">
+      <h1 id="ovWordmark" class="wordmark" data-i18n="ov.title">Snatcher</h1>
+      <p class="intro" data-i18n="ov.intro">Play your own copy of Snatcher (USA, Sega CD) in this browser; nothing is uploaded.</p>
+
+      <h2 class="strip"><span class="num" aria-hidden="true">1</span><span data-i18n="ov.step1">Your disc</span></h2>
+      <div id="impBox" class="slot">
+        <span class="when-idle" data-i18n-html="imp.help">Pick the <code>.cue</code> file and its <code>.bin</code> file(s) together, or drop them here.</span>
+        <span class="when-drag" data-i18n="imp.slot.drag">Release to import</span>
+      </div>
       <div class="row">
-        <button id="btnImport" type="button" data-i18n="imp.button">Import disc image (.cue + .bin)…</button>
+        <button id="btnImport" class="btn" type="button" data-i18n="imp.button">Import disc image…</button>
         <input id="discPick" type="file" multiple accept=".cue,.bin,.img,.iso" hidden>
-        <button id="btnCancel" type="button" hidden data-i18n="imp.cancel">Cancel</button>
+        <button id="btnCancel" class="btn" type="button" hidden data-i18n="imp.cancel">Cancel</button>
+        <button id="btnUseCache" class="btn" type="button" hidden data-i18n="imp.use">Use imported data</button>
+        <button id="btnClear" class="btn" type="button" hidden data-i18n="imp.remove">Remove imported data</button>
       </div>
-      <label class="check"><input type="checkbox" id="impCd" checked> <span data-i18n="imp.cd">Keep the CD music in browser storage (about 490 MB more; otherwise the music needs your files again on each visit)</span></label>
-      <div id="impProg" hidden><progress id="impBar" max="1000" value="0" aria-labelledby="impPhase"></progress><div id="impPhase" class="dim" role="status"></div></div>
-      <p id="impStatus" class="dim" role="status"></p>
-      <p id="impFm" class="dim" role="status"></p>
+      <label class="check"><input type="checkbox" id="impCd" checked> <span data-i18n="imp.cd">Keep the CD music in this browser (490 MB more).</span></label>
+      <div id="impProg" hidden>
+        <div class="meter"><progress id="impBar" max="1000" value="0" aria-labelledby="impPhase"></progress></div>
+        <p id="impPhase" class="line" role="status"></p>
+      </div>
+      <p id="impStatus" class="line dim" role="status"></p>
+      <p id="impFm" class="line dim" role="status"></p>
+      <p class="note" data-i18n="imp.privacy">Your files are read in this browser tab only and are never uploaded. The imported data stays in this browser until you remove it.</p>
+
+      <h2 class="strip"><span class="num" aria-hidden="true">2</span><span data-i18n="ov.step2">Play</span></h2>
       <div class="row">
-        <button id="btnUseCache" type="button" hidden data-i18n="imp.use">Use imported data</button>
-        <button id="btnClear" type="button" hidden data-i18n="imp.remove">Remove imported data</button>
+        <button id="btnPlay" class="btn primary big" type="button" disabled data-i18n="ov.play">Play</button>
       </div>
-      <p id="impStorage" class="dim"></p>
+      <p id="srcStatus" class="line dim" data-i18n="ov.invite">Import your disc in step 1, then press Play.</p>
+      <ul id="notes" class="notes"></ul>
+
+      <div class="folds">
+        <details>
+          <summary data-i18n="ov.saves">Saves</summary>
+          <div class="fold-body">
+            <div class="row">
+              <button id="ovImport" class="btn" type="button" data-i18n="ov.import">Import saves…</button>
+              <button id="ovExport" class="btn" type="button" data-i18n="ov.export">Export saves</button>
+            </div>
+            <p id="ovSaves" class="note"></p>
+          </div>
+        </details>
+        <details>
+          <summary data-i18n="ov.controls">Controls</summary>
+          <div class="fold-body"><div class="controls"></div></div>
+        </details>
+        <details id="altBox">
+          <summary data-i18n="ov.alt">Other ways to load</summary>
+          <div class="fold-body">
+            <p data-i18n="ov.alt.folder">Already have the game files extracted? Choose that folder (the project's assets folder works best). The files are read in this page only.</p>
+            <div class="row">
+              <button id="btnPick" class="btn" type="button" data-i18n="ov.pick">Choose extracted folder…</button>
+              <input id="pick" type="file" webkitdirectory multiple hidden>
+            </div>
+            <div id="altStatus" class="line dim" role="status"></div>
+            <p class="note" data-i18n-html="ov.alt.dev">Developers: after the extraction, <code>bun web/server.ts</code> serves <code>./assets</code> and this page selects it by itself.</p>
+          </div>
+        </details>
+      </div>
+      <p id="impStorage" class="note"></p>
     </div>
-    <ul id="notes" class="notes"></ul>
-    <h2 data-i18n="ov.saves">Saves</h2>
-    <div class="row">
-      <button id="ovImport" type="button" data-i18n="ov.import">Import saves…</button>
-      <button id="ovExport" type="button" data-i18n="ov.export">Export saves</button>
-      <span id="ovSaves" class="dim"></span>
-    </div>
-    <h2 data-i18n="ov.language">Language</h2>
-    <div class="row"><select id="langOv" aria-label="Language / Idioma"><option value="en">English</option><option value="pt-BR">Português (Brasil)</option></select></div>
-    <details>
-      <summary data-i18n="ov.controls">Controls</summary>
-      <div class="controls"></div>
-    </details>
-  </div>
+  </section>
 </div>
 
-<!-- settings panel -->
+<!-- pause panel: same window, tabs instead of a long scroll -->
 <div id="panel" class="modal" role="dialog" aria-modal="true" aria-labelledby="pnTitle" hidden>
-  <div class="card">
-    <h1 id="pnTitle"><span data-i18n="pn.title">Menu</span> <span class="dim" data-i18n="pn.paused">(game paused)</span></h1>
-    <div class="row"><button id="pnResume" class="primary" type="button" data-i18n="pn.resume">Resume</button></div>
-    <h2 data-i18n="pn.status">Status</h2>
-    <ul id="pnNotes" class="notes"></ul>
-    <h2 data-i18n="pn.volume">Volume</h2>
-    <div class="sl"><label for="volMusic" data-i18n="pn.music">Music</label><input id="volMusic" type="range" min="0" max="100" step="1"><output id="volMusicO"></output></div>
-    <div class="sl"><label for="volVoice" data-i18n="pn.voice">Voice</label><input id="volVoice" type="range" min="0" max="100" step="1"><output id="volVoiceO"></output></div>
-    <div class="sl"><label for="volFx" data-i18n="pn.fx">Effects</label><input id="volFx" type="range" min="0" max="100" step="1"><output id="volFxO"></output></div>
-    <p class="dim" id="soundMode"></p>
-    <h2 data-i18n="pn.display">Display</h2>
-    <label class="check"><input type="checkbox" id="smooth"> <span data-i18n="pn.smooth">Smooth scaling</span></label>
-    <label class="check"><input type="checkbox" id="vsub"> <span data-i18n="pn.vsub" data-i18n-title="pn.vsub.title">Voice subtitles</span></label>
-    <label class="check"><input type="checkbox" id="dbg"> <span data-i18n="pn.debug">Debug overlay (F1)</span></label>
-    <div class="row"><button id="pnFull" type="button" data-i18n="bar.full">Fullscreen (F)</button></div>
-    <h2 data-i18n="pn.language">Language</h2>
-    <div class="row"><select id="langPn" aria-label="Language / Idioma"><option value="en">English</option><option value="pt-BR">Português (Brasil)</option></select></div>
-    <h2 data-i18n="pn.gamepad">Gamepad</h2>
-    <p class="dim" id="padInfo"></p>
-    <div class="row"><label for="padFamily" data-i18n="pn.buttonsfor">Buttons for</label><select id="padFamily"></select><button id="padReset" type="button" data-i18n="pn.reset">Reset to defaults</button></div>
-    <table class="keys" id="padMapTable"></table>
-    <p class="dim" id="padHint"></p>
-    <div class="row"><label for="promptMode" data-i18n="pn.promptlabel">Button names in game text</label>
-      <select id="promptMode"><option value="auto" data-i18n="pn.prompt.auto">Icons of the last used device</option><option value="letters" data-i18n="pn.prompt.letters">Original letters (A B C)</option></select></div>
-    <h2 data-i18n="pn.saves">Saves</h2>
-    <div class="row">
-      <button id="pnExport" type="button" data-i18n="ov.export">Export saves</button>
-      <button id="pnImport" type="button" data-i18n="ov.import">Import saves…</button>
+  <section class="win">
+    <header class="win-title">
+      <h1 id="pnTitle" class="win-name" data-i18n="pn.title">Paused</h1>
+      <div class="lang" role="group" aria-label="Language / Idioma">
+        <button id="langPnEn" type="button" data-lang="en" lang="en" aria-pressed="true">EN</button>
+        <button id="langPnPt" type="button" data-lang="pt-BR" lang="pt-BR" aria-pressed="false">PT-BR</button>
+      </div>
+    </header>
+    <div class="win-body">
+      <div class="row">
+        <button id="pnResume" class="btn primary big" type="button" data-i18n="pn.resume">Resume</button>
+      </div>
+      <ul id="pnNotes" class="notes"></ul>
+      <div class="tabs" role="tablist" aria-label="Menu sections" data-i18n-label="pn.tabs">
+        <button id="tabSound" class="tab" type="button" role="tab" aria-selected="true" aria-controls="tpSound" data-i18n="tab.sound">Sound</button>
+        <button id="tabDisplay" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tpDisplay" tabindex="-1" data-i18n="tab.display">Display</button>
+        <button id="tabControls" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tpControls" tabindex="-1" data-i18n="tab.controls">Controls</button>
+        <button id="tabGamepad" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tpGamepad" tabindex="-1" data-i18n="tab.gamepad">Gamepad</button>
+        <button id="tabSaves" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tpSaves" tabindex="-1" data-i18n="tab.saves">Saves</button>
+      </div>
+      <div id="tpSound" class="tabpanel" role="tabpanel" aria-labelledby="tabSound">
+        <div class="sl"><label for="volMusic" data-i18n="pn.music">Music</label><input id="volMusic" type="range" min="0" max="100" step="1"><output id="volMusicO"></output></div>
+        <div class="sl"><label for="volVoice" data-i18n="pn.voice">Voice</label><input id="volVoice" type="range" min="0" max="100" step="1"><output id="volVoiceO"></output></div>
+        <div class="sl"><label for="volFx" data-i18n="pn.fx">Effects</label><input id="volFx" type="range" min="0" max="100" step="1"><output id="volFxO"></output></div>
+        <p class="note" id="soundMode"></p>
+      </div>
+      <div id="tpDisplay" class="tabpanel" role="tabpanel" aria-labelledby="tabDisplay" hidden>
+        <label class="check"><input type="checkbox" id="smooth"> <span data-i18n="pn.smooth">Smooth scaling</span></label>
+        <label class="check"><input type="checkbox" id="vsub"> <span data-i18n="pn.vsub" data-i18n-title="pn.vsub.title">Voice subtitles</span></label>
+        <label class="check"><input type="checkbox" id="dbg"> <span data-i18n="pn.debug">Debug overlay (F1)</span></label>
+        <div class="row"><button id="pnFull" class="btn" type="button" data-i18n="bar.full">Fullscreen (F)</button></div>
+      </div>
+      <div id="tpControls" class="tabpanel" role="tabpanel" aria-labelledby="tabControls" hidden>
+        <div class="controls"></div>
+      </div>
+      <div id="tpGamepad" class="tabpanel" role="tabpanel" aria-labelledby="tabGamepad" hidden>
+        <p id="padInfo" class="note"></p>
+        <h2 class="strip" data-i18n="pn.map">Button map</h2>
+        <div class="row"><label for="padFamily" data-i18n="pn.buttonsfor">Buttons for</label><select id="padFamily"></select><button id="padReset" class="btn" type="button" data-i18n="pn.reset">Reset to defaults</button></div>
+        <table class="keys" id="padMapTable"></table>
+        <p id="padHint" class="note"></p>
+        <h2 class="strip" data-i18n="pn.promptlabel">Button names in game text</h2>
+        <div class="row"><select id="promptMode" aria-label="Button names in game text" data-i18n-label="pn.promptlabel"><option value="auto" data-i18n="pn.prompt.auto">Icons of the last used device</option><option value="letters" data-i18n="pn.prompt.letters">Original letters (A B C)</option></select></div>
+      </div>
+      <div id="tpSaves" class="tabpanel" role="tabpanel" aria-labelledby="tabSaves" hidden>
+        <div class="row">
+          <button id="pnExport" class="btn" type="button" data-i18n="ov.export">Export saves</button>
+          <button id="pnImport" class="btn" type="button" data-i18n="ov.import">Import saves…</button>
+        </div>
+        <p id="pnSaves" class="note"></p>
+        <input id="importFile" type="file" accept="application/json,.json" hidden>
+      </div>
     </div>
-    <p class="dim" id="pnSaves"></p>
-    <input id="importFile" type="file" accept="application/json,.json" hidden>
-    <h2 data-i18n="pn.controls">Controls</h2>
-    <div class="controls"></div>
-  </div>
+  </section>
 </div>
 <script type="module" src="/dist/main.js"></script>
 </body>
