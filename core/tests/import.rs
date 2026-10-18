@@ -1,7 +1,7 @@
 //! Disc importer tests.
 //!  * synthetic discs (always run): wrong disc / region / edition, truncated or malformed images give distinct, clear errors
 //!  * real disc (skipped when `work/snatcher.cue` or the reference extraction `assets/` is absent, so CI without data stays green):
-//!      - game files, header.bin, ip.bin equal `assets/raw` byte for byte
+//!      - game files (files.pack entries), header.bin, ip.bin equal `assets/raw` byte for byte
 //!      - CD-DA equals `assets/raw/audio/trackNN.wav` sample data
 //!      - voices, banks, drum kit equal the WAVs of `snt audio-pcm` (exact), manifests equal `pcm.json` / `fm.json`
 //!      - FM audio equals the WAVs of `snt audio-fm` (exact; a subset, all 122 with SNT_FULL=1); the dry run equals the full run
@@ -143,6 +143,19 @@ fn wav_samples(p: &Path) -> Vec<i16> {
     d[44..].chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])).collect()
 }
 fn json(p: &Path) -> String { fs::read_to_string(p).unwrap() }
+/// (name, offset, size) of the entries of `files` in meta.json
+fn pack_index(meta: &str) -> Vec<(String, usize, usize)> {
+    let mut v = Vec::new();
+    let mut rest = meta;
+    while let Some(i) = rest.find("{\"name\": \"") {
+        let t = &rest[i + 10..];
+        let name = t[..t.find('"').unwrap()].to_string();
+        let num = |k: &str| -> usize { let j = t.find(k).unwrap() + k.len(); t[j..].split(|c: char| !c.is_ascii_digit()).next().unwrap().parse().unwrap() };
+        v.push((name, num("\"off\": "), num("\"size\": ")));
+        rest = &t[1..];
+    }
+    v
+}
 
 #[test]
 fn single_bin_import_equals_the_reference_extraction() {
@@ -156,15 +169,23 @@ fn single_bin_import_equals_the_reference_extraction() {
 
     // game files + boot code, byte for byte (PCMLD_01.BIN becomes voices.pcm: checked below)
     let raw = r.join("assets/raw");
+    let meta0 = json(&out.join("meta.json"));
+    let pack = fs::read(out.join(import::PACK_STREAM)).unwrap();
+    let index = pack_index(&meta0);
     let mut n = 0;
-    for e in fs::read_dir(raw.join("files")).unwrap() {
-        let name = e.unwrap().file_name().to_string_lossy().to_string();
-        if name == import::PCMLD { continue }
-        same_file(&out.join("files").join(&name), &raw.join("files").join(&name));
+    for (name, off, size) in &index {
+        let want = fs::read(raw.join("files").join(name)).unwrap();
+        assert_eq!(want.len(), *size, "{name} size");
+        assert!(pack[*off..off + size] == want[..], "{name} differs from assets/raw/files");
         n += 1;
     }
-    assert_eq!(fs::read_dir(out.join("files")).unwrap().count(), n, "no extra files");
     assert_eq!(n, 99);
+    let mut on_disk: Vec<String> = fs::read_dir(raw.join("files")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).filter(|n| n != import::PCMLD).collect();
+    let mut listed: Vec<String> = index.iter().map(|x| x.0.clone()).collect();
+    on_disk.sort(); listed.sort();
+    assert_eq!(listed, on_disk, "same set of files as the extraction (PCMLD_01.BIN aside)");
+    assert_eq!(index.iter().map(|x| x.2).sum::<usize>(), pack.len(), "the pack holds nothing else");
+    drop(pack);
     same_file(&out.join("header.bin"), &raw.join("header.bin"));
     same_file(&out.join("ip.bin"), &raw.join("ip.bin"));
 
@@ -291,9 +312,7 @@ fn multi_bin_import_equals_single_bin() {
         let e = e.unwrap();
         let name = e.file_name();
         if name == "meta.json" { continue } // the track table names different files
-        if e.path().is_dir() {
-            for f in fs::read_dir(e.path()).unwrap() { let f = f.unwrap(); same_file(&f.path(), &multi.join(&name).join(f.file_name())); }
-        } else { same_file(&e.path(), &multi.join(&name)); }
+        same_file(&e.path(), &multi.join(&name));
     }
     // the table of tracks points to files 1..20, one per track, each starting after its 150-sector pregap
     let m = json(&multi.join("meta.json"));

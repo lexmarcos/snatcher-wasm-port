@@ -7,7 +7,7 @@
 //! | stream | content |
 //! |---|---|
 //! | `header.bin`, `ip.bin` | boot code of the disc (as `snt extract` writes them) |
-//! | `files/NAME` | every ISO9660 file except PCMLD_01.BIN (identical to `snt extract` output) |
+//! | `files.pack` | every ISO9660 file except PCMLD_01.BIN, one after the other (each identical to the `snt extract` output; `meta.json` lists name, offset, size) |
 //! | `voices.pcm` | all voice clips: signed 8-bit mono (sign-magnitude PCM decoded, 16276 Hz) |
 //! | `sfx.pcm` | PCM effect banks and the drum kit: signed 8-bit mono |
 //! | `cdda.pcm` | CD-DA tracks as on the disc: 16-bit LE stereo 44.1 kHz (only when `copy_cdda`) |
@@ -47,6 +47,7 @@ pub const SNATCHER_USA: KnownDisc = KnownDisc {
 pub const CHUNK_SECTORS: u32 = 256;
 /// Pieces of the PCM voice file are also this big when no voice block is pending.
 pub const MAX_FM_ID: u8 = 0x7A;
+pub const PACK_STREAM: &str = "files.pack";
 pub const VOICES_STREAM: &str = "voices.pcm";
 pub const SFX_STREAM: &str = "sfx.pcm";
 pub const CDDA_STREAM: &str = "cdda.pcm";
@@ -304,25 +305,25 @@ pub fn import<I: DiscIo, S: Sink>(cue_text: &str, file_bytes: &[u64], io: I, sin
 
     // ---- game files (all but the PCM loader image, which becomes voices.pcm), hashed on the way
     let mut small: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let mut names: Vec<String> = Vec::new();
+    let mut names: Vec<(String, u64, u64)> = Vec::new();
     for f in files.iter().filter(|f| f.name != PCMLD) {
-        let stream = format!("files/{}", f.name);
+        let at = *o.sizes.get(PACK_STREAM).unwrap_or(&0);
         let keep = NEED.contains(&f.name.as_str());
         let mut hs = Sha256::new();
         let mut kept = Vec::new();
         disc.stream(f.lba, f.size as u64, &mut |c| {
             hs.update(c);
             if keep { kept.extend_from_slice(c); }
-            o.put(&stream, c)?;
+            o.put(PACK_STREAM, c)?;
             o.adv("files", c.len() as u64);
             Ok(())
         })?;
-        if f.size == 0 { o.put(&stream, &[])?; }
-        o.fin(&stream)?;
         digest_items.push((f.name.clone(), f.size as u64, hs.finish()));
-        names.push(f.name.clone());
+        names.push((f.name.clone(), at, f.size as u64));
         if keep { small.insert(f.name.clone(), kept); }
     }
+    o.put(PACK_STREAM, &[])?;
+    o.fin(PACK_STREAM)?;
 
     // ---- PCM voices (PCMLD_01.BIN decoded block by block; every byte of the file is read once, in order, and hashed)
     let lt = &small["PCMLT_01.BIN"];
@@ -441,8 +442,8 @@ pub fn import<I: DiscIo, S: Sink>(cue_text: &str, file_bytes: &[u64], io: I, sin
     // ---- meta.json last
     let mut sizes = String::new();
     for (k, (n, sz)) in o.sizes.iter().enumerate() { let _ = write!(sizes, "{}{}: {sz}", if k > 0 { ", " } else { "" }, jstr(n)); }
-    let names_j = names.iter().map(|n| jstr(n)).collect::<Vec<_>>().join(", ");
-    let meta = format!("{{\n  \"format\": 1,\n  \"title\": {},\n  \"serial\": {},\n  \"region\": {},\n  \"digest\": \"{digest}\",\n  \"files\": [{names_j}],\n  \"cdda\": {{\"copied\": {}, \"rate\": 44100, \"tracks\": {{{cj}}}}},\n  \"streams\": {{{sizes}}}\n}}\n",
+    let names_j = names.iter().map(|(n, off, size)| format!("{{\"name\": {}, \"off\": {off}, \"size\": {size}}}", jstr(n))).collect::<Vec<_>>().join(",\n    ");
+    let meta = format!("{{\n  \"format\": 1,\n  \"title\": {},\n  \"serial\": {},\n  \"region\": {},\n  \"digest\": \"{digest}\",\n  \"files\": [\n    {names_j}\n  ],\n  \"cdda\": {{\"copied\": {}, \"rate\": 44100, \"tracks\": {{{cj}}}}},\n  \"streams\": {{{sizes}}}\n}}\n",
         jstr(SNATCHER_USA.title), jstr(&h.serial), jstr(&h.region), opts.copy_cdda);
     o.whole("meta.json", meta.as_bytes())?;
     o.sink.progress("done", o.total, o.total);

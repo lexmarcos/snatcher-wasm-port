@@ -36,7 +36,7 @@ impl DiscIo for FsIo {
     }
 }
 
-/// Writes every stream to a file below `root` (`files/NAME` creates the directory).
+/// Writes every stream to a file below `root` (a name with `/`, like `fm/song_01.s16`, creates the directory).
 pub struct DirSink { pub root: PathBuf, open: HashMap<String, File>, pub log: Vec<(String, u64, u64)> }
 
 impl DirSink {

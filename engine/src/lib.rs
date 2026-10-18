@@ -10,6 +10,7 @@ pub mod modules;
 pub mod menus;
 pub mod shoot;
 pub mod vsub;
+pub mod importer;
 
 pub use game::{Engine, Out, H, W};
 
