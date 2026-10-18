@@ -40,13 +40,23 @@ fn wav_header(data_len: u32) -> Vec<u8> {
     h
 }
 
-fn extract(bin: &Path, cue: &Path, out: &Path) -> Result<(), String> {
-    let raw = fs::read(bin).map_err(|e| e.to_string())?;
-    let cue = fs::read_to_string(cue).map_err(|e| e.to_string())?;
-    let tracks = disc::parse_cue(&cue);
-    let total = (raw.len() / disc::RAW_SECTOR) as u32;
-    let t1_len = tracks.get(1).map(|t| t.2.unwrap_or(t.3)).unwrap_or(total);
+fn extract(bin: &Path, cue_path: &Path, out: &Path) -> Result<(), String> {
+    // `bin` may be any of the files of the cue: the cue names the files, they are looked up next to it (a multi-bin Redump cue works)
+    let cue_text = fs::read_to_string(cue_path).map_err(|e| e.to_string())?;
+    let cue = disc::Cue::parse(&cue_text)?;
+    let dir = cue_path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let names: Vec<String> = if cue.files.len() == 1 && !dir.join(&cue.files[0]).exists() { vec![bin.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()] } else { cue.files.clone() };
+    let bin_dir = if cue.files.len() == 1 && !dir.join(&cue.files[0]).exists() { bin.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new(".")) } else { dir };
+    let (mut io, sizes) = sncore::import::native::FsIo::open(bin_dir, &names)?;
+    let tracks = cue.layout(&sizes)?;
+    let t1 = tracks.first().ok_or("no tracks")?;
+    if t1.mode != disc::TrackMode::Mode1Raw { return Err("track 1 must be MODE1/2352".into()); }
+    let t1_len = t1.sectors;
+    let mut raw = vec![0u8; t1_len as usize * disc::RAW_SECTOR];
+    use sncore::import::DiscIo;
+    io.read(t1.file, t1.start, &mut raw)?;
     let t = DataTrack::from_raw(&raw, t1_len as usize)?;
+    drop(raw);
     let h = SegaHeader::parse(t.sector(0))?;
     fs::create_dir_all(out.join("files")).map_err(|e| e.to_string())?;
     fs::create_dir_all(out.join("audio")).map_err(|e| e.to_string())?;
@@ -73,17 +83,16 @@ fn extract(bin: &Path, cue: &Path, out: &Path) -> Result<(), String> {
     }
     fs::write(out.join("filelist.tsv"), &list).map_err(|e| e.to_string())?;
     report += &format!("ISO9660 files: {}\n", files.len());
-    // CD-DA tracks: from INDEX 01 to the next track's INDEX 00 (or end of image).
-    for (i, tr) in tracks.iter().enumerate() {
-        if tr.1 != "AUDIO" { continue }
-        let start = tr.3 as usize;
-        let end = tracks.get(i + 1).map(|n| n.2.unwrap_or(n.3)).unwrap_or(total) as usize;
-        let pcm = &raw[start * disc::RAW_SECTOR..end * disc::RAW_SECTOR];
+    // CD-DA tracks: from INDEX 01 to the next track's INDEX 00 (or the end of its file).
+    for tr in tracks.iter().filter(|t| t.mode == disc::TrackMode::Audio) {
+        let mut pcm = vec![0u8; tr.sectors as usize * disc::RAW_SECTOR];
+        io.read(tr.file, tr.start, &mut pcm)?;
         let mut w = wav_header(pcm.len() as u32);
-        w.extend_from_slice(pcm);
-        let p: PathBuf = out.join("audio").join(format!("track{:02}.wav", tr.0));
+        w.extend_from_slice(&pcm);
+        let p: PathBuf = out.join("audio").join(format!("track{:02}.wav", tr.number));
         fs::write(&p, w).map_err(|e| e.to_string())?;
-        report += &format!("track {:02}: lba {}..{} ({:.1} s)\n", tr.0, start, end, (end - start) as f64 / 75.0);
+        let first = tr.start / disc::RAW_SECTOR as u64; // sector inside its file (the absolute LBA for a single-bin image)
+        report += &format!("track {:02}: lba {}..{} ({:.1} s)\n", tr.number, first, first + tr.sectors as u64, tr.sectors as f64 / 75.0);
     }
     fs::write(out.join("extract_report.txt"), &report).map_err(|e| e.to_string())?;
     print!("{report}");
