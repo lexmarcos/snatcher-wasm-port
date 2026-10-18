@@ -5,6 +5,7 @@ Code: `web/index.html`, `web/src/{main,sources,audio,input,pacer,saves}.ts`, `we
 framebuffer_ptr, take_events, debug_info). Build `scripts/build-web.sh`, tests `scripts/test-web.sh`.
 
 ## Status
+- **Disc image import** (`.cue` + `.bin` picked or dropped, checked, extracted in a worker, cached in OPFS, played with no ogg step): done and tested, section 8.
 - **Done and tested** (`web/test/ui.ts`, `pace.test.ts`, `sources.test.ts`, `shot.ts` with `newgame` and `scene=SP01:0`, no console errors):
   start overlay (served assets or folder picker), menu (Esc, pauses), volume sliders, fullscreen, mute, pause on hidden tab,
   smoothing and debug toggles, save export/import, save events reach the store and the engine, mono/stereo, FM/PCM stop
@@ -17,8 +18,8 @@ framebuffer_ptr, take_events, debug_info). Build `scripts/build-web.sh`, tests `
   `sfx_1c` is changed to `fm_cmd`, the `pcm` case in `handleEvent` becomes dead. `docs/re/modules.md` still says "mono/stereo
   option has no audible effect yet": it now has one in the front end (below).
 
-## 1. Asset sources (`sources.ts`)
-Two interchangeable `Source`s (game files, HEADER.BIN/IP.BIN, audio files by path relative to `assets/`):
+## 1. Asset sources (`sources.ts`, `imported.ts`)
+Three interchangeable `Source`s (the third, **imported**, is the player's path: section 8); the two below (game files, HEADER.BIN/IP.BIN, audio files by path relative to `assets/`):
 - **served**: `GET /assets/raw/filelist.tsv` lists the disc files (PCMLD_01.BIN is skipped: it is the PCM loader image, the
   audio pipeline replaces it), files come from `/assets/raw/files/NAME`, boot code from `/assets/raw/{header,ip}.bin`,
   audio from `/assets/web/music/trackNN.ogg` and `/assets/audio/web/**`. `web/server.ts` only serves from the local `assets/` dir.

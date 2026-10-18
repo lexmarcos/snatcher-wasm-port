@@ -26,8 +26,12 @@ let failed = 0, errors = 0;
 const check = (name: string, ok: boolean, extra = "") => { console.log(`${ok ? "PASS" : "FAIL"} ${name}${extra ? " – " + extra : ""}`); if (!ok) failed++; };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// ---- server without /assets
+// whatever happens (failed check, exception, early exit) the server and the browser started here must not stay behind
+let browser: Browser | undefined, browserPid = 0;
 let server: ReturnType<typeof Bun.spawn> | null = null;
+process.on("exit", () => { try { server?.kill(); } catch { /* gone */ } try { browser?.process()?.kill(); } catch { /* gone */ } });
+
+// ---- server without /assets
 const listening = async () => { try { await fetch(`http://localhost:${port}/`); return true; } catch { return false; } };
 if (!(await listening())) {
   server = Bun.spawn(["bun", "server.ts"], { cwd: join(root, "web"), env: { ...process.env, PORT: port, NO_ASSETS: "1" }, stdout: "ignore", stderr: "ignore" });
@@ -39,10 +43,9 @@ if (!noAssets) { console.log(`FAIL port ${port} serves /assets: start the server
 const base = join(homedir(), ".cache/puppeteer/chrome-headless-shell");
 const chrome = join(base, readdirSync(base).sort().pop()!, "chrome-headless-shell-linux64/chrome-headless-shell");
 // One real browser (own temporary profile, so OPFS is on disk like for a user, not the in-memory storage of an incognito context) per run.
-let browser: Browser, browserPid = 0;
 async function launch() {
   browser = await puppeteer.launch({ executablePath: chrome, args: ["--autoplay-policy=no-user-gesture-required"] });
-  browserPid = browser.process()!.pid!;
+  browserPid = browser!.process()!.pid!;
 }
 await launch();
 
@@ -140,7 +143,7 @@ for (const fl of flavours) {
   if (only && only !== fl.name) continue;
   console.log(`\n=== ${fl.name}${fl.drop ? " (drag and drop)" : ""} ===`);
   await launch(); // own profile: nothing cached from the other run
-  const page = await open(browser);
+  const page = await open(browser!);
   await page.waitForSelector("#btnImport", { timeout: 20000 });
   await sleep(500);
   check(`${fl.name}: no local files, Play disabled`, await page.$eval("#btnPlay", (e: any) => e.disabled));
@@ -241,7 +244,7 @@ for (const fl of flavours) {
     check(`${fl.name}: after removal Play is disabled again`, await page.$eval("#btnPlay", (e: any) => e.disabled));
   }
   await page.close();
-  await browser.close();
+  await browser!.close();
 }
 
 // ---- C: wrong inputs (small synthetic files)
@@ -274,7 +277,7 @@ if (!only || only === "wrong") {
     ["not a raw image (plain 2048-byte data)", () => [w("j.cue", cleanCue), w("game.bin", Buffer.alloc(2352 * 40, 7))], /not a raw 2352|not a Sega/],
   ];
   await launch();
-  const page = await open(browser);
+  const page = await open(browser!);
   await page.waitForSelector("#btnImport", { timeout: 20000 });
   for (const [name, mk, re] of cases) {
     caseNo++;
@@ -288,7 +291,7 @@ if (!only || only === "wrong") {
     check(`  (${name}) nothing was left in the cache`, !(await page.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("snatcher-import-v1"); return true; } catch { return false; } })));
     check(`  (${name}) Play stays disabled`, await page.$eval("#btnPlay", (e: any) => e.disabled));
   }
-  await page.close(); await browser.close();
+  await page.close(); await browser!.close();
   rmSync(tmp, { recursive: true, force: true });
 }
 
