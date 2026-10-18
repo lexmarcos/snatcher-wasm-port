@@ -84,6 +84,9 @@ fn live(mut e: Engine, start: Start, frames: u64, pick: &mut dyn FnMut(&Engine, 
         if e.frame % 50 == 0 { r.states.push((e.frame, sncore::gfxpatch::fnv64(&e.state_bytes()))); }
         if e.safe_point() != 0 && pick(&e, &r.snaps) {
             r.audio.push(audio_now(&e));
+            let t0 = std::time::Instant::now();
+            let _ = e.snapshot();
+            if std::env::var("SNAPTIME").is_ok() { eprintln!("snapshot: {:?}", t0.elapsed()); }
             r.snaps.push((e.frame, e.safe_point(), e.vm.script_id, e.vm.scene, e.snapshot().expect("snapshot at a safe point")));
         }
     }
@@ -114,7 +117,9 @@ fn check_restores(pt: bool, start: Start, frames: u64, after: u64, need_both: bo
     for (si, (f0, kind, _script, _scene, bytes)) in l.snaps.iter().enumerate() {
         let mut r = engine(pt).unwrap();
         r.new_game(); // any running state: the restore replaces all of it
+        let t0 = std::time::Instant::now();
         let info = r.restore(bytes).unwrap_or_else(|e| panic!("restore at {f0}: {e:?}"));
+        if std::env::var("SNAPTIME").is_ok() { eprintln!("restore {} bytes: {:?}", bytes.len(), t0.elapsed()); }
         assert_eq!(info.kind, *kind);
         assert_eq!(r.frame, *f0);
         assert_eq!(r.safe_point(), *kind, "the restored engine is at the same safe point");
