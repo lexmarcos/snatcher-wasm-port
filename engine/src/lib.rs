@@ -104,19 +104,25 @@ impl Game {
     /// Advance one 60 Hz frame. `pad` = Genesis bits S A C B R L D U (bit7..0).
     pub fn tick(&mut self, pad: u16) {
         self.e.tick(pad as u8);
-        for o in self.e.out.drain(..) {
-            self.events.push(match o {
-                Out::Music { track } => format!("{{\"t\":\"music\",\"track\":{track}}}"),
-                Out::MusicStop => "{\"t\":\"music_stop\"}".into(),
-                Out::Voice { id } => format!("{{\"t\":\"voice\",\"id\":{id}}}"),
-                Out::Pcm { id, kind } => format!("{{\"t\":\"pcm\",\"id\":{id},\"kind\":{kind}}}"),
-                Out::Fm { id, music } => format!("{{\"t\":\"fm\",\"id\":{id},\"music\":{music}}}"),
-                Out::PcmSfx { id, bank } => format!("{{\"t\":\"pcmsfx\",\"id\":{id},\"bank\":{bank}}}"),
-                Out::Save { slot, data } => format!("{{\"t\":\"save\",\"slot\":{slot},\"data\":\"{}\"}}", b64(&data)),
-                Out::Log(s) => format!("{{\"t\":\"log\",\"msg\":{:?}}}", s),
-                Out::MusicAt { track, at_ms } => format!("{{\"t\":\"music\",\"track\":{track},\"at\":{}}}", at_ms as f64 / 1000.0),
-                Out::FmAt { id, music, at_ms } => format!("{{\"t\":\"fm\",\"id\":{id},\"music\":{music},\"at\":{}}}", at_ms as f64 / 1000.0),
-            });
+        self.drain_out();
+    }
+    // ---- autosave (docs/re/web.md section 9) ----
+    /// 0 = not a safe point to take a snapshot, 1 = the command menu waits for a key, 2 = a message box waits for the confirm button.
+    pub fn autosave_point(&self) -> u8 { self.e.safe_point() }
+    /// Why the game is not at a safe point now ("" when it is). Debug overlay and tests.
+    pub fn autosave_reason(&self) -> String { self.e.safe_check().err().unwrap_or("").to_string() }
+    /// Changes when the script file or the scene changes: script id << 16 | scene.
+    pub fn autosave_key(&self) -> u32 { (self.e.vm.script_id as u32) << 16 | self.e.vm.scene as u32 }
+    /// The game state as bytes (about 40-60 KB); empty when the game is not at a safe point.
+    pub fn snapshot(&self) -> Vec<u8> { self.e.snapshot().unwrap_or_default() }
+    /// What a snapshot taken now would say about itself, as JSON (act, play time, kind ...).
+    pub fn snapshot_info(&self) -> String { self.e.snapshot_info().json() }
+    /// Replace the running game by a snapshot (the disc files, language and translation pack must be set up first). "" = done, else an error code:
+    /// `format`, `engine`, `disc`, `lang`, `missing:<file>`, `corrupt:<what>`. The start of the music follows in the events.
+    pub fn restore(&mut self, data: Vec<u8>) -> String {
+        match self.e.restore(&data) {
+            Ok(_) => { self.drain_out(); String::new() }
+            Err(e) => { let d = e.detail(); if d.is_empty() { e.code().to_string() } else { format!("{}:{d}", e.code()) } }
         }
     }
     pub fn width(&self) -> usize { W }
@@ -132,4 +138,34 @@ impl Game {
     pub fn debug_info(&self) -> String { self.e.debug_info() }
 }
 
+impl Game {
+    /// Turn the engine's pending output into front-end events.
+    fn drain_out(&mut self) {
+        for o in self.e.out.drain(..) {
+            self.events.push(match o {
+                Out::Music { track } => format!("{{\"t\":\"music\",\"track\":{track}}}"),
+                Out::MusicStop => "{\"t\":\"music_stop\"}".into(),
+                Out::Voice { id } => format!("{{\"t\":\"voice\",\"id\":{id}}}"),
+                Out::Pcm { id, kind } => format!("{{\"t\":\"pcm\",\"id\":{id},\"kind\":{kind}}}"),
+                Out::Fm { id, music } => format!("{{\"t\":\"fm\",\"id\":{id},\"music\":{music}}}"),
+                Out::PcmSfx { id, bank } => format!("{{\"t\":\"pcmsfx\",\"id\":{id},\"bank\":{bank}}}"),
+                Out::Save { slot, data } => format!("{{\"t\":\"save\",\"slot\":{slot},\"data\":\"{}\"}}", b64(&data)),
+                Out::Log(s) => format!("{{\"t\":\"log\",\"msg\":{:?}}}", s),
+                Out::MusicAt { track, at_ms } => format!("{{\"t\":\"music\",\"track\":{track},\"at\":{}}}", at_ms as f64 / 1000.0),
+                Out::FmAt { id, music, at_ms } => format!("{{\"t\":\"fm\",\"id\":{id},\"music\":{music},\"at\":{}}}", at_ms as f64 / 1000.0),
+            });
+        }
+    }
+}
+
 impl Default for Game { fn default() -> Self { Self::new() } }
+
+/// Read the header of a snapshot without an engine: JSON `{"ok":true, ...info}` for a snapshot this build understands (format and state layout),
+/// else `{"ok":false,"error":"format"|"engine"|"corrupt"}`. The front end calls it when it lists an autosave.
+#[wasm_bindgen]
+pub fn snapshot_header(data: Vec<u8>) -> String {
+    match Engine::snapshot_compatible(&data) {
+        Ok(i) => { let j = i.json(); format!("{{\"ok\":true,{}", &j[1..]) }
+        Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", e.code()),
+    }
+}
