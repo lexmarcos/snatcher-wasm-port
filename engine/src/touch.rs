@@ -142,6 +142,18 @@ impl Engine {
         TouchUi::new("none")
     }
 
+    /// Texts of the items of the open command menu, as a JSON array of strings (tests of the web front end pick a command by its text).
+    pub fn menu_items_json(&self) -> String {
+        let Some((_, items)) = self.menu.as_ref() else { return "[]".into() };
+        let v: Vec<String> = items.iter().map(|&o| format!("\"{}\"", self.dbg_text(o).replace('\\', "").replace('"', "'"))).collect();
+        format!("[{}]", v.join(","))
+    }
+
+    /// The characters typed so far in the open keypad / keyboard entry (tests of the web front end), "" when none is open.
+    pub fn entry_text(&self) -> String {
+        self.ix.entry.as_ref().map(|e| e.buf.iter().take_while(|&&c| c != 0).map(|&c| if (0x20..0x7F).contains(&c) { c as char } else { '?' }).collect()).unwrap_or_default()
+    }
+
     /// Pad bits (one direction) that move the text-entry cursor one step toward grid cell `target` along the shortest route, 0 when it is there,
     /// not reachable, or no entry is open.
     pub fn touch_step(&self, target: u8) -> u8 {

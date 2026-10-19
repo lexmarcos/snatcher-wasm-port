@@ -132,6 +132,12 @@ impl Game {
     pub fn touch_ui(&self) -> String { self.e.touch_ui().json() }
     /// Pad bits (UP 1, DOWN 2, LEFT 4, RIGHT 8) for the next step of the keypad / keyboard cursor toward grid cell `target` (a `rects[].id` of kind `entry`), 0 = there / none.
     pub fn touch_step(&self, target: u32) -> u8 { self.e.touch_step(target as u8) }
+    /// Texts of the open command menu's items as a JSON array (tests pick a command by its text).
+    pub fn menu_items(&self) -> String { self.e.menu_items_json() }
+    /// What has been typed in the open keypad / keyboard (tests).
+    pub fn entry_text(&self) -> String { self.e.entry_text() }
+    /// A word register of the sub CPU by its original address (tests and the debug overlay: `$7908` shots fired, `$798A/$798B` gun position, `$78F8` blaster drawn).
+    pub fn peek_reg(&self, addr: u32) -> u16 { self.e.regs.get(addr) }
     pub fn width(&self) -> usize { W }
     pub fn height(&self) -> usize { H }
     /// Pointer to RGBA8 pixels (W*H*4) in wasm memory.

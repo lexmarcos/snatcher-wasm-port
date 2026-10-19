@@ -700,7 +700,7 @@ impl Engine {
     pub fn reg_7892(&self) -> u8 { self.e061_hist[1] }
 
     /// Debug: ASCII rendering of the script text at `off` (up to 60 chars, stops at FF).
-    fn dbg_text(&self, off: u16) -> String {
+    pub(crate) fn dbg_text(&self, off: u16) -> String {
         self.script_text(off).iter().take_while(|&&c| c != 0xFF).take(70).map(|&c| if (0x20..0x7F).contains(&c) { c as char } else if c == 0xF2 { '/' } else if c == 0xF6 { '|' } else { '~' }).collect()
     }
 

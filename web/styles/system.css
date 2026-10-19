@@ -57,7 +57,7 @@ code { font: inherit; color: var(--bevel-hi); }
 
 /* ---------------------------------------------------------------- 3 components */
 /* bevel: --tl is the light edge, --br the dark one; inverting them presses the thing in */
-.bevel, .win, .btn, .tab, .strip, .meter, select, .tabpanel, #bar, #monitor, #debug, .lang button, input[type=checkbox] {
+.bevel, .win, .btn, .tab, .strip, .meter, select, .tabpanel, #bar, #monitor, #debug, .lang button, input[type=checkbox], .pbtn, .arm, .hint {
   --tl: var(--bevel-hi); --br: var(--bevel-lo);
   border: var(--bw) solid var(--bevel-lo);
   box-shadow: inset var(--bw) var(--bw) 0 var(--tl), inset calc(-1 * var(--bw)) calc(-1 * var(--bw)) 0 var(--br);
@@ -274,3 +274,57 @@ canvas:focus { outline: none; }
 #ovWin[data-stage="imported"] #ovAfter > .strip:first-child { display: none; }
 /* clearing the site deletes saves: the button is marked with the alert colour on its outline (the label stays --ink for contrast on --face) */
 .btn.danger { outline: 2px solid var(--alert); outline-offset: -6px; }
+
+/* ---------------------------------------------------------------- 6 touch controls (phones and tablets)
+   The on-screen pad: D-pad left, A B C right, Menu and Start above them. Square beveled blocks like every other button, no blur, no radius; the
+   primary button of the game, C (confirm / fire), carries the yellow. A pressed block is pressed in (inverted bevel) and its label turns yellow, as
+   `:active` does for page buttons. --u is the button size (JS sets it from the viewport and the Touch tab), --pad-op the opacity (Touch tab).
+   html[data-touch] marks a touch layout: "pad" = on-screen pad, "game" = touch the game (only the contextual Back / Start / Holster buttons and Menu).
+   html[data-arr] = below (portrait: the picture on top, controls under it) | sides (landscape: controls left and right of the picture) |
+   overlay (landscape and narrow: controls drawn over the edges of the picture). The safe-area insets come from env(); JS mirrors them in --sai-*. */
+:root { --sai-t: env(safe-area-inset-top, 0px); --sai-r: env(safe-area-inset-right, 0px); --sai-b: env(safe-area-inset-bottom, 0px); --sai-l: env(safe-area-inset-left, 0px); --u: 56px; --pad-op: .85; --reserve-b: 0px; }
+html { -webkit-tap-highlight-color: transparent; }
+#sai { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+
+html[data-touch] { overflow: hidden; overscroll-behavior: none; }
+html[data-touch] body { overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; width: 100%; touch-action: manipulation; }
+html[data-touch] #wrap, html[data-touch] #wrap *, html[data-touch] .touch { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+html[data-touch] .modal { overscroll-behavior: contain; touch-action: pan-y; }
+html[data-touch] .modal * { touch-action: manipulation; }
+html[data-touch] .modal input[type=range] { touch-action: pan-x; }
+html[data-touch] #wrap { min-height: 0; height: 100%; padding: calc(var(--sai-t) + 8px) calc(var(--sai-r) + 8px) calc(var(--sai-b) + var(--reserve-b)) calc(var(--sai-l) + 8px); gap: 0; justify-content: center; }
+html[data-touch] #monitor { padding: 0; background: none; border: 0; box-shadow: none; }
+html[data-touch] canvas { max-width: none; object-fit: contain; }
+html[data-touch] #bar { display: none; }
+html:not([data-touch]) .touch, html:not([data-touch]) .hint { display: none; }
+
+.touch { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; pointer-events: none;
+  padding: 0 calc(var(--sai-r) + 12px) calc(var(--sai-b) + 12px) calc(var(--sai-l) + 12px); }
+.tside { display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
+.tside.tl { align-items: flex-start; } .tside.tr { align-items: flex-end; }
+.trow { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
+.tbtn { min-height: 48px; min-width: 96px; padding: 8px 16px; }
+.tbtn::before { display: none; }
+.tbtn:hover:not(:disabled), .tbtn:focus-visible { color: var(--ink); }
+.tbtn:active:not(:disabled) { color: var(--call); }
+.touch[data-mode="pad"] .only-game, .touch[data-mode="game"] .only-pad { display: none; }
+.touch[data-mode="game"] .tbtn[disabled] { display: none; }
+
+.dpad { position: relative; flex: none; width: calc(3 * var(--u)); height: calc(3 * var(--u)); opacity: var(--pad-op); }
+.arm { position: absolute; width: var(--u); height: var(--u); background: var(--face); }
+.arm.up { left: var(--u); top: 0; } .arm.down { left: var(--u); top: calc(2 * var(--u)); } .arm.left { left: 0; top: var(--u); } .arm.right { left: calc(2 * var(--u)); top: var(--u); }
+.arm::after { content: ""; position: absolute; inset: 0; background: var(--ink); -webkit-mask: var(--m-cursor) center / 24px 24px no-repeat; mask: var(--m-cursor) center / 24px 24px no-repeat; }
+.arm.up::after { transform: rotate(-90deg); } .arm.down::after { transform: rotate(90deg); } .arm.left::after { transform: rotate(180deg); }
+.hub { position: absolute; left: var(--u); top: var(--u); width: var(--u); height: var(--u); background: var(--bevel-lo); border: 2px solid var(--face); }
+.arm.on, .pbtn.on { --tl: var(--bevel-lo); --br: var(--bevel-hi); }
+.arm.on::after { background: var(--call); }
+.abc { position: relative; flex: none; width: calc(2 * var(--u) + 8px); height: calc(2 * var(--u) + 8px); opacity: var(--pad-op); }
+.pbtn { display: flex; align-items: center; justify-content: center; background: var(--face); color: var(--ink); font-size: 32px; line-height: 1; cursor: default; }
+.abc .pbtn { position: absolute; width: var(--u); height: var(--u); }
+.pbtn[data-btn="64"] { left: 0; top: 0; } .pbtn[data-btn="16"] { right: 0; top: 0; } .pbtn[data-btn="32"] { right: 0; bottom: 0; color: var(--call); outline: 2px solid var(--call); outline-offset: -6px; }
+.pbtn.on { color: var(--call); }
+.pbtn.tbtn { font-size: 16px; }
+
+.hint { position: fixed; z-index: 6; left: calc(var(--sai-l) + 16px); right: calc(var(--sai-r) + 16px); top: calc(var(--sai-t) + 8px); margin: 0 auto; width: max-content; max-width: calc(100vw - 32px - var(--sai-l) - var(--sai-r)); display: flex; gap: 16px; align-items: center; background: var(--field); padding: 8px 8px 8px 16px; }
+.hint .btn { min-height: 40px; padding: 4px 16px; flex: none; }
+@media (hover: none) { .btn:hover:not(:disabled) { color: var(--ink); } .btn:hover:not(:disabled)::before { visibility: hidden; } .btn.primary:hover:not(:disabled) { color: var(--call); } .btn.primary::before { visibility: visible; } }

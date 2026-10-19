@@ -24,11 +24,12 @@ Bun.serve({
     // translation: the page strings (i18n/pt-BR/ui.json) and the engine's pack (built by scripts/build-web.sh, `snt i18n-build`)
     else if (path === "/i18n/pt-BR.pack") file = join(i18n, "build", "pt-BR.pack");
     else if (path === "/i18n/pt-BR/ui.json") file = join(i18n, "pt-BR", "ui.json");
-    else if (path.startsWith("/dist/") || path.startsWith("/pkg/") || path.startsWith("/fonts/") || path.startsWith("/styles/")) file = safe(root, path.slice(1)); // /fonts: self-hosted DotGothic16 (no third-party request)
+    else if (path === "/manifest.webmanifest") file = join(root, "manifest.webmanifest");
+    else if (path.startsWith("/dist/") || path.startsWith("/pkg/") || path.startsWith("/fonts/") || path.startsWith("/styles/") || path.startsWith("/icons/")) file = safe(root, path.slice(1)); // /fonts: self-hosted DotGothic16 (no third-party request)
     if (!file) return new Response("not found", { status: 404 });
     const f = Bun.file(file);
     if (!(await f.exists())) return new Response("not found", { status: 404 });
-    return new Response(f, { headers: { "Cache-Control": "no-cache" } });
+    return new Response(f, { headers: { "Cache-Control": "no-cache", ...(path.endsWith(".webmanifest") ? { "Content-Type": "application/manifest+json" } : {}) } });
   },
 });
 console.log(`Snatcher web port: http://localhost:${port}/`);

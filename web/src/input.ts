@@ -1,6 +1,7 @@
 // Keyboard + Gamepad API → Genesis 3-button pad bits (must match engine::pad).
 // The mouse acts as the light gun (Konami Justifier) for the shooting sections.
 // Gamepads: family detection, layouts and per-family button maps live in gamepads.ts (docs/re/web.md "Controllers").
+import { clientToGame } from "./touchmath";
 import {
   assign, cloneMaps, Control, DEFAULT_MAPS, detectFamily, Device, Family, GenesisButton, padBits, PadLike, PadMaps, PAD, readPad, sanitizeMaps, CONTROLS,
 } from "./gamepads";
@@ -14,6 +15,19 @@ const KEYMAP: Record<string, number> = {
 
 /** Minimal view of the wasm `Game` used here. */
 interface GunSink { set_gun(present: boolean, x: number, y: number, trigger: boolean, aux: boolean): void }
+
+/**
+ * A touch controller (on-screen pad or "touch the game", web/src/touchpad.ts, touchgame.ts). It feeds the same two paths as the keyboard and the mouse:
+ * `bits()` is ORed into the pad bits of the tick, `gun()` replaces the mouse as the light gun while a finger aims.
+ */
+export interface TouchSource {
+  /** Pad bits for this game tick (called once per tick: timed presses advance here). */
+  bits(): number;
+  /** The light gun for this tick, or null when nothing aims. */
+  gun(): { x: number; y: number; trigger: boolean; aux: boolean } | null;
+  /** Let go of everything (a menu opened, the page was hidden, a touch was cancelled). */
+  releaseAll(): void;
+}
 
 export class Input {
   keys = 0;
@@ -36,7 +50,11 @@ export class Input {
   /** false while a menu/overlay is open: keys and mouse go to the page, not the game. */
   private _enabled = true;
   get enabled() { return this._enabled; }
-  set enabled(v: boolean) { this._enabled = v; if (!v) { this.keys = 0; this.mouseButtons = 0; } }
+  set enabled(v: boolean) { this._enabled = v; if (!v) { this.keys = 0; this.mouseButtons = 0; this.touch?.releaseAll(); } }
+  /** The active touch controller (null = touch input is off). */
+  touch: TouchSource | null = null;
+  /** performance.now() of the last touch handled by a touch controller: the mouse events a browser makes up from a touch are ignored for a moment. */
+  lastTouchAt = -1e9;
   /** Scripted inputs for headless tests: window.snatcher.input.script = [[frames, bits], ...] */
   script: [number, number][] = [];
   /** The device the player used last (keyboard, or a specific pad): decides which button icons the game shows. The mouse never changes it. */
@@ -65,7 +83,7 @@ export class Input {
       if (b && this._enabled && !e.ctrlKey && !e.metaKey && !e.altKey) { this.keys |= b; this.gunMode = false; this.setDevice({ kind: "keyboard" }); e.preventDefault(); }
     });
     addEventListener("keyup", (e) => { const b = KEYMAP[e.code]; if (b) { this.keys &= ~b; if (this._enabled) e.preventDefault(); } });
-    addEventListener("blur", () => { this.keys = 0; this.mouseButtons = 0; });
+    addEventListener("blur", () => { this.keys = 0; this.mouseButtons = 0; this.touch?.releaseAll(); });
     addEventListener("gamepadconnected", () => this.onPads?.());
     addEventListener("gamepaddisconnected", (e) => {
       const gp = (e as GamepadEvent).gamepad;
@@ -75,7 +93,7 @@ export class Input {
     });
     canvas.addEventListener("mousemove", (e) => this.track(e));
     canvas.addEventListener("mousedown", (e) => {
-      if (!this._enabled) return;
+      if (!this._enabled || performance.now() - this.lastTouchAt < 1000) return; // a mouse event the browser made from a touch: the touch controller owns it
       this.track(e);
       this.gunMode = true;
       this.mouseButtons |= e.button === 2 ? 2 : 1;
@@ -87,19 +105,21 @@ export class Input {
 
   private track(e: MouseEvent) {
     const r = this.canvas.getBoundingClientRect();
-    const w = this.canvas.width || 256, h = this.canvas.height || 224;
-    const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi - 1, v));
-    this.mouseX = clamp(Math.floor(((e.clientX - r.left) / r.width) * w), w);
-    this.mouseY = clamp(Math.floor(((e.clientY - r.top) / r.height) * h), h);
+    const p = clientToGame(e.clientX, e.clientY, { x: r.left, y: r.top, w: r.width, h: r.height }, this.canvas.width || 256, this.canvas.height || 224);
+    this.mouseX = p.x; this.mouseY = p.y;
   }
 
   /** Pad bits for this frame; also sends the light-gun state to the engine. */
   poll(): number {
     if (!this._enabled) return 0;
     let bits = this.pad();
+    const t = this.touch;
+    if (t) bits |= t.bits();
     if (bits) this.gunMode = false;
     const g = this.game ?? (window as any).snatcher?.game;
-    g?.set_gun(this.gunMode, this.mouseX, this.mouseY, (this.mouseButtons & 1) !== 0, (this.mouseButtons & 2) !== 0);
+    const tg = t?.gun() ?? null;
+    if (tg) g?.set_gun(true, tg.x, tg.y, tg.trigger, tg.aux);
+    else g?.set_gun(this.gunMode, this.mouseX, this.mouseY, (this.mouseButtons & 1) !== 0, (this.mouseButtons & 2) !== 0);
     return bits;
   }
 
@@ -113,9 +133,12 @@ export class Input {
     return this.keys | this.padState;
   }
 
+  /** Called by the touch controllers: the finger is now the last used device (the game text shows the A B C letters of the on-screen pad). */
+  touchDevice() { this.lastTouchAt = performance.now(); this.setDevice({ kind: "touch" }); }
+
   private setDevice(d: Device) {
     const a = this.device;
-    if (a.kind === d.kind && (a.kind === "keyboard" || (d.kind === "pad" && a.kind === "pad" && a.index === d.index && a.family === d.family && a.id === d.id))) return;
+    if (a.kind === d.kind && (a.kind !== "pad" || (d.kind === "pad" && a.index === d.index && a.family === d.family && a.id === d.id))) return;
     this.device = d;
     this.onDevice?.(d);
   }

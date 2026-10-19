@@ -213,7 +213,7 @@ export function padBits(st: PadState, map: PadMap): number {
 
 /** Style numbers shared with the engine (`sncore::prompt::Style`). */
 export const STYLE = { genesis: 0, xbox: 1, playstation: 2, switch: 3, keyboard: 4 } as const;
-export type Device = { kind: "keyboard" } | { kind: "pad"; index: number; family: Family; id: string };
+export type Device = { kind: "keyboard" } | { kind: "touch" } | { kind: "pad"; index: number; family: Family; id: string };
 
 /** Keyboard: Genesis A/B/C = Z/X/C (A/S/D and Space also work), START = Enter. Ids: sncore::prompt::KEY_*. */
 export const KEYBOARD_IDS: [number, number, number, number] = [0, 1, 2, 3];
@@ -223,6 +223,8 @@ export interface Prompt { style: number; ids: [number, number, number, number] }
 /** Style and the control ids behind Genesis A, B, C, START for the active device (engine `set_prompt`). */
 export function promptFor(dev: Device, maps: PadMaps): Prompt {
   if (dev.kind === "keyboard") return { style: STYLE.keyboard, ids: KEYBOARD_IDS };
+  // touch: the on-screen pad is drawn with the Genesis letters (A B C, Start), so the game text keeps its original letters
+  if (dev.kind === "touch") return { style: STYLE.genesis, ids: [0, 0, 0, 0] };
   const m = maps[dev.family];
   const style = dev.family === "playstation" ? STYLE.playstation : dev.family === "switch" ? STYLE.switch : STYLE.xbox; // generic pads show Xbox-style icons
   return { style, ids: [ctlId(m.A), ctlId(m.B), ctlId(m.C), ctlId(m.START)] };
@@ -236,8 +238,9 @@ export type PromptFn = "EC" | "EE" | "F0";
 const FN_INDEX: Record<PromptFn, number> = { EC: 0, EE: 1, F0: 2 };
 
 /** Both layers together: which icon (family + physical control) the game shows for a function under `config` on this device. */
-export function resolveIcon(config: number, fn: PromptFn, dev: Device, maps: PadMaps): { letter: GenesisButton; set: "xbox" | "playstation" | "switch" | "keyboard"; control: Control | "Z" | "X" | "C" | "Enter" } {
+export function resolveIcon(config: number, fn: PromptFn, dev: Device, maps: PadMaps): { letter: GenesisButton; set: "xbox" | "playstation" | "switch" | "keyboard" | "touch"; control: Control | "Z" | "X" | "C" | "Enter" | "A" | "B" | "Start" } {
   const letter = CONFIG_LETTERS[Math.max(0, Math.min(5, config))][FN_INDEX[fn]];
+  if (dev.kind === "touch") return { letter, set: "touch", control: letter === "START" ? "Start" : letter };
   if (dev.kind === "keyboard") return { letter, set: "keyboard", control: ({ A: "Z", B: "X", C: "C", START: "Enter" } as const)[letter] };
   const set = dev.family === "playstation" ? "playstation" : dev.family === "switch" ? "switch" : "xbox";
   return { letter, set, control: maps[dev.family][letter] };

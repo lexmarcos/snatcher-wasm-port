@@ -50,6 +50,25 @@ class BufferCache {
   get size() { return this.m.size; }
 }
 
+/** An AudioContext made inside a tap (see `primeAudio`), taken over by the next `AudioOut`. */
+let primed: AudioContext | null = null;
+
+/**
+ * iOS (and Safari generally) starts audio only from inside a user gesture, and only the context that was created or resumed there. The page calls this from
+ * the click of Play / Continue, before the awaits that load the game, so the context that `AudioOut` takes over is already running when the first sound plays.
+ * A silent one-sample buffer is started too (older iOS versions need a played sound to unlock). Harmless where it is not needed.
+ */
+export function primeAudio(): void {
+  try {
+    if (!primed) primed = new AudioContext();
+    void primed.resume();
+    const src = primed.createBufferSource();
+    src.buffer = primed.createBuffer(1, 1, 22050);
+    src.connect(primed.destination);
+    src.start(0);
+  } catch { /* no Web Audio: the page works without sound */ }
+}
+
 export class AudioOut {
   ctx: AudioContext | null = null;
   cache = new BufferCache();
@@ -77,9 +96,14 @@ export class AudioOut {
   /** Sound mode requested by the game (true = mono). Default stereo (F4/FD are sent at power-on). */
   mono = { fm: false, pcm: false };
 
+  /** the page paused the audio (menu open, tab hidden): a tap on a page control must not start it again */
+  private suspended = false;
+
   constructor(private read: Reader) {
-    const unlock = () => { this.ensure(); void this.ctx?.resume(); };
-    for (const ev of ["keydown", "pointerdown", "mousedown", "touchstart"]) addEventListener(ev, unlock, { passive: true });
+    // Any gesture (re)starts a context that the browser keeps suspended: iOS only accepts touchend / click for it, and takes the context away again
+    // when another app plays sound ("interrupted"). `suspended` is the page's own pause, which a tap must not undo.
+    const unlock = () => { this.ensure(); if (!this.suspended) void this.ctx?.resume(); };
+    for (const ev of ["keydown", "pointerdown", "pointerup", "mousedown", "touchstart", "touchend", "click"]) addEventListener(ev, unlock, { passive: true });
   }
 
   /** Load the manifests; returns them so the caller can pass durations to the engine. Missing ones give null. */
@@ -95,7 +119,8 @@ export class AudioOut {
 
   ensure(): AudioContext {
     if (!this.ctx) {
-      const ctx = this.ctx = new AudioContext();
+      const ctx = this.ctx = primed ?? new AudioContext();
+      primed = null;
       const mk = (name: string, to?: AudioNode) => { const g = ctx.createGain(); g.connect(to ?? ctx.destination); this.nodes[name] = g; return g; };
       const master = mk("master");
       mk("cdBus", master);
@@ -128,8 +153,8 @@ export class AudioOut {
   /** Sound mode from the game's option (FM F3/F4, PCM FC/FD). */
   setSoundMode(part: "fm" | "pcm", mono: boolean) { this.mono[part] = mono; this.applyMode(); }
   /** Pause/resume everything (tab hidden, menu open). */
-  suspend() { void this.ctx?.suspend(); }
-  resume() { void this.ctx?.resume(); }
+  suspend() { this.suspended = true; void this.ctx?.suspend(); }
+  resume() { this.suspended = false; void this.ctx?.resume(); }
 
   debugInfo(): string {
     return `audio: ${this.ctx?.state ?? "off"} fm=${this.mono.fm ? "mono" : "stereo"} pcm=${this.mono.pcm ? "mono" : "stereo"}` +

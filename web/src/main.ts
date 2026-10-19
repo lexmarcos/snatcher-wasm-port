@@ -2,7 +2,7 @@
 // The engine (Rust → wasm) owns all game logic and renders a 256x224 RGBA frame (H32 mode).
 // This file handles: asset sources, the start overlay and menu, the fixed 60 Hz loop, canvas scaling,
 // input, audio and saves. See docs/re/web.md.
-import { AudioOut } from "./audio";
+import { AudioOut, primeAudio } from "./audio";
 import { Input } from "./input";
 import {
   CONTROL_NAMES, Control, Family, FAMILIES, FAMILY_LABEL, GENESIS_ORDER, GenesisButton, promptFor, resolveIcon,
@@ -17,6 +17,8 @@ import { loadEngine, siteUrl } from "./urls";
 import { clearCache, fmtBytes, opfsAvailable, readMeta, requestPersist, storageInfo } from "./cache";
 import { ImportedSource, ImportWorker, resolvePick, type Pick } from "./imported";
 import { T, applyStatic, getLang, parseLang, setUiDict, type Lang, type UiKey } from "./i18n";
+import { Touch } from "./touch";
+import { isCoarsePrimary, isIOS, toggleFullscreen as platformFullscreen } from "./platform";
 
 const W = 256, H = 224;
 const params = new URLSearchParams(location.search);
@@ -48,6 +50,7 @@ function renderNotes() {
 
 // ---------- canvas scaling (integer scale in device pixels; fractional only when the window is smaller than 1x) ----------
 function fit() {
+  if (touch.fit()) return; // phones and tablets: the touch layout sizes the picture (web/src/touch.ts)
   const dpr = window.devicePixelRatio || 1;
   // the monitor frame (bezel padding) and the toolbar are not part of the canvas: measure them instead of hard-coding
   const mr = monitor.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
@@ -61,6 +64,8 @@ function fit() {
   canvas.style.height = `${(H * s) / dpr}px`;
 }
 addEventListener("resize", fit);
+addEventListener("orientationchange", () => setTimeout(fit, 120));
+window.visualViewport?.addEventListener("resize", fit);
 document.addEventListener("fullscreenchange", fit);
 
 smoothBox.checked = ls.get("snatcher.smooth") === "1";
@@ -88,6 +93,7 @@ const isPaused = () => overlayOpen || panelOpen || document.hidden;
 // ---------- input device, button maps, prompts ----------
 const input = new Input(canvas);
 input.enabled = false; // the start overlay is open
+const touch = new Touch({ input, canvas, ls, openPanel: () => openPanel() }); // on-screen pad / touch the game (docs/re/web.md section 11)
 try { input.setMaps(JSON.parse(ls.get("snatcher.padmaps") ?? "null")); } catch { input.setMaps(null); }
 const saveMaps = () => ls.set("snatcher.padmaps", JSON.stringify(input.maps));
 type PromptMode = "auto" | "letters";
@@ -110,8 +116,30 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 function iconCell(html: string, label: string, td: HTMLElement) {
   const s = el("span", "icon"); s.innerHTML = html; td.append(s, el("span", "iconlabel", label));
 }
+function renderTouchControls(): [string, (td: HTMLElement) => void][] {
+  const m = touch.mode === "game" ? "game" : touch.mode === "pad" ? "pad" : null;
+  const text = (k: UiKey) => (td: HTMLElement) => { td.textContent = T(k); };
+  const rows: [string, (td: HTMLElement) => void][] = [[T("ctl.touch"), (td) => { td.textContent = T("ctl.touch.last"); }]];
+  if (!m) { rows.push([T("ctl.move"), text("ctl.t.off")]); return rows; }
+  rows.push([T("ctl.move"), text(m === "pad" ? "ctl.t.move.pad" : "ctl.t.move.game")]);
+  rows.push([`${T("ctl.confirm")} (C)`, text(m === "pad" ? "ctl.t.c.pad" : "ctl.t.c.game")]);
+  rows.push([`${T("ctl.cancel")} (B)`, text(m === "pad" ? "ctl.t.b.pad" : "ctl.t.b.game")]);
+  rows.push([`${T("ctl.draw")} (A)`, text(m === "pad" ? "ctl.t.a.pad" : "ctl.t.a.game")]);
+  rows.push([T("ctl.start"), text(m === "pad" ? "ctl.t.start.pad" : "ctl.t.start.game")]);
+  rows.push([T("ctl.web"), text("ctl.t.web")]);
+  rows.push([T("ctl.gun"), text(m === "pad" ? "ctl.t.gun.pad" : "ctl.t.gun.game")]);
+  return rows;
+}
 function renderControls() {
   const dev = input.device;
+  if (dev.kind === "touch") {
+    for (const host of Array.from(document.querySelectorAll(".controls"))) {
+      const t = el("table", "keys");
+      for (const [k, fill] of renderTouchControls()) { const r = t.insertRow(); r.insertCell().textContent = k; fill(r.insertCell()); }
+      host.replaceChildren(t);
+    }
+    return;
+  }
   const rows: [string, (td: HTMLElement) => void][] = [];
   const set = dev.kind === "keyboard" ? "keyboard" : setOf(dev.family);
   rows.push([dev.kind === "keyboard" ? T("ctl.keyboard") : T("ctl.gamepad"), (td) => {
@@ -243,7 +271,7 @@ async function syncEngineLanguage(g: any) {
   g.set_voice_subtitles(pt && vsubBox.checked);
 }
 function renderDynamic() {
-  applyMute(); refreshSaves(); renderControls(); renderPadMap(); renderNotes(); updateSoundMode();
+  applyMute(); refreshSaves(); renderControls(); renderPadMap(); renderNotes(); updateSoundMode(); touch.renderTab();
   if (msgState) msg.textContent = T(msgState.key, msgState.vars);
   if (srcLines) showSource(srcLines(), srcCls);
   if (impLine) showImp(impLine, impCls);
@@ -310,17 +338,16 @@ for (const [id, kind] of VOLS) {
 }
 let muted = ls.get("snatcher.mute") === "1";
 const btnMute = $("btnMute");
-function applyMute() { btnMute.setAttribute("aria-pressed", String(muted)); btnMute.textContent = muted ? T("bar.unmute") : T("bar.mute"); audio?.setMuted(muted); }
+const pnMute = $<HTMLInputElement>("pnMute");
+function applyMute() { btnMute.setAttribute("aria-pressed", String(muted)); btnMute.textContent = muted ? T("bar.unmute") : T("bar.mute"); pnMute.checked = muted; audio?.setMuted(muted); }
+pnMute.onchange = () => { if (pnMute.checked !== muted) toggleMute(); };
 function toggleMute() { muted = !muted; ls.set("snatcher.mute", muted ? "1" : "0"); applyMute(); }
 btnMute.onclick = () => { toggleMute(); canvas.focus(); };
 applyMute();
 
 // ---------- fullscreen ----------
 const canFull = !!document.fullscreenEnabled;
-function toggleFullscreen() {
-  if (!canFull) return;
-  if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen().catch(() => {});
-}
+function toggleFullscreen() { if (canFull) platformFullscreen(); }
 for (const id of ["btnFull", "pnFull"]) { const b = $(id); if (!canFull) b.hidden = true; b.onclick = () => { toggleFullscreen(); if (id === "btnFull") canvas.focus(); }; }
 
 // ---------- menu panel ----------
@@ -520,9 +547,25 @@ function showImp(line: (() => string) | null, cls = "dim") { impLine = line; imp
 const PHASES = ["header", "files", "voices", "fm", "cd", "done"] as const;
 const phaseText = (p: string) => T(`imp.phase.${(PHASES as readonly string[]).includes(p) ? p : "files"}` as UiKey);
 
+/** What the import writes: about 175 MB for the game data, 490 MB more for the CD music, ~560 MB for the FM sounds rendered afterwards. */
+const MB = 2 ** 20;
+const importNeed = (copyCd: boolean) => (175 + 560 + (copyCd ? 490 : 0)) * MB;
+/** The storage warning under step 1, before the player picks any file: the quota of this browser (small on some phones) against `importNeed`. */
+function renderQuota(si: { used: number; quota: number }) {
+  const q = $("impQuota");
+  const free = Math.max(0, si.quota - si.used);
+  let text = "";
+  if (si.quota > 0 && !importedSrc && !importing) {
+    if (free < importNeed(false)) text = T("imp.lowquota.all", { free: fmtBytes(free), need2: fmtBytes(importNeed(false)) });
+    else if (impCd.checked && free < importNeed(true)) text = T("imp.lowquota.cd", { free: fmtBytes(free), need: fmtBytes(importNeed(true)), need2: fmtBytes(importNeed(false)) });
+  }
+  q.textContent = text; q.hidden = !text;
+}
+let lastQuota: { used: number; quota: number } | null = null;
 async function refreshStorage() {
   if (!opfsAvailable()) { impStorage.textContent = ""; return; }
   const si = await storageInfo();
+  lastQuota = si; renderQuota(si);
   impStorage.textContent = T("imp.storage", { used: fmtBytes(si.used), quota: fmtBytes(si.quota), cache: fmtBytes(si.cache), persist: si.persisted ? T("imp.persist.yes") : T("imp.persist.no") });
   impStorage.dataset.cache = String(si.cache);
 }
@@ -577,7 +620,7 @@ async function runImport(picked: File[]) {
     // storage: the import needs about 175 MB, 490 MB more for the CD music, ~560 MB for the FM sounds rendered afterwards
     try {
       const est = await navigator.storage.estimate();
-      const free = (est.quota ?? Infinity) - (est.usage ?? 0), need = (175 + 560 + (copyCd ? 490 : 0)) * 2 ** 20;
+      const free = (est.quota ?? Infinity) - (est.usage ?? 0), need = importNeed(copyCd);
       if (free < need) { showImp(() => T("imp.nospace", { need: fmtBytes(need), free: fmtBytes(Math.max(0, free)) }), "err"); return; }
     } catch { /* no estimate: try anyway */ }
     await requestPersist(); // must come from this click; the browser may say no
@@ -609,6 +652,10 @@ async function runImport(picked: File[]) {
 }
 
 btnImport.onclick = () => { discPick.value = ""; discPick.click(); };
+// phones and tablets: the picker's extension filter can grey out .cue / .bin (iOS Files knows no type for them, Android maps them to a MIME type of its own):
+// no filter there, the page checks the picked files itself (resolvePick: one .cue and the .bin files it names) and says what is wrong
+if (isCoarsePrimary() || isIOS()) { discPick.removeAttribute("accept"); $("impTouchHelp").hidden = false; }
+impCd.addEventListener("change", () => { if (lastQuota) renderQuota(lastQuota); });
 discPick.onchange = () => { void runImport(Array.from(discPick.files ?? [])); };
 btnCancel.onclick = async () => { importer.cancel(); try { await clearCache(); } catch { /* ignore */ } };
 btnUseCache.onclick = () => { if (importedSrc) selectSource(importedSrc); };
@@ -694,10 +741,11 @@ async function loadWasm() {
 const wasmP = loadWasm();
 wasmP.catch((e) => { note("wasm", "err", T("note.noengine", { e: String(e) })); });
 
-btnPlay.onclick = () => { if (current && !busy) void start(current); };
+btnPlay.onclick = () => { if (current && !busy) { primeAudio(); void start(current); } };
 btnContinue.onclick = async () => {
   const rec = autoRec;
   if (!current || busy || !rec) return;
+  primeAudio(); // iOS starts audio only from inside a tap: the context is made here, before the awaits below
   autoDropped = null;
   // the snapshot holds the screen in the language it was made in: continue in that language
   if (rec.pt !== (wantLang === "pt-BR")) await applyLanguage(rec.pt ? "pt-BR" : "en", false);
@@ -761,9 +809,10 @@ async function start(src: Source, resume?: AutoRecord) {
     else g.boot();
 
     memory = wasm.memory; game = g; audio = out; input.game = g; input.enabled = true;
+    touch.attach(g);
     autosaver.adopt(g, !!resume);
     src.start?.();
-    (window as any).snatcher = { game, audio, input, store, autosaver, autoStore, autoRecord: () => autoRec, memory, started: { frame: JSON.parse(g.debug_info()).frame, fb: fbHash(g), resumed: !!resume }, notes, source: src, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
+    (window as any).snatcher = { game, audio, input, touch, store, autosaver, autoStore, autoRecord: () => autoRec, memory, started: { frame: JSON.parse(g.debug_info()).frame, fb: fbHash(g), resumed: !!resume }, notes, source: src, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
     applyPrompt();
     overlayOpen = false; overlay.hidden = true;
     note("wasm", "ok", null);
@@ -786,7 +835,8 @@ function frame(now: number) {
   requestAnimationFrame(frame);
   input.scan(); // gamepads: bits, last used device, View/Share/- button, remap capture (also while a menu is open)
   const p = isPaused();
-  if (p !== wasPaused) { wasPaused = p; pacer.reset(); if (p) audio?.suspend(); else audio?.resume(); }
+  if (p !== wasPaused) { wasPaused = p; pacer.reset(); if (p) audio?.suspend(); else audio?.resume(); touch.setRunning(!p); }
+  touch.refresh();
   if (p || crashed) return;
   const n = pacer.advance(now);
   if (!n) return;
