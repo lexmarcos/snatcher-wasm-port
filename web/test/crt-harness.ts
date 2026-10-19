@@ -104,21 +104,23 @@ async function join(urls: string[]): Promise<string> {
 (window as any).crtJoin = join;
 
 /** Throughput of the filter alone (upload + draw, then gl.finish): ms per frame; the CPU side (calls only) is reported apart. */
-async function bench(a: { frame: string; mode: string; w: number; h: number; frames: number }): Promise<{ ms: number; cpuMs: number; gpuMs: number | null; renderer: string; scale: number }> {
+async function bench(a: { frame: string; mode: string | Partial<CrtParams>; w: number; h: number; frames: number }): Promise<{ ms: number; cpuMs: number; gpuMs: number | null; renderer: string; scale: number }> {
   const fr = await frame(a.frame);
-  const p: CrtParams = { ...(PRESETS as any)[a.mode] };
+  const p: CrtParams = typeof a.mode === "string" ? { ...(PRESETS as any)[a.mode] } : sanitizeParams(a.mode, PRESETS.tv);
   const fit = fitPicture(a.w, a.h, 1, parOf(p.shape), true);
   filter ??= CrtFilter.create(gl, true);
   if (!filter) throw new Error("no WebGL2");
   filter.setSize(fit.devW, fit.devH); filter.setParams(p);
   const g = filter.gl;
   const info = g.getExtension("WEBGL_debug_renderer_info");
-  const run = (n: number) => { let cpu = 0; for (let i = 0; i < n; i++) { const c = performance.now(); filter!.upload(fr); filter!.draw(fit.scale); cpu += performance.now() - c; } g.finish(); return cpu; };
+  const run = (n: number) => { let cpu = 0; for (let i = 0; i < n; i++) { const c = performance.now(); filter!.upload(fr); filter!.draw(fit.scale); cpu += performance.now() - c; } const one = new Uint8Array(4); g.bindFramebuffer(g.FRAMEBUFFER, null); g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, one); return cpu; };   // reading a pixel waits for the GPU (finish() does not in Chrome)
   run(20);
   filter.stats.frames = 0; filter.stats.cpuMs = 0; filter.stats.gpuMs = null;
   const t0 = performance.now();
   const cpu = run(a.frames);
   const ms = (performance.now() - t0) / a.frames;
+  // GPU time from timer queries (they resolve between frames: draw one frame per animation frame)
+  for (let i = 0; i < 80; i++) { filter.upload(fr); filter.draw(fit.scale); await new Promise((r) => requestAnimationFrame(r)); }
   return { ms, cpuMs: cpu / a.frames, gpuMs: filter.stats.gpuMs, renderer: info ? String(g.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "?", scale: fit.scale };
 }
 (window as any).crtBench = bench;

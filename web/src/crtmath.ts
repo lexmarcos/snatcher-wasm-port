@@ -30,7 +30,7 @@ export const PRESET_IDS: CrtPreset[] = ["off", "tv", "pvm", "scan"];
 /** The three real presets (tuned with the comparison harness, docs/re/web.md 12.5). "off" carries the neutral values so a slider move starts from something sane. */
 export const PRESETS: Record<Exclude<CrtPreset, "custom">, CrtParams> = {
   off: { scan: 0, mask: 0, maskKind: "aperture", glow: 0, sharp: 1, curve: 0, composite: 0, shape: "square" },
-  tv: { scan: 0.65, mask: 0.22, maskKind: "slot", glow: 0.5, sharp: 0.6, curve: 0, composite: 0.5, shape: "tv" },
+  tv: { scan: 0.65, mask: 0.2, maskKind: "slot", glow: 0.45, sharp: 0.72, curve: 0, composite: 0.45, shape: "tv" },
   pvm: { scan: 0.9, mask: 0.18, maskKind: "aperture", glow: 0.3, sharp: 0.85, curve: 0, composite: 0, shape: "tv" },
   scan: { scan: 0.65, mask: 0, maskKind: "aperture", glow: 0.25, sharp: 0.7, curve: 0, composite: 0, shape: "tv" },
 };

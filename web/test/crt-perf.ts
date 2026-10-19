@@ -30,11 +30,20 @@ await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => (window as any).crtReady, { timeout: 20000 });
 let renderer = "";
 for (const [w, h, label] of [[1920, 1080, "1080p"], [2560, 1440, "1440p"], [3840, 2160, "4K"], [1071, 2379, "phone portrait (DPR 2.6)"]] as const) {
-  for (const mode of ["scan", "tv", "pvm"]) {
+  for (const mode of (process.env.CRT_PERF_MODES ? process.env.CRT_PERF_MODES.split("|").map((m) => (m.startsWith("{") ? JSON.parse(m) : m)) : ["scan", "tv", "pvm"])) {
     const r: any = await page.evaluate((a) => (window as any).crtBench(a), { frame: "dialog", mode, w, h, frames });
     renderer = r.renderer;
-    console.log(`${label.padEnd(26)} ${mode.padEnd(4)} scale ${r.scale.toFixed(2)}  ${r.ms.toFixed(3)} ms/frame (upload + draw + finish)  CPU calls ${r.cpuMs.toFixed(3)} ms  GPU timer ${r.gpuMs === null ? "n/a" : r.gpuMs.toFixed(3) + " ms"}`);
+    console.log(`${label.padEnd(26)} ${(typeof mode === "string" ? mode : JSON.stringify(mode).slice(0, 60)).padEnd(4)} scale ${r.scale.toFixed(2)}  ${r.ms.toFixed(3)} ms/frame (upload + draw + finish)  CPU calls ${r.cpuMs.toFixed(3)} ms  GPU timer ${r.gpuMs === null ? "n/a" : r.gpuMs.toFixed(3) + " ms"}`);
   }
 }
+// the cost the page already had: copying the frame into the 2D canvas (still done every frame, tests and the plain picture read it)
+const plain: number = await page.evaluate((n) => {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 224;
+  const ctx = c.getContext("2d")!, img = ctx.createImageData(256, 224), src = new Uint8Array(256 * 224 * 4).fill(77);
+  for (let i = 0; i < 30; i++) { img.data.set(src); ctx.putImageData(img, 0, 0); }
+  const t0 = performance.now(); for (let i = 0; i < n; i++) { img.data.set(src); ctx.putImageData(img, 0, 0); }
+  return (performance.now() - t0) / n;
+}, frames);
+console.log(`2D canvas copy (already in the page before the filter): ${plain.toFixed(3)} ms/frame`);
 console.log("renderer:", renderer);
 await browser.close(); server.stop(); process.exit(0);

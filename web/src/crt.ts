@@ -68,24 +68,44 @@ void main() {
   o = c;
 }`;
 
-// 3: the screen
+// 3a: horizontal pass (flat pictures only): every game line reconstructed at the device columns, so the screen pass needs no horizontal work.
+// Each game pixel is a box, seen through a gaussian (the beam's and the electronics' bandwidth): weight = cdf(x - i) - cdf(x - i - 1).
+const FS_HPASS = HEAD + `
+uniform sampler2D uSrc;
+uniform float uOutW;                 // device columns
+uniform float uSigH;                 // horizontal sigma in game pixels
+float cdf(float z) { z = clamp(z, -12.0, 12.0); return 0.5 + 0.5 * tanh(0.7978845608 * (z + 0.044715 * z * z * z)); }
+void main() {
+  float sx = (gl_FragCoord.x / uOutW) * 256.0;     // game pixel position of this column's centre
+  int j = int(gl_FragCoord.y);
+  float fx = floor(sx);
+  vec3 c = vec3(0.0); float wsum = 0.0;
+  for (int t = 0; t < 5; t++) {
+    float i = fx + float(t - 2);
+    float w = cdf((sx - i) / uSigH) - cdf((sx - i - 1.0) / uSigH);
+    c += w * texelFetch(uSrc, ivec2(clamp(int(i), 0, 255), j), 0).rgb;
+    wsum += w;
+  }
+  o = vec4(c / wsum, 1.0);
+}`;
+
+// 3b: the screen. `HPRE` = the lines come from the horizontal pass; without it (curvature) the same reconstruction is done here, per fragment.
 const FS_SCREEN = HEAD + `
 uniform sampler2D uSrc;              // decoded frame (the composite pass output when it is on)
+uniform sampler2D uH;                // horizontal pass output (devW x 224)
 uniform sampler2D uGlow1;            // 128x112
 uniform sampler2D uGlow2;            // 64x56
 uniform vec2 uOut;                   // canvas size, device pixels
 uniform float uK;                    // warp
 uniform vec2 uSig;                   // vertical beam sigma for dark / bright pixels, in game lines
-uniform float uSigH;                 // horizontal sigma in game pixels
+uniform float uSigH;                 // horizontal sigma in game pixels (inline variant)
 uniform float uMask;                 // mask strength after the fade
 uniform float uPitch;                // triad width in whole device pixels
 uniform int uKind;                   // 0 aperture grille, 1 slot, 2 shadow
 uniform float uGlow;
 uniform float uGain;
 
-// normal CDF (tanh form, error < 5e-4); a box seen through a gaussian is a difference of two of these
 float cdf(float z) { z = clamp(z, -12.0, 12.0); return 0.5 + 0.5 * tanh(0.7978845608 * (z + 0.044715 * z * z * z)); }
-vec3 cdf3(vec3 z) { z = clamp(z, -12.0, 12.0); return 0.5 + 0.5 * tanh(0.7978845608 * (z + 0.044715 * z * z * z)); }
 vec3 enc(vec3 c) { return mix(c * 12.92, 1.055 * pow(max(c, 0.0), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 
 void main() {
@@ -96,8 +116,7 @@ void main() {
   vec2 fw = max(fwidth(sp), vec2(1e-4));
   float cov = clamp(min(sp.x, 256.0 - sp.x) / fw.x + 0.5, 0.0, 1.0) * clamp(min(sp.y, 224.0 - sp.y) / fw.y + 0.5, 0.0, 1.0);
   if (cov <= 0.0) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
-
-  // horizontal: each game pixel is a box, seen through a gaussian (the beam's and the electronics' bandwidth)
+#ifndef HPRE
   float fx = floor(sp.x);
   float ws[5]; float wsum = 0.0;
   for (int t = 0; t < 5; t++) {
@@ -106,24 +125,30 @@ void main() {
     wsum += ws[t];
   }
   float wn = 1.0 / wsum;
+#endif
 
-  // vertical: every game line is a beam. Its width grows with the brightness of that channel; its energy is the pixel's value, so the average brightness is kept
+  // vertical: every game line is a beam. Its width grows with the brightness of the pixel; its energy is the pixel's value, so the average brightness is kept.
+  // The output pixel integrates the beam over its own height dy (a box seen through a gaussian: variance sigma^2 + dy^2 / 12).
   float dy = max(abs(dFdy(sp.y)), 1e-3);
-  float y0 = sp.y - 0.5 * dy, y1 = sp.y + 0.5 * dy;
+  float dy2 = dy * dy / 12.0;
   int j0 = int(floor(sp.y - 0.5)) - 1;
   vec3 beam = vec3(0.0);
   for (int l = 0; l < 4; l++) {
     int j = j0 + l;
     if (j < 0 || j > 223) continue;
+#ifdef HPRE
+    vec3 c = texelFetch(uH, ivec2(int(gl_FragCoord.x), j), 0).rgb;
+#else
     vec3 c = vec3(0.0);
     for (int t = 0; t < 5; t++) c += ws[t] * texelFetch(uSrc, ivec2(clamp(int(fx) + t - 2, 0, 255), j), 0).rgb;
     c *= wn;
+#endif
+    if (c.r + c.g + c.b <= 0.0) continue;                   // black costs nothing
     float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-    vec3 b = sqrt(clamp(0.5 * vec3(lum) + 0.5 * c, 0.0, 1.0));
-    vec3 sg = mix(vec3(uSig.x), vec3(uSig.y), b);
-    float cy = float(j) + 0.5;
-    vec3 w = (cdf3((y1 - cy) / sg) - cdf3((y0 - cy) / sg)) / dy;
-    beam += c * w;
+    float b = sqrt(clamp(0.5 * lum + 0.5 * max(c.r, max(c.g, c.b)), 0.0, 1.0));
+    float sg2 = mix(uSig.x, uSig.y, b); sg2 = sg2 * sg2 + dy2;
+    float d = sp.y - (float(j) + 0.5);
+    beam += c * (exp(-0.5 * d * d / sg2) * inversesqrt(6.2831853 * sg2));
   }
 
   // mask, in whole device pixels (gl_FragCoord is a pixel centre: floor() is the pixel's index)
@@ -166,6 +191,7 @@ void main() {
   o = vec4(enc(clamp(col * cov, 0.0, 1.0)), 1.0);
 }`;
 
+const SCREEN_UNIFORMS = ["uSrc", "uH", "uGlow1", "uGlow2", "uOut", "uK", "uSig", "uSigH", "uMask", "uPitch", "uKind", "uGlow", "uGain"];
 interface Prog { p: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
 interface Target { tex: WebGLTexture; fb: WebGLFramebuffer; w: number; h: number }
 
@@ -179,7 +205,8 @@ export class CrtFilter {
   onRestored: (() => void) | null = null;
   /** frames drawn, the sum of CPU time spent in draw() and (where the browser has timer queries) the GPU time, for the performance numbers */
   stats: CrtStats = { frames: 0, cpuMs: 0, gpuMs: null };
-  private progs!: { composite: Prog; down: Prog; blur: Prog; screen: Prog };
+  private progs!: { composite: Prog; down: Prog; blur: Prog; hpass: Prog; screen: Prog; screenH: Prog };
+  private hT: Target | null = null;
   private src!: WebGLTexture;
   private comp!: Target;
   private g1a!: Target; private g1b!: Target; private g2a!: Target; private g2b!: Target;
@@ -256,8 +283,11 @@ export class CrtFilter {
       composite: this.program(FS_COMPOSITE, ["uSrc", "uAmt"]),
       down: this.program(FS_DOWN, ["uSrc", "uTexel"]),
       blur: this.program(FS_BLUR, ["uSrc", "uDir"]),
-      screen: this.program(FS_SCREEN, ["uSrc", "uGlow1", "uGlow2", "uOut", "uK", "uSig", "uSigH", "uMask", "uPitch", "uKind", "uGlow", "uGain"]),
+      hpass: this.program(FS_HPASS, ["uSrc", "uOutW", "uSigH"]),
+      screen: this.program(FS_SCREEN, SCREEN_UNIFORMS),
+      screenH: this.program(FS_SCREEN.replace("#ifndef HPRE", "#define HPRE\n#ifndef HPRE"), SCREEN_UNIFORMS),
     };
+    this.hT = null;
     this.src = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.src);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.SRGB8_ALPHA8, W, H);
@@ -324,9 +354,19 @@ export class CrtFilter {
       this.blur(this.g2a, this.g2b, 64, 56);
       this.glowDirty = false;
     }
-    const S = P.screen;
+    // flat picture: the horizontal reconstruction runs once per game line and device column (devW x 224); curvature needs it per fragment
+    const flat = d.k === 0;
+    let S = P.screen;
+    if (flat) {
+      if (!this.hT || this.hT.w !== this.devW) { if (this.hT) { gl.deleteFramebuffer(this.hT.fb); gl.deleteTexture(this.hT.tex); } this.hT = this.target(this.devW, H); }
+      this.pass(P.hpass, this.hT, this.devW, H);
+      this.bind(0, main, P.hpass.u.uSrc); gl.uniform1f(P.hpass.u.uOutW, this.devW); gl.uniform1f(P.hpass.u.uSigH, d.sigH);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      S = P.screenH;
+    }
     this.pass(S, null, this.devW, this.devH);
     this.bind(0, main, S.u.uSrc); this.bind(1, this.g1a.tex, S.u.uGlow1); this.bind(2, this.g2a.tex, S.u.uGlow2);
+    if (flat) this.bind(3, this.hT!.tex, S.u.uH);
     gl.uniform2f(S.u.uOut, this.devW, this.devH);
     gl.uniform1f(S.u.uK, d.k); gl.uniform2f(S.u.uSig, d.sigLo, d.sigHi); gl.uniform1f(S.u.uSigH, d.sigH);
     gl.uniform1f(S.u.uMask, d.mask); gl.uniform1f(S.u.uPitch, d.pitch); gl.uniform1i(S.u.uKind, d.maskKind);
