@@ -59,6 +59,7 @@ let primed: AudioContext | null = null;
  * A silent one-sample buffer is started too (older iOS versions need a played sound to unlock). Harmless where it is not needed.
  */
 export function primeAudio(): void {
+  playbackSession();
   try {
     if (!primed) primed = new AudioContext();
     void primed.resume();
@@ -67,6 +68,30 @@ export function primeAudio(): void {
     src.connect(primed.destination);
     src.start(0);
   } catch { /* no Web Audio: the page works without sound */ }
+}
+
+/**
+ * iPhone: Web Audio follows the ring / silent switch (the "ambient" audio session), so with the switch on silent the game had no sound at all.
+ * A game is media playback: ask for the "playback" session (Audio Session API, Safari 17 and later). Older iOS has no such API; there a looping
+ * silent <audio> element started inside the tap moves the page to the playback session too. Both are no-ops elsewhere.
+ */
+let silentEl: HTMLAudioElement | null = null;
+function playbackSession(): void {
+  try {
+    const s = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+    if (s) { if (s.type !== "playback") s.type = "playback"; return; }
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (!ios || silentEl) return;
+    // 0.25 s of 8-bit 8 kHz mono silence as a WAV file
+    const n = 2000, b = new DataView(new ArrayBuffer(44 + n));
+    const str = (o: number, t: string) => { for (let i = 0; i < t.length; i++) b.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, "RIFF"); b.setUint32(4, 36 + n, true); str(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+    b.setUint32(24, 8000, true); b.setUint32(28, 8000, true); b.setUint16(32, 1, true); b.setUint16(34, 8, true); str(36, "data"); b.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) b.setUint8(44 + i, 128);
+    silentEl = new Audio(URL.createObjectURL(new Blob([b.buffer], { type: "audio/wav" })));
+    silentEl.loop = true; silentEl.setAttribute("playsinline", "");
+    void silentEl.play().catch(() => { silentEl = null; });
+  } catch { /* the page works without it */ }
 }
 
 export class AudioOut {
@@ -102,7 +127,7 @@ export class AudioOut {
   constructor(private read: Reader) {
     // Any gesture (re)starts a context that the browser keeps suspended: iOS only accepts touchend / click for it, and takes the context away again
     // when another app plays sound ("interrupted"). `suspended` is the page's own pause, which a tap must not undo.
-    const unlock = () => { this.ensure(); if (!this.suspended) void this.ctx?.resume(); };
+    const unlock = () => { playbackSession(); this.ensure(); if (!this.suspended) void this.ctx?.resume(); };
     for (const ev of ["keydown", "pointerdown", "pointerup", "mousedown", "touchstart", "touchend", "click"]) addEventListener(ev, unlock, { passive: true });
   }
 
