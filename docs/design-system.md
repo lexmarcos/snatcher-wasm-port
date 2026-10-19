@@ -91,7 +91,8 @@ Pressed = the two edges swap. Spacing steps are 8, 16, 24, 32 px.
 - **Status lines** (`.line`, `.notes li`): `.ok` (check), `.err` (cross), `.warn` (exclamation, `--ink`), `.dim`.
 - **Toolbar** (`#bar`, `role=toolbar`): small beveled buttons on a slim strip under the canvas, with the status text.
 - **Monitor frame** (`#monitor`): a raised `--bevel-mid` bezel with a sunken screen around the canvas. `main.ts` `fit()` measures the frame and the toolbar, so the canvas keeps an
-  integer scale and `image-rendering: pixelated`. In fullscreen the frame is dropped. No scanlines, no curvature.
+  integer scale and `image-rendering: pixelated` (picture style "Plain pixels"; with a CRT style the picture takes the biggest whole-device-pixel size that fits, 8:7 wide pixels by default, see below). In fullscreen the frame is dropped. The page itself (bezel, panels, buttons) has no scanlines and no curvature: the CRT look belongs to the game picture only (`#crt`, laid exactly over `#screen` inside `#stage`).
+- **Picture style** (Display tab, `web/src/display.ts`): a **select** "Picture style" (Plain pixels, CRT: consumer TV, CRT: studio monitor, Scanlines only; a fifth option "Custom" is shown only while the sliders differ from every preset), a dim help sentence under it (one per style), a warn line (`#crtNote`) only when the browser cannot run the filter or the window is too small for it (then the plain picture is shown), the **Smooth scaling** check box (only for the plain picture, hidden while a CRT style is drawing), a **Pixel shape** select (TV 8:7 / Square), and an **Adjust** fold (`details.inner`, the same quiet row as the other folds, top rule only) with six `.sl` sliders (Scanlines, Mask, Glow, Sharpness, Composite blend, Curvature; 0 to 100 %, steps of 5, same segmented track and value output as the volume sliders), a **Mask type** select (Aperture grille, Slot mask, Shadow mask) and **Reset to default style** (a `.btn`). All 16 px text, no new colours, no new shapes. Moving a slider switches the select to Custom without changing anything else. The choice is kept in `snatcher.crt` (`{"preset":"tv"}` or, for Custom, `{"preset":"custom","params":{...}}`) and removed by Clear everything.
 - **Debug overlay** (`#debug`): a small window in the same style, 16 px.
 - **Touch pad** (`#touch`, section 6 of `system.css`; phones and tablets, never on a desktop unless the player turns it on in the Touch tab): the on-screen Sega CD pad.
   D-pad on the left (four 1 x 1 arms of a 3 x 3 square around a dark hub, each arm carries the pixel cursor glyph turned to its direction), A B C on the right (A and B on top, C below B; 32 px letters),
@@ -141,7 +142,7 @@ Arrows are not used on buttons.
 
 ## 9. Rejected defaults
 
-Green phosphor terminal on black; a near-black page with one acid accent; rounded SaaS cards with grey shadows; monospace data labels; all-caps tracked eyebrows; "->" on buttons; CRT scanlines.
+Green phosphor terminal on black; a near-black page with one acid accent; rounded SaaS cards with grey shadows; monospace data labels; all-caps tracked eyebrows; "->" on buttons; CRT scanlines on the page (the game picture has its own optional CRT styles, docs/re/web.md section 12; the windows, bezel and buttons never do).
 (DotGothic16 is a pixel font whose Latin letters happen to be half-width: that is the font's design, used at its grid, not a monospace data style.)
 
 ## 10. Deviations from the plan, and the final pass

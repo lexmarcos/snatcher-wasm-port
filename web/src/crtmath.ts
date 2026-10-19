@@ -30,9 +30,9 @@ export const PRESET_IDS: CrtPreset[] = ["off", "tv", "pvm", "scan"];
 /** The three real presets (tuned with the comparison harness, docs/re/web.md 12.5). "off" carries the neutral values so a slider move starts from something sane. */
 export const PRESETS: Record<Exclude<CrtPreset, "custom">, CrtParams> = {
   off: { scan: 0, mask: 0, maskKind: "aperture", glow: 0, sharp: 1, curve: 0, composite: 0, shape: "square" },
-  tv: { scan: 0.6, mask: 0.35, maskKind: "slot", glow: 0.5, sharp: 0.3, curve: 0, composite: 0.7, shape: "tv" },
-  pvm: { scan: 0.85, mask: 0.3, maskKind: "aperture", glow: 0.3, sharp: 0.85, curve: 0, composite: 0, shape: "tv" },
-  scan: { scan: 0.55, mask: 0, maskKind: "aperture", glow: 0.25, sharp: 0.6, curve: 0, composite: 0, shape: "tv" },
+  tv: { scan: 0.65, mask: 0.22, maskKind: "slot", glow: 0.5, sharp: 0.6, curve: 0, composite: 0.5, shape: "tv" },
+  pvm: { scan: 0.9, mask: 0.18, maskKind: "aperture", glow: 0.3, sharp: 0.85, curve: 0, composite: 0, shape: "tv" },
+  scan: { scan: 0.65, mask: 0, maskKind: "aperture", glow: 0.25, sharp: 0.7, curve: 0, composite: 0, shape: "tv" },
 };
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -56,9 +56,12 @@ export function sanitizeParams(v: unknown, base: CrtParams): CrtParams {
 export const sameParams = (a: CrtParams, b: CrtParams) =>
   a.scan === b.scan && a.mask === b.mask && a.maskKind === b.maskKind && a.glow === b.glow && a.sharp === b.sharp && a.curve === b.curve && a.composite === b.composite && a.shape === b.shape;
 
-/** The preset a set of values equals, or "custom". */
+/**
+ * The preset a set of values equals, or "custom". "off" is never matched: sliders dragged to zero are still a custom style that draws through the filter
+ * (the picture does not switch to plain pixels under the player's hand); the plain picture is chosen only by name.
+ */
 export function presetOf(p: CrtParams): CrtPreset {
-  for (const id of PRESET_IDS) if (sameParams(p, PRESETS[id as Exclude<CrtPreset, "custom">])) return id;
+  for (const id of ["tv", "pvm", "scan"] as const) if (sameParams(p, PRESETS[id])) return id;
   return "custom";
 }
 
@@ -216,12 +219,12 @@ export function derive(p: CrtParams, scale: number): CrtDerived {
   const scanE = p.scan * scanFade(scale);
   const ml = maskLayout(scale, p.maskKind);
   const maskE = p.mask * ml.fade;
-  // a beam thinner than about half a device pixel is not drawn evenly: keep a floor in device pixels
-  const floorV = 0.55 / scale;
-  const sigLo = Math.max(floorV, 0.60 - 0.43 * scanE), sigHi = Math.max(floorV, 0.60 - 0.30 * scanE);
+  // a beam thinner than about 0.85 device pixel is not drawn evenly: keep a floor in device pixels
+  const floorV = 0.85 / scale;
+  const sigLo = Math.max(floorV, 0.60 - 0.45 * scanE), sigHi = Math.max(floorV, 0.60 - 0.30 * scanE);
   const sigH = Math.max(0.5 / scale, 0.52 - 0.38 * p.sharp);
   const glow = 0.22 * p.glow;
-  const gain = (1 + 0.04 * maskE + 0.06 * scanE) / (1 + glow);
+  const gain = (1 + 0.04 * maskE + 0.06 * scanE + 0.08 * p.composite) / (1 + glow);
   return {
     k: curveK(p.curve), sigLo, sigHi, sigH,
     mask: maskE, pitch: ml.pitch, maskKind: p.maskKind === "aperture" ? 0 : p.maskKind === "slot" ? 1 : 2,

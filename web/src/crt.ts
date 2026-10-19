@@ -158,7 +158,7 @@ void main() {
     m = mix(vec3(1.0), T * 3.0 * gap, sc);
   }
 
-  vec3 g = texture(uGlow1, u * 0.5 + 0.5).rgb * 0.55 + texture(uGlow2, u * 0.5 + 0.5).rgb * 0.45;
+  vec3 g = texture(uGlow1, u * 0.5 + 0.5).rgb * 0.65 + texture(uGlow2, u * 0.5 + 0.5).rgb * 0.35;
   vec3 col = (beam * m + uGlow * g) * uGain;
   // shoulder instead of a hard clip: keeps the hue of the brightest areas
   vec3 hi = max(col - 0.85, 0.0);

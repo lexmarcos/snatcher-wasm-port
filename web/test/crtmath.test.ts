@@ -131,8 +131,8 @@ test("derive: sane shader inputs at every scale and setting", () => {
   }
   // no mask on a phone sized picture, even when the slider is up
   expect(derive({ ...PRESETS.tv, mask: 1 }, 3.4).mask).toBe(0);
-  // a beam is never thinner than half a device pixel
-  expect(derive({ ...PRESETS.pvm, scan: 1 }, 12).sigLo * 12).toBeGreaterThanOrEqual(0.55 - 1e-9);
+  // a beam is never thinner than 0.85 device pixel
+  expect(derive({ ...PRESETS.pvm, scan: 1 }, 12).sigLo * 12).toBeGreaterThanOrEqual(0.85 - 1e-9);
 });
 
 test("settings: saved value round trip, bad values fall back, presets compare", () => {
@@ -153,7 +153,8 @@ test("settings: saved value round trip, bad values fall back, presets compare", 
   expect(presetOf({ ...PRESETS.tv, glow: 0.51 })).toBe("custom");
   expect(sameParams(PRESETS.tv, { ...PRESETS.tv })).toBe(true);
   expect(parsePreset("tv")).toBe("tv"); expect(parsePreset("x")).toBeNull();
-  for (const id of PRESET_IDS) expect(presetOf(PRESETS[id as Exclude<typeof id, "custom">])).toBe(id);
+  for (const id of ["tv", "pvm", "scan"] as const) expect(presetOf(PRESETS[id])).toBe(id);
+  expect(presetOf(PRESETS.off)).toBe("custom");     // sliders at zero stay a custom filter style, never the plain picture
 });
 
 test("defaults: the consumer TV on a computer, scanlines only on a phone; curvature is off in every preset", () => {

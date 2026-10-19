@@ -19,6 +19,7 @@ import { ImportedSource, ImportWorker, resolvePick, type Pick } from "./imported
 import { T, applyStatic, getLang, parseLang, setUiDict, type Lang, type UiKey } from "./i18n";
 import { Touch } from "./touch";
 import { Display } from "./display";
+import * as crtmath from "./crtmath";
 import { CRT_MIN_SCALE, fitPicture, view as crtView } from "./crtmath";
 import { isCoarsePrimary, isIOS, toggleFullscreen as platformFullscreen } from "./platform";
 
@@ -37,6 +38,9 @@ const ls = {
 
 // ---------- the display filter (picture styles): settings, the GL canvas over the game canvas, pointer geometry (docs/re/web.md section 12) ----------
 const display = new Display({ canvas, glCanvas: crtCanvas, ls, params, coarse: isCoarsePrimary(), refit: () => fit(), frame: () => frameView() });
+
+(window as any).snatcherDisplay = display; // tests: available before the game starts
+(window as any).__crtmath = crtmath;
 
 // ---------- notes (visible degradation messages) ----------
 type Level = "warn" | "err" | "ok";
@@ -89,6 +93,9 @@ document.addEventListener("fullscreenchange", fit);
 // moving the window to another monitor changes devicePixelRatio: the picture and the mask are sized in whole device pixels, so lay out again
 function watchDpr() { const mq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`); mq.addEventListener("change", () => { fit(); watchDpr(); }, { once: true }); }
 watchDpr();
+// not every browser reports a ratio change through matchMedia (remote desktops, zoom, emulation): look twice a second as well
+let lastDpr = window.devicePixelRatio || 1;
+setInterval(() => { const r = window.devicePixelRatio || 1; if (r !== lastDpr) { lastDpr = r; fit(); } }, 500);
 
 smoothBox.checked = ls.get("snatcher.smooth") === "1";
 const applySmooth = () => { canvas.classList.toggle("smooth", smoothBox.checked); ls.set("snatcher.smooth", smoothBox.checked ? "1" : "0"); };

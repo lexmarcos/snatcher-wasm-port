@@ -18,6 +18,7 @@ the original disc and plays it as the console did, with the same pictures, music
 * Portuguese subtitles for the voiced scenes and the spoken parts of the CD music
 * Keyboard, gamepad (Xbox, PlayStation, Switch) and mouse for the shooting scenes
 * Phones and tablets: an on-screen pad, or touch the picture itself
+* Picture styles in the Display tab: plain pixels, or a tube TV or studio monitor look (scanlines, phosphor mask, glow, TV pixel shape) that keeps the colours and the brightness; it only changes how the picture is drawn
 * Autosave, so you can pick up where you left off (you can turn it off)
 * Your files never leave your computer: everything happens inside the browser
 

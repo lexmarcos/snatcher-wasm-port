@@ -18,6 +18,7 @@ e roda o jogo como o console rodava, com as mesmas imagens, músicas e vozes.
 * Legendas em português nas cenas com voz e nas falas das músicas do CD
 * Teclado, controle (Xbox, PlayStation, Switch) e mouse nas cenas de tiro
 * Celulares e tablets: controle na tela, ou toque na própria imagem
+* Estilos de imagem na aba Tela: pixels simples, ou o visual de uma TV de tubo ou de um monitor de estúdio (linhas de varredura, máscara de fósforo, brilho, pixel no formato de TV) que mantém as cores e o brilho; só muda a forma de desenhar a imagem
 * Salvamento automático, para continuar de onde parou (dá para desligar)
 * Seus arquivos nunca saem do seu computador: tudo acontece dentro do navegador
 

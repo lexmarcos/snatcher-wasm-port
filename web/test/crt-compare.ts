@@ -79,6 +79,17 @@ for (const size of sizeSpecs) {
     if (strips.length === 3) write(`compare-${scene}.png`, await page.evaluate((u) => (window as any).crtJoin(u), strips));
   }
 }
+// before / after of the composite blend on the dithered scenes: TV style with the blend at 0, at the preset's value, and at 1 (compare-composite-<scene>.png)
+for (const scene of ["title", "city", "night"].filter((x) => scenes.includes(x))) {
+  const tv = { scan: 0.65, mask: 0.22, maskKind: "slot", glow: 0.5, sharp: 0.6, curve: 0, shape: "tv" };
+  const cx = FOCUS[scene]?.face[0] ?? 128;
+  const strips: string[] = [];
+  for (const composite of [0, 0.5, 1]) {
+    const s = await rnd({ frame: scene, mode: { ...tv, composite }, w: 1920, h: 1080, cols: [Math.max(0, cx - 58), Math.min(256, cx + 58)] });
+    strips.push(s.png);
+  }
+  write(`compare-composite-${scene}.png`, await page.evaluate((u) => (window as any).crtJoin(u), strips));
+}
 const names = Object.keys(lum).sort();
 const line = (s: string, v: (m: string) => string) => `${s.padEnd(8)}${modes.map((m) => v(m).padStart(9)).join("")}`;
 if (names.length) {
