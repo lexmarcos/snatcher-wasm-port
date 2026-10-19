@@ -537,6 +537,13 @@ async function tapMenuText(page: Page, f: Fingers, text: string): Promise<any> {
   check("360x640 touch: the start window does not scroll sideways", !r.scroll);
   const ta = await page.evaluate(() => ({ body: getComputedStyle(document.body).touchAction, canvas: getComputedStyle(document.getElementById("screen")!).touchAction, user: getComputedStyle(document.getElementById("wrap")).userSelect, ob: getComputedStyle(document.documentElement).overscrollBehaviorY }));
   check("no double-tap zoom (manipulation), no gestures on the picture (none), no text selection, no pull-to-refresh", /manipulation/.test(ta.body) && ta.canvas === "none" && ta.user === "none" && ta.ob === "none", JSON.stringify(ta));
+  const zoom = await page.evaluate(() => {
+    const vp = document.querySelector('meta[name="viewport"]')?.getAttribute("content") ?? "";
+    const els = Array.from(document.querySelectorAll<HTMLElement>("button, summary, label, a, input, select, .tbtn, .arm, #ovWin, #overlay, .modal"));
+    const bad = els.filter((e) => !/manipulation|none|pan-/.test(getComputedStyle(e).touchAction)).map((e) => e.id || e.className || e.tagName);
+    return { vp, bad, n: els.length };
+  });
+  check("the page never zooms: viewport maximum-scale=1 and user-scalable=no, every button and control has no double-tap zoom", /maximum-scale=1/.test(zoom.vp) && /user-scalable=no/.test(zoom.vp) && zoom.n > 20 && zoom.bad.length === 0, JSON.stringify(zoom));
   check("phone: the file picker has no extension filter (iOS Files / Android would grey out .cue and .bin)", !r.accept);
   const q = await page.evaluate(() => { const e = document.getElementById("impQuota")!; return { shown: !e.hidden && getComputedStyle(e).display !== "none", text: e.textContent ?? "", cls: e.className }; });
   check("a phone with little storage is told before importing (extends the storage line, no duplicate)", q.shown && /580 MB|only about/.test(q.text) && /warn/.test(q.cls), JSON.stringify(q));
