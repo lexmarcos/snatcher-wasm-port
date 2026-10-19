@@ -195,7 +195,7 @@ if (haveAssets) {
   const f0 = await frame(page); await sleep(300);
   check("panel pauses the game", (await frame(page)) === f0);
   check("Resume has the focus and is primary", await page.evaluate(() => document.activeElement?.id === "pnResume" && document.getElementById("pnResume")!.classList.contains("primary")));
-  const names = ["sound", "display", "controls", "gamepad", "saves"];
+  const names = ["sound", "display", "controls", "touch", "gamepad", "saves"];
   await page.focus("#tabSound");
   for (let i = 0; i < names.length; i++) {
     const sel = await page.evaluate(() => Array.from(document.querySelectorAll("[role=tab]")).map((t) => t.getAttribute("aria-selected")).join(","));

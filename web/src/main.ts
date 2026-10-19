@@ -559,7 +559,7 @@ function renderQuota(si: { used: number; quota: number }) {
     if (free < importNeed(false)) text = T("imp.lowquota.all", { free: fmtBytes(free), need2: fmtBytes(importNeed(false)) });
     else if (impCd.checked && free < importNeed(true)) text = T("imp.lowquota.cd", { free: fmtBytes(free), need: fmtBytes(importNeed(true)), need2: fmtBytes(importNeed(false)) });
   }
-  q.textContent = text; q.hidden = !text;
+  q.textContent = text; q.hidden = !text; q.classList.toggle("warn", !!text);
 }
 let lastQuota: { used: number; quota: number } | null = null;
 async function refreshStorage() {

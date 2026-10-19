@@ -62,6 +62,7 @@ async function open(d: Dev, o: Opts = {}): Promise<{ page: Page; cdp: CDPSession
     if (stubs) {
       const w: any = window; w.__vib = []; w.__wake = { acquired: 0, released: 0, active: 0 };
       (navigator as any).vibrate = (ms: number) => { w.__vib.push(ms); return true; };
+      try { (navigator.storage as any).estimate = async () => ({ quota: 600 * 2 ** 20, usage: 20 * 2 ** 20 }); } catch { /* ignore */ } // a phone with little room
       Object.defineProperty(navigator, "wakeLock", { configurable: true, value: { request: async () => { w.__wake.acquired++; w.__wake.active++; const l = new EventTarget() as any; l.released = false; l.release = async () => { if (!l.released) { l.released = true; w.__wake.released++; w.__wake.active--; } }; return l; } } });
     }
   }, o.mode ?? "pad", !!o.keepMode, !!o.stubs);
@@ -239,7 +240,8 @@ console.log(`safe-area insets emulation by the protocol: ${safeInsetsWork ? "wor
   check("wake lock released while the menu is open", wk2.active === 0, JSON.stringify(wk2));
   await page.keyboard.press("Escape"); await sleep(300);
   check("wake lock taken again after Resume", (await page.evaluate(() => (window as any).__wake.active)) === 1);
-  // Menu / Start buttons
+  const fonts = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>("#touch *, #rotateHint, #rotateHint *")).filter((e) => e.childNodes.length && Array.from(e.childNodes).some((n) => n.nodeType === 3 && (n.textContent ?? "").trim()) && e.getClientRects().length).map((e) => ({ t: (e.textContent ?? "").trim().slice(0, 12), fs: parseFloat(getComputedStyle(e).fontSize), fam: getComputedStyle(e).fontFamily.split(",")[0].replace(/["']/g, "") })));
+  check("the pad's text follows the type scale (multiples of 16 px, DotGothic16)", fonts.length >= 4 && fonts.every((f: any) => f.fs % 16 === 0 && f.fam === "DotGothic16"), JSON.stringify(fonts.filter((f: any) => f.fs % 16 !== 0 || f.fam !== "DotGothic16")));
   await shot(page, "pad-iphone-portrait-menu.png");
   await page.close();
 }
@@ -535,6 +537,8 @@ async function tapMenuText(page: Page, f: Fingers, text: string): Promise<any> {
   const ta = await page.evaluate(() => ({ body: getComputedStyle(document.body).touchAction, canvas: getComputedStyle(document.getElementById("screen")!).touchAction, user: getComputedStyle(document.getElementById("wrap")).userSelect, ob: getComputedStyle(document.documentElement).overscrollBehaviorY }));
   check("no double-tap zoom (manipulation), no gestures on the picture (none), no text selection, no pull-to-refresh", /manipulation/.test(ta.body) && ta.canvas === "none" && ta.user === "none" && ta.ob === "none", JSON.stringify(ta));
   check("phone: the file picker has no extension filter (iOS Files / Android would grey out .cue and .bin)", !r.accept);
+  const q = await page.evaluate(() => { const e = document.getElementById("impQuota")!; return { shown: !e.hidden && getComputedStyle(e).display !== "none", text: e.textContent ?? "", cls: e.className }; });
+  check("a phone with little storage is told before importing (extends the storage line, no duplicate)", q.shown && /580 MB|only about/.test(q.text) && /warn/.test(q.cls), JSON.stringify(q));
   await shot(page, "overlay-360x640.png");
   const f = new Fingers(cdp);
   const small = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>("#overlay button, #overlay summary, #overlay label.check")).filter((e) => e.getClientRects().length && !(e as HTMLButtonElement).disabled).map((e) => ({ id: e.id || e.tagName, w: e.getBoundingClientRect().width, h: e.getBoundingClientRect().height })).filter((e) => e.h < 43.5 || e.w < 43.5));
