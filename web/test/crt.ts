@@ -34,7 +34,7 @@ const base = join(homedir(), ".cache/puppeteer/chrome-headless-shell");
 const chrome = join(base, readdirSync(base).sort().pop()!, "chrome-headless-shell-linux64/chrome-headless-shell");
 browser = await puppeteer.launch({ executablePath: chrome, args: ["--autoplay-policy=no-user-gesture-required"] });
 
-interface Opts { w?: number; h?: number; dpr?: number; mobile?: boolean; query?: string; noGL?: boolean; storage?: Record<string, string>; clear?: boolean }
+interface Opts { warm?: boolean; w?: number; h?: number; dpr?: number; mobile?: boolean; query?: string; noGL?: boolean; storage?: Record<string, string>; clear?: boolean }
 async function open(o: Opts = {}): Promise<{ page: Page; cdp: CDPSession }> {
   const ctx = await browser!.createBrowserContext();
   const page = await ctx.newPage();
@@ -54,6 +54,8 @@ async function open(o: Opts = {}): Promise<{ page: Page; cdp: CDPSession }> {
   await page.goto(`http://localhost:${port}/${o.query ?? ""}`, { waitUntil: "load" });
   await page.waitForFunction(() => (window as any).snatcherDisplay, { timeout: 15000 });
   await page.evaluate(() => document.fonts.ready);
+  // the GL side is built when the first frame is about to be drawn: draw a black one so the filter exists (a test that wants the page before that passes warm: false)
+  if (o.warm !== false) await page.evaluate(() => { (window as any).snatcherDisplay.present(new Uint8Array(256 * 224 * 4)); });
   await sleep(200);
   return { page, cdp };
 }
@@ -72,10 +74,12 @@ const dstate = (page: Page) => page.evaluate(() => {
 if (PART.includes("A")) {
 {
   // A1: the shaders build and the filter owns the picture
-  const { page } = await open({ query: "?crt=tv" });
-  const s = await dstate(page);
+  const { page } = await open({ query: "?crt=tv", warm: false });
+  let s = await dstate(page);
+  check("before the first frame WebGL is not touched and the 2D canvas stays visible (GL canvas hidden)", !s.hasFilter && !s.unavailable && s.glHidden);
+  await page.evaluate(() => { (window as any).snatcherDisplay.present(new Uint8Array(256 * 224 * 4)); });
+  s = await dstate(page);
   check("shaders compile: the filter exists and software GL was accepted for ?crt=tv", s.hasFilter && !s.unavailable && !s.lost);
-  check("before a frame arrives the 2D canvas stays visible (GL canvas hidden)", s.glHidden);
   check("preset forced by the URL, nothing saved", s.preset === "tv" && (await page.evaluate(() => localStorage.getItem("snatcher.crt"))) === null);
   check("the picture box is the 8:7 aspect and a whole number of device pixels", Math.abs(s.rect.w / s.rect.h - (256 * 8) / 7 / 224) < 0.01 && Math.abs(s.rect.w * s.dpr - Math.round(s.rect.w * s.dpr)) < 1e-6 && Math.abs(s.rect.h * s.dpr - Math.round(s.rect.h * s.dpr)) < 1e-6, JSON.stringify(s.rect));
   check("GL canvas backing size equals the box in device pixels", s.glW === Math.round(s.rect.w * s.dpr) && s.glH === Math.round(s.rect.h * s.dpr), `${s.glW}x${s.glH}`);

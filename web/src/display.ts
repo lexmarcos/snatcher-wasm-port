@@ -52,8 +52,12 @@ export class Display {
 
   get preset(): CrtPreset { return this.forced ?? this.saved.preset; }
   get params(): CrtParams { return this.forced ? PRESETS[this.forced] : this.saved.params; }
-  /** the filter is wanted and can run: the layout should be made for it */
-  wants(): boolean { return this.preset !== "off" && this.ensure() !== null; }
+  /**
+   * The filter is wanted and as far as we know can run: the layout should be made for it. The GL side is only built when the first frame is about to be drawn
+   * (`present`), so a page that never starts a game never touches WebGL; if it turns out not to work, `unavailable` is set and the layout is redone for the plain picture
+   * before anything was painted.
+   */
+  wants(): boolean { return this.preset !== "off" && !this.unavailable && !this.filter?.lost; }
   par(): number { return parOf(this.params.shape); }
   /** the filtered picture is on screen right now */
   get active(): boolean { return this.boxCrt && this.have && !!this.filter && !this.filter.lost; }
@@ -86,24 +90,37 @@ export class Display {
 
   /** The layout's answer: the picture box (CSS px) and whether it was made for the filter. Sizes the GL canvas and redraws. */
   setBox(b: Box) {
-    const ok = b.crt && this.preset !== "off" && !!this.ensure();
+    const ok = b.crt && this.wants();
     this.noteSmall = this.preset !== "off" && !ok && !this.unavailable;
     this.setBoxState(ok);
-    if (ok && this.filter) {
+    if (ok) {
       this.devW = Math.max(1, Math.round(b.cssW * b.dpr)); this.devH = Math.max(1, Math.round(b.cssH * b.dpr));
-      this.filter.setSize(this.devW, this.devH);
-      this.filter.setParams(this.params);
-      if (this.have) { this.filter.draw(this.devH / 224); this.showGl(true); }
+      if (this.filter) {
+        this.filter.setSize(this.devW, this.devH);
+        this.filter.setParams(this.params);
+        if (this.have) { this.filter.draw(this.devH / 224); this.showGl(true); }
+      } else {
+        // a style was switched on while the game is running (paused in the menu): build the GL side now and draw the frame on screen
+        const fr = this.d.frame();
+        if (fr) this.present(fr);
+      }
     } else { this.showGl(false); }
     this.renderTab();
   }
 
   /** A new engine frame (called after the 2D canvas got it). */
   present(frame: Uint8Array) {
-    if (!this.boxCrt || !this.filter || this.filter.lost) return;
-    this.filter.upload(frame);
+    if (!this.boxCrt) return;
+    let f = this.filter;
+    if (!f) {
+      f = this.ensure();
+      if (!f) { this.d.refit(); return; }      // no WebGL2 after all: the plain layout, before the first picture is painted
+      f.setSize(this.devW, this.devH); f.setParams(this.params);
+    }
+    if (f.lost) return;
+    f.upload(frame);
     this.have = true;
-    this.filter.draw(this.devH / 224);
+    f.draw(this.devH / 224);
     this.showGl(true);
   }
   /** Redraw the frame the GPU already has (settings changed while paused). */
