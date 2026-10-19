@@ -303,10 +303,10 @@ html[data-touch] .modal * { touch-action: manipulation; }
 html[data-touch] .modal input[type=range] { touch-action: pan-x; }
 html[data-touch] #wrap { min-height: 0; height: 100%; padding: calc(var(--sai-t) + 8px) calc(var(--sai-r) + 8px) calc(var(--sai-b) + var(--reserve-b)) calc(var(--sai-l) + 8px); gap: 0; justify-content: center; }
 html[data-touch] #monitor { padding: 0; background: none; border: 0; box-shadow: none; }
-html[data-touch] canvas { max-width: none; object-fit: contain; }
-/* a phone held upright: the picture spans the whole width, edge to edge (no side padding, no bezel) */
+/* no bevel lines around the picture in any touch layout: it sits straight on the black page */
+html[data-touch] canvas { max-width: none; object-fit: contain; box-shadow: none; }
+/* a phone held upright: the picture spans the whole width, edge to edge (no side padding) */
 html[data-touch][data-full] #wrap { padding-left: var(--sai-l); padding-right: var(--sai-r); }
-html[data-touch][data-full] canvas { box-shadow: none; }
 html[data-touch] #bar { display: none; }
 /* playing on a touch device: a black page around the picture, the Menu button centred under it (portrait, src/touch.ts placeMenu) */
 html[data-touch][data-play], html[data-touch][data-play] body { background: #000; background-image: none; }

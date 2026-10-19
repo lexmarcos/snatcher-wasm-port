@@ -305,7 +305,7 @@ mapping is linear. `Input.track` (mouse) uses the same function.
 * Landscape: `sides` = controls in the free space left and right of the picture (the largest scale, not below 3/4 of the largest that fits, whose side columns hold the controls; the buttons shrink
   to the room but never below 48 px); `overlay` = the narrow phones (667x375): the controls are drawn over the picture's edges with 48 px buttons and the picture keeps its larger scale.
 * Safe areas: `env(safe-area-inset-*)` (read from the hidden `#sai` probe for the maths, mirrored in `--sai-*`); controls and picture stay inside (test with the protocol's safe-area override).
-* The toolbar and the monitor bezel are not shown in touch layouts. `100%` of a fixed `body` instead of `100vh` (iOS toolbars). Orientation: both work; a phone in portrait whose picture
+* The toolbar, the monitor bezel and the canvas bevel lines are not shown in touch layouts (any orientation). `100%` of a fixed `body` instead of `100vh` (iOS toolbars). Orientation: both work; a phone in portrait whose picture
   would be larger sideways sees a dismissible hint (never a block, `snatcher.touch.rotate`). Fullscreen: Fullscreen API (Android, iPad); iPhone Safari has none, so the Touch tab
   says "Share, Add to Home Screen" (`manifest.webmanifest`: `display: fullscreen`, `display_override`, icons made by `scripts/make-icons.py` from the page's own pixel S, no game art). **No service worker**.
 

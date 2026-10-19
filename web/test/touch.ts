@@ -132,7 +132,7 @@ for (const mode of process.env.SKIP_LAYOUT ? [] : ["pad", "game"]) {
       return {
         scroll: document.documentElement.scrollWidth > innerWidth || document.body.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
         arr: document.documentElement.dataset.arr, touch: document.documentElement.dataset.touch,
-        canvas: rect("#screen"), kids, menuUnder: document.documentElement.dataset.menu === "under", bg: getComputedStyle(document.body).backgroundColor, bgImg: getComputedStyle(document.body).backgroundImage, iw: innerWidth, ih: innerHeight, safe: { t: parseFloat(sai.paddingTop), r: parseFloat(sai.paddingRight), b: parseFloat(sai.paddingBottom), l: parseFloat(sai.paddingLeft) }, mode,
+        canvas: rect("#screen"), kids, menuUnder: document.documentElement.dataset.menu === "under", bg: getComputedStyle(document.body).backgroundColor, bgImg: getComputedStyle(document.body).backgroundImage, frame: ["screen", "crt"].map((id) => getComputedStyle(document.getElementById(id)!).boxShadow), iw: innerWidth, ih: innerHeight, safe: { t: parseFloat(sai.paddingTop), r: parseFloat(sai.paddingRight), b: parseFloat(sai.paddingBottom), l: parseFloat(sai.paddingLeft) }, mode,
       };
     }, mode);
     const tag = `${mode}/${d.name}`;
@@ -150,6 +150,7 @@ for (const mode of process.env.SKIP_LAYOUT ? [] : ["pad", "game"]) {
       check(`${tag}: controls and picture do not overlap (${r.arr})`, hit.length === 0, JSON.stringify(hit.slice(0, 2)));
     }
     check(`${tag}: a black page around the picture while playing`, r.bg === "rgb(0, 0, 0)" && r.bgImg === "none", `${r.bg} ${r.bgImg}`);
+    check(`${tag}: no frame lines around the picture`, r.frame.every((v: string) => v === "none"), JSON.stringify(r.frame));
     if (r.arr === "below") {
       const m = r.kids.find((k: any) => /#tMenu$/.test(k.cls));
       const others = r.kids.filter((k: any) => k !== m && !/dpad|abc/.test(k.cls) || /arm/.test(k.cls));
