@@ -445,13 +445,18 @@ impl Entry {
 
     /// sub_0119E0: move from the current cell by `step` following the grid codes.
     fn mv(&mut self, e: &mut Engine, step: i16) {
-        let mut d = self.cell as i16 + step;
+        if let Some(c) = self.dest(e, self.cell, step) { self.cell = c; self.place_cursor(e); }
+    }
+
+    /// Where a move of `step` from `from` ends (the walk of `sub_0119E0` without its side effects): `None` = the move is refused.
+    /// Grid codes: 0 wall, 1 keep going, 2/3 turn right/left, 4/5 turn down/up, 6/7 wrap to the next/previous row, anything else (>= 8) is a key.
+    fn dest(&self, e: &Engine, from: u8, step: i16) -> Option<u8> {
+        let mut d = from as i16 + step;
         let mut dir = step;
         for _ in 0..64 {
             let c = (d as u16 & 0xFF) as u8;
-            let code = e.mem.u8(self.grid + c as u32);
-            match code {
-                0 => return,
+            match e.mem.u8(self.grid + c as u32) {
+                0 => return None,
                 1 => { d = c as i16 + dir; }
                 4 => { dir = self.stride as i16; d = c as i16 + dir; }
                 5 => { dir = -(self.stride as i16); d = c as i16 + dir; }
@@ -459,9 +464,69 @@ impl Entry {
                 3 => { dir = -1; d = c as i16 - 1; }
                 7 => { dir = 1; d = c as i16 - self.stride as i16 + 1; }
                 6 => { dir = -1; d = c as i16 + self.stride as i16 - 1; }
-                _ => { self.cell = c; self.place_cursor(e); return; }
+                _ => return Some(c),
             }
         }
+        None
+    }
+
+    /// The key loop accepts a key now (not opening, not animating a key press, not finishing).
+    pub fn ready(&self) -> bool { matches!(self.stage, Stage::Active) && self.pending.is_none() && self.result.is_none() }
+    pub fn cell(&self) -> u8 { self.cell }
+
+    /// Every key cell the cursor can reach (breadth first search from the cursor over the four directions, so cells past the grid are never taken).
+    fn reachable(&self, e: &Engine) -> Vec<u8> {
+        let s = self.stride as i16;
+        let mut seen = [false; 256];
+        let mut order = vec![self.cell];
+        seen[self.cell as usize] = true;
+        let mut i = 0;
+        while i < order.len() {
+            let c = order[i]; i += 1;
+            for step in [-s, s, -1, 1] {
+                if let Some(n) = self.dest(e, c, step) { if !seen[n as usize] { seen[n as usize] = true; order.push(n); } }
+            }
+        }
+        order.sort_unstable();
+        order
+    }
+
+    /// Tappable keys in game pixels (touch mode, engine/src/touch.rs): every reachable cell is a key, the cell index is the id. Key centres follow the
+    /// cursor sprite: the keypad's 9 px cursor sits at the cell position, so the key centre is 4 px in; the keyboard's 16 px keys are centred 8 px in;
+    /// BACKSPACE (code 9), SPACE (0x20) and OK (8) of the keyboard are wider than one key.
+    pub fn touch_cells(&self, e: &Engine) -> Vec<crate::touch::TRect> {
+        use crate::touch::TRect;
+        if self.stride == 0 { return vec![]; }
+        self.reachable(e).into_iter().map(|c| {
+            let code = e.mem.u8(self.grid + c as u32);
+            let (col, row) = (c as u32 % self.stride as u32, 1 + c as u32 / self.stride as u32);
+            let x = ((col << 3) as u8).wrapping_add(self.x0) as i32;
+            let y = ((row << 3) as u8).wrapping_add(self.y0) as i32;
+            let (cx, cy) = if self.style == 2 { (x + 4, y + 4) } else { (x + 8, y + 8) };
+            let w = if self.style == 3 { match code { 8 | 9 => 48, 0x20 => 64, _ => 16 } } else { 16 };
+            TRect { x: cx - w / 2, y: cy - 8, w, h: 16, id: c as i32, kind: 0 }
+        }).collect()
+    }
+
+    /// First step (one direction bit) of the shortest route from the cursor to grid cell `target`; 0 when there or no route.
+    pub fn step_toward(&self, e: &Engine, target: u8) -> u8 {
+        if self.cell == target || self.stride == 0 { return 0; }
+        let s = self.stride as i16;
+        let dirs: [(u8, i16); 4] = [(btn::UP, -s), (btn::DOWN, s), (btn::LEFT, -1), (btn::RIGHT, 1)];
+        let mut first = [0u8; 256];
+        let mut seen = [false; 256];
+        let mut q = std::collections::VecDeque::new();
+        seen[self.cell as usize] = true;
+        for (bit, step) in dirs {
+            if let Some(n) = self.dest(e, self.cell, step) { if !seen[n as usize] { seen[n as usize] = true; first[n as usize] = bit; q.push_back(n); } }
+        }
+        while let Some(c) = q.pop_front() {
+            if c == target { return first[c as usize]; }
+            for (_, step) in dirs {
+                if let Some(n) = self.dest(e, c, step) { if !seen[n as usize] { seen[n as usize] = true; first[n as usize] = first[c as usize]; q.push_back(n); } }
+            }
+        }
+        0
     }
 
     fn backspace(&mut self, e: &mut Engine) -> bool {

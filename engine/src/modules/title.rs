@@ -11,6 +11,7 @@
 use super::boot::Boot;
 use super::SubServices;
 use crate::game::{Engine, Module, Out};
+use crate::touch::TouchUi;
 
 const D2_STATE_TABLE_A: u32 = 0x29142; // slot-select build-up (21 lists), second lists at B
 const D2_STATE_TABLE_B: u32 = 0x29412;
@@ -515,8 +516,50 @@ impl Title {
     }
 }
 
+/// Screen rectangles of the baked pictures of the title module (game pixels, measured on the USA disc's scenes; the English and pt-BR
+/// pictures share them): NEW GAME / CONTINUE, the four slot panels, the five rows of the options screen (the fifth is the QUIT button).
+const TITLE_ITEMS: [(i32, i32, i32, i32); 2] = [(64, 158, 128, 18), (64, 176, 128, 18)];
+const SLOT_PANEL: (i32, i32, i32, i32, i32) = (56, 60, 146, 27, 32); // x, y of slot 0, w, h, pitch
+const OPTION_ROWS: [(i32, i32, i32, i32); 5] = [(40, 45, 176, 21), (40, 72, 176, 39), (40, 116, 176, 22), (40, 144, 176, 22), (96, 172, 64, 22)];
+
 impl Module for Title {
     fn name(&self) -> &'static str { "title DATA_D2" }
+
+    /// Touch description: the title menu, the slot screen, the options screen and the gun calibration are the interactive states; the rest
+    /// (boot screens, fades, scene loads) is `None`.
+    fn touch(&self, e: &Engine) -> Option<TouchUi> {
+        use crate::touch::TRect;
+        if self.boot.is_some() || self.gap > 0 { return None; }
+        let rect = |id: i32, (x, y, w, h): (i32, i32, i32, i32)| TRect { x, y, w, h, id, kind: 0 };
+        let mut u;
+        match (self.st, self.sub) {
+            (9, 1) | (9, 2) => {
+                u = TouchUi::new("title");
+                u.ready = true; u.start = true;
+                u.rects.push(rect(0, TITLE_ITEMS[0]));
+                if e.regs.get_b(0x78B6) != 0 { u.rects.push(rect(1, TITLE_ITEMS[1])); }
+                // the cursor object 17 shows idx 3 on NEW GAME and 1 on CONTINUE (`state9` below reads idx == 3 as NEW GAME)
+                u.cur = if self.sub == 1 && e.disp.sub.objs[17].idx != 3 { 1 } else { 0 };
+            }
+            (10, 0) if self.timer == 0x15 => {
+                u = TouchUi::new("slots");
+                u.ready = true; u.start = true; u.back = true;
+                let bits = e.regs.get_b(0x78B6);
+                for k in 0..4 { if bits & (1 << k) != 0 { u.rects.push(rect(k, (SLOT_PANEL.0, SLOT_PANEL.1 + SLOT_PANEL.4 * k, SLOT_PANEL.2, SLOT_PANEL.3))); } }
+                u.cur = e.regs.get_b(0x78B7) as i32;
+            }
+            (11, 0) if self.timer == 0x18 => {
+                u = TouchUi::new("options");
+                u.ready = true; u.start = true;
+                let gun = e.regs.get(0x78B8) != 0;
+                for (i, r) in OPTION_ROWS.iter().enumerate() { if i != 3 || gun { u.rects.push(rect(i as i32, *r)); } } // GUN ADJUST exists only with the gun device on
+                u.cur = self.sel as i32;
+            }
+            (11, 3) => { u = TouchUi::new("calibrate"); u.ready = true; u.start = true; }
+            _ => return None,
+        }
+        Some(u)
+    }
 
     fn tick(&mut self, e: &mut Engine) -> Option<i8> {
         self.frames += 1;

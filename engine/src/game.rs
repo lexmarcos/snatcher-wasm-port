@@ -64,6 +64,8 @@ pub trait Module {
     fn name(&self) -> &'static str;
     /// One frame. Return `Some(v)` when the module sets `$7846` (1 = done, -1/0xFF = skipped).
     fn tick(&mut self, e: &mut Engine) -> Option<i8>;
+    /// What a touch screen can do in the module's current state (engine/src/touch.rs); None = nothing.
+    fn touch(&self, _e: &Engine) -> Option<crate::touch::TouchUi> { None }
 }
 
 /// Top-level mode (`subfn_02` S:0xE046, state `$7842`).

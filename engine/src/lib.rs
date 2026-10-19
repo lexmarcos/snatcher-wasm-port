@@ -12,6 +12,7 @@ pub mod shoot;
 pub mod vsub;
 pub mod importer;
 pub mod snapshot;
+pub mod touch;
 
 pub use game::{Engine, Out, H, W};
 
@@ -125,6 +126,12 @@ impl Game {
             Err(e) => { let d = e.detail(); if d.is_empty() { e.code().to_string() } else { format!("{}:{d}", e.code()) } }
         }
     }
+    // ---- touch the game (docs/re/web.md section 11) ----
+    /// What the game waits for and where to tap, as JSON: `{kind, ready, back, start, label, cur, page, confirm, cancel, extra, pointer, drawn, playing, rects:[{x,y,w,h,id,k}]}`
+    /// (game pixels; see `engine/src/touch.rs`). Read-only and cheap: the front end calls it once per frame in "touch the game" mode.
+    pub fn touch_ui(&self) -> String { self.e.touch_ui().json() }
+    /// Pad bits (UP 1, DOWN 2, LEFT 4, RIGHT 8) for the next step of the keypad / keyboard cursor toward grid cell `target` (a `rects[].id` of kind `entry`), 0 = there / none.
+    pub fn touch_step(&self, target: u32) -> u8 { self.e.touch_step(target as u8) }
     pub fn width(&self) -> usize { W }
     pub fn height(&self) -> usize { H }
     /// Pointer to RGBA8 pixels (W*H*4) in wasm memory.

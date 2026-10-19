@@ -14,6 +14,7 @@
 //! translated below (each one is quoted from the disassembly, re/out/dis/modules_*.asm).
 use super::SubServices;
 use crate::game::{Engine, Module, Out};
+use crate::touch::TouchUi;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind { D1, D0, Y16 }
@@ -157,6 +158,14 @@ impl Timeline {
 impl Module for Timeline {
     fn name(&self) -> &'static str {
         match self.kind { Kind::D1 => "intro DATA_D1", Kind::D0 => "intro DATA_D0", Kind::Y16 => "late game DATA_Y16" }
+    }
+
+    /// The intros are skipped with Start; the late-game sequence has no input.
+    fn touch(&self, _e: &Engine) -> Option<TouchUi> {
+        if !self.kind.spec().3 { return None; }
+        let mut u = TouchUi::new("skip");
+        u.ready = true; u.start = true;
+        Some(u)
     }
 
     fn tick(&mut self, e: &mut Engine) -> Option<i8> {
