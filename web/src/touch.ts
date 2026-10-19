@@ -90,7 +90,7 @@ export class Touch {
     this.d.input.touch = on ? (this.mode === "pad" ? this.pad : this.game) : null;
     this.pad.active = this.mode === "pad"; this.game.active = this.mode === "game";
     this.pad.haptics = this.haptics; this.game.haptics = this.haptics;
-    if (on) this.html.dataset.touch = this.mode; else { delete this.html.dataset.touch; delete this.html.dataset.arr; }
+    if (on) this.html.dataset.touch = this.mode; else { delete this.html.dataset.touch; delete this.html.dataset.arr; this.html.removeAttribute("data-full"); }
     this.root.dataset.mode = this.mode === "game" ? "game" : "pad";
     this.root.hidden = !on || !this.started;
     this.html.style.setProperty("--pad-op", String(this.opacity / 100));
@@ -119,7 +119,7 @@ export class Touch {
     const st = this.html.style;
     st.setProperty("--u", `${L.u}px`);
     st.setProperty("--reserve-b", `${L.reserveBottom}px`);
-    this.html.dataset.arr = L.arr;
+    this.html.dataset.arr = L.arr; this.html.toggleAttribute("data-full", L.full);
     this.updateRotate();
     return true;
   }

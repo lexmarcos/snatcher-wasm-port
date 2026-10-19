@@ -91,6 +91,8 @@ export interface LayoutOut {
   crt: boolean;
   /** space reserved under the picture (below) or at each side (sides) for the controls, CSS px */
   reserveBottom: number; reserveSide: number;
+  /** a phone held upright: the picture spans the whole width (a fractional scale), no margins or bezel around it */
+  full: boolean;
 }
 
 export const PAD_GAP = 8;            // gap between buttons
@@ -103,7 +105,8 @@ const TOP_GAP = 8;
  * Where the picture and the controls go. Portrait: the picture on top, the controls below (D-pad left, A B C right, a Menu / Start row above them).
  * Landscape: the controls in the free space left and right of the picture ("sides"); when the free space is too narrow for a clearly smaller
  * picture to be worth it, the controls are drawn over the picture's edges ("overlay") and the picture keeps its larger scale.
- * The picture always gets a whole device-pixel scale (crisp pixels) except below 1x.
+ * The picture gets a whole device-pixel scale (crisp pixels) except below 1x, and on a phone held upright, where it takes the whole width
+ * at a fractional scale (the plain picture's columns then differ by one device pixel at most; the display filter does not mind).
  */
 export function planLayout(i: LayoutIn): LayoutOut {
   if (i.crt) {
@@ -125,12 +128,17 @@ function planPicture(i: LayoutIn, par: number, crt: boolean): LayoutOut {
   };
   const size = (s: number) => (crt ? (({ devW, devH }) => ({ w: devW / dpr, h: devH / dpr }))(pictureSize(s, par)) : { w: (GAME_W * s) / dpr, h: (GAME_H * s) / dpr });
   const out = (arr: Arrangement, s: number, reserveBottom: number, reserveSide: number): LayoutOut =>
-    ({ arr, landscape, u, canvasW: size(s).w, canvasH: size(s).h, scale: s, crt, reserveBottom, reserveSide });
+    ({ arr, landscape, u, canvasW: size(s).w, canvasH: size(s).h, scale: s, crt, reserveBottom, reserveSide, full: false });
   const rowH = BTN_MIN;                                   // the Menu / Start / Back row
   if (!landscape) {
     // the two clusters (3u and 2u + gap wide) plus a gap and the margins must fit the width
     u = Math.max(BTN_MIN, Math.min(u, (availW - PAD_GAP - 2 * PAD_MARGIN - PAD_GAP) / 5));
     const bottom = (i.mode === "pad" ? rowH + PAD_GAP + 3 * u : rowH) + PAD_MARGIN + PAD_GAP;
+    if (!tablet) {
+      // whole device pixels that fit: the picture never pokes out of the width by a rounding
+      const raw = Math.min(Math.floor(availW * dpr + 1e-6) / (GAME_W * par), Math.floor((availH - bottom - TOP_GAP) * dpr + 1e-6) / GAME_H);
+      if (raw >= 1) return { ...out("below", raw, bottom, 0), full: true };
+    }
     return out("below", scaleFor(availW - 2 * PAD_GAP, availH - bottom - TOP_GAP), bottom, 0);
   }
   // landscape: the largest picture scale (not below 3/4 of the largest that fits at all) that leaves each side column wide enough for the controls

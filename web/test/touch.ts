@@ -141,7 +141,8 @@ for (const mode of process.env.SKIP_LAYOUT ? [] : ["pad", "game"]) {
     const inside = r.kids.every((k: any) => k.x >= s.l - 0.5 && k.y >= s.t - 0.5 && k.x + k.w <= r.iw - s.r + 0.5 && k.y + k.h <= r.ih - s.b + 0.5);
     check(`${tag}: controls inside the safe area`, inside, JSON.stringify(r.kids.filter((k: any) => !(k.x >= s.l - 0.5 && k.y >= s.t - 0.5 && k.x + k.w <= r.iw - s.r + 0.5 && k.y + k.h <= r.ih - s.b + 0.5)).slice(0, 2)) + ` safe ${JSON.stringify(s)}`);
     const c = r.canvas!;
-    check(`${tag}: picture inside the safe area, whole device-pixel scale`, c.x >= s.l - 0.5 && c.y >= s.t - 0.5 && c.x + c.w <= r.iw - s.r + 0.5 && c.y + c.h <= r.ih - s.b + 0.5 && (() => { const sc = (c.w * d.dpr) / 256; return sc < 1 || Math.abs(sc - Math.round(sc)) < 0.01; })(), JSON.stringify(c));
+    const fullW = d.h > d.w && Math.min(d.w, d.h) < 600;   // a phone held upright: the picture spans the whole width; elsewhere a whole device-pixel scale
+    check(`${tag}: picture inside the safe area, ${fullW ? "the whole width" : "whole device-pixel scale"}`, c.x >= s.l - 0.5 && c.y >= s.t - 0.5 && c.x + c.w <= r.iw - s.r + 0.5 && c.y + c.h <= r.ih - s.b + 0.5 && (fullW ? c.w > r.iw - s.l - s.r - 1 : (() => { const sc = (c.w * d.dpr) / 256; return sc < 1 || Math.abs(sc - Math.round(sc)) < 0.01; })()), JSON.stringify(c));
     const small = r.kids.filter((k: any) => k.btn && (Math.min(k.w, k.h) < 47.5));
     check(`${tag}: buttons are at least 48 px`, small.length === 0, JSON.stringify(small.slice(0, 2)));
     if (r.arr !== "overlay") {

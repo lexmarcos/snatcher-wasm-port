@@ -133,10 +133,13 @@ describe("layout for phones and tablets", () => {
     test(`${mode}: ${name}`, () => {
       const L = planLayout({ vw, vh, dpr, safe, mode, size: 100 });
       const aw = vw - safe.l - safe.r, ah = vh - safe.t - safe.b;
-      // the picture fits the safe area and has a whole device scale (or is below 1x)
+      // the picture fits the safe area; it has a whole device scale (or is below 1x), except a phone held upright, where it spans the whole width
       expect(L.canvasW).toBeLessThanOrEqual(aw + 1e-6); expect(L.canvasH).toBeLessThanOrEqual(ah + 1e-6);
       expect(L.canvasW / L.canvasH).toBeCloseTo(256 / 224, 6);
-      if (L.scale >= 1) expect(Number.isInteger(L.scale)).toBe(true);
+      const phonePortrait = vw < vh && Math.min(vw, vh) < 600;
+      expect(L.full).toBe(phonePortrait);
+      if (L.full) expect(L.canvasW).toBeGreaterThan(aw - 1 / dpr - 1e-6);   // the whole width, to the last device pixel
+      else if (L.scale >= 1) expect(Number.isInteger(L.scale)).toBe(true);
       // buttons are at least 48 px
       expect(L.u).toBeGreaterThanOrEqual(BTN_MIN);
       expect(L.landscape).toBe(vw > vh);

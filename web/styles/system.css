@@ -301,6 +301,9 @@ html[data-touch] .modal input[type=range] { touch-action: pan-x; }
 html[data-touch] #wrap { min-height: 0; height: 100%; padding: calc(var(--sai-t) + 8px) calc(var(--sai-r) + 8px) calc(var(--sai-b) + var(--reserve-b)) calc(var(--sai-l) + 8px); gap: 0; justify-content: center; }
 html[data-touch] #monitor { padding: 0; background: none; border: 0; box-shadow: none; }
 html[data-touch] canvas { max-width: none; object-fit: contain; }
+/* a phone held upright: the picture spans the whole width, edge to edge (no side padding, no bezel) */
+html[data-touch][data-full] #wrap { padding-left: var(--sai-l); padding-right: var(--sai-r); }
+html[data-touch][data-full] canvas { box-shadow: none; }
 html[data-touch] #bar { display: none; }
 html:not([data-touch]) .touch, html:not([data-touch]) .hint { display: none; }
 
