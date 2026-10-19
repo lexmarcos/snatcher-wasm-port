@@ -96,10 +96,10 @@ Pressed = the two edges swap. Spacing steps are 8, 16, 24, 32 px.
 - **Debug overlay** (`#debug`): a small window in the same style, 16 px.
 - **Touch pad** (`#touch`, section 6 of `system.css`; phones and tablets, never on a desktop unless the player turns it on in the Touch tab): the on-screen Sega CD pad.
   D-pad on the left (four 1 x 1 arms of a 3 x 3 square around a dark hub, each arm carries the pixel cursor glyph turned to its direction), A B C on the right (A and B on top, C below B; 32 px letters),
-  Menu above the D-pad and Start above the buttons. All blocks are `--face` squares with the 2 px bevel, radius 0, no blur; a pressed block is pressed in (the two edges swap, the same as `:active` on
+  Menu above the D-pad (in portrait: centred just under the picture, when the gap above the controls has room) and Start above the buttons. All blocks are `--face` squares with the 2 px bevel, radius 0, no blur; a pressed block is pressed in (the two edges swap, the same as `:active` on
   a page button) and its glyph or letter turns `--call`. The one yellow outline (inside the edge, like `.btn.primary`) is on **C**, the confirm / fire button: yellow stays "the primary action".
   Size `--u` = 56 px (at least 48 px, set from the viewport: it shrinks to fit beside the picture or under it, never below 48; the Touch tab scales 90-140 %), gap 8 px, 12 px from the screen edge plus the safe area.
-  The pad blocks use `--pad-op` (default 85 %, Touch tab); Menu and Start stay opaque. Arrangements: `below` (portrait), `sides` (landscape, in the free columns beside the picture), `overlay` (narrow landscape, over the picture's edges).
+  The pad blocks use `--pad-op` (default 85 %, Touch tab); Menu and Start stay opaque. While the game is on screen the page around it is black (#000). Arrangements: `below` (portrait), `sides` (landscape, in the free columns beside the picture), `overlay` (narrow landscape, over the picture's edges).
   Hover is switched off on touch devices (`@media (hover: none)`), so a tapped button does not stay yellow.
 - **Touch buttons of "touch the game"** (`.tbtn`, 48 px high, 96 px wide): Menu always; Back, Start / OK and Holster only while they do something (hidden without moving the others).
 - **Rotate hint** (`.hint`): a beveled strip under the notch, one sentence and an OK button, never modal.

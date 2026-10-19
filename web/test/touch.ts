@@ -127,12 +127,12 @@ for (const mode of process.env.SKIP_LAYOUT ? [] : ["pad", "game"]) {
     await sleep(600);
     const r = await page.evaluate((mode) => {
       const rect = (s: string) => { const e = document.querySelector(s) as HTMLElement | null; if (!e || e.hidden || getComputedStyle(e).display === "none") return null; const b = e.getBoundingClientRect(); return b.width ? { x: b.left, y: b.top, w: b.width, h: b.height } : null; };
-      const kids = Array.from(document.querySelectorAll<HTMLElement>("#touch .tbtn, #touch .pbtn, #touch .arm, #touch .dpad, #touch .abc")).filter((e) => e.offsetParent !== null && e.getBoundingClientRect().width > 0 && getComputedStyle(e).visibility !== "hidden").map((e) => { const b = e.getBoundingClientRect(); return { cls: e.className + (e.id ? "#" + e.id : ""), x: b.left, y: b.top, w: b.width, h: b.height, btn: e.matches(".tbtn, .pbtn, .arm") }; });
+      const kids = Array.from(document.querySelectorAll<HTMLElement>("#touch .tbtn, #touch .pbtn, #touch .arm, #touch .dpad, #touch .abc")).filter((e) => e.getClientRects().length > 0 && e.getBoundingClientRect().width > 0 && getComputedStyle(e).visibility !== "hidden")  /* a fixed-position control has no offsetParent */.map((e) => { const b = e.getBoundingClientRect(); return { cls: e.className + (e.id ? "#" + e.id : ""), x: b.left, y: b.top, w: b.width, h: b.height, btn: e.matches(".tbtn, .pbtn, .arm") }; });
       const sai = getComputedStyle(document.getElementById("sai")!);
       return {
         scroll: document.documentElement.scrollWidth > innerWidth || document.body.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
         arr: document.documentElement.dataset.arr, touch: document.documentElement.dataset.touch,
-        canvas: rect("#screen"), kids, iw: innerWidth, ih: innerHeight, safe: { t: parseFloat(sai.paddingTop), r: parseFloat(sai.paddingRight), b: parseFloat(sai.paddingBottom), l: parseFloat(sai.paddingLeft) }, mode,
+        canvas: rect("#screen"), kids, menuUnder: document.documentElement.dataset.menu === "under", bg: getComputedStyle(document.body).backgroundColor, bgImg: getComputedStyle(document.body).backgroundImage, iw: innerWidth, ih: innerHeight, safe: { t: parseFloat(sai.paddingTop), r: parseFloat(sai.paddingRight), b: parseFloat(sai.paddingBottom), l: parseFloat(sai.paddingLeft) }, mode,
       };
     }, mode);
     const tag = `${mode}/${d.name}`;
@@ -148,6 +148,13 @@ for (const mode of process.env.SKIP_LAYOUT ? [] : ["pad", "game"]) {
     if (r.arr !== "overlay") {
       const hit = r.kids.filter((k: any) => k.x < c.x + c.w && k.x + k.w > c.x && k.y < c.y + c.h && k.y + k.h > c.y);
       check(`${tag}: controls and picture do not overlap (${r.arr})`, hit.length === 0, JSON.stringify(hit.slice(0, 2)));
+    }
+    check(`${tag}: a black page around the picture while playing`, r.bg === "rgb(0, 0, 0)" && r.bgImg === "none", `${r.bg} ${r.bgImg}`);
+    if (r.arr === "below") {
+      const m = r.kids.find((k: any) => /#tMenu$/.test(k.cls));
+      const others = r.kids.filter((k: any) => k !== m && !/dpad|abc/.test(k.cls) || /arm/.test(k.cls));
+      const clash = m ? others.filter((k: any) => k.x < m.x + m.w && k.x + k.w > m.x && k.y < m.y + m.h && k.y + k.h > m.y) : [];
+      check(`${tag}: Menu centred just under the picture, clear of the other controls`, r.menuUnder && !!m && Math.abs(m.x + m.w / 2 - r.iw / 2) < 1 && m.y >= c.y + c.h - 0.5 && m.y - (c.y + c.h) < 24 && clash.length === 0, JSON.stringify({ m, c, clash: clash.slice(0, 2) }));
     }
     await shot(page, `${mode}-${d.name}.png`);
     await ctx.close();

@@ -308,6 +308,9 @@ html[data-touch] canvas { max-width: none; object-fit: contain; }
 html[data-touch][data-full] #wrap { padding-left: var(--sai-l); padding-right: var(--sai-r); }
 html[data-touch][data-full] canvas { box-shadow: none; }
 html[data-touch] #bar { display: none; }
+/* playing on a touch device: a black page around the picture, the Menu button centred under it (portrait, src/touch.ts placeMenu) */
+html[data-touch][data-play], html[data-touch][data-play] body { background: #000; background-image: none; }
+html[data-menu="under"] #tMenu { position: fixed; top: var(--menu-top); left: 0; right: 0; width: fit-content; margin: 0 auto; }
 html:not([data-touch]) .touch, html:not([data-touch]) .hint { display: none; }
 
 .touch { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; pointer-events: none;

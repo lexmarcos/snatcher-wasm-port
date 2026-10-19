@@ -93,7 +93,9 @@ export class Touch {
     if (on) this.html.dataset.touch = this.mode; else { delete this.html.dataset.touch; delete this.html.dataset.arr; this.html.removeAttribute("data-full"); }
     this.root.dataset.mode = this.mode === "game" ? "game" : "pad";
     this.root.hidden = !on || !this.started;
+    this.html.toggleAttribute("data-play", on && this.started); // the game is on screen: a black page around it
     this.html.style.setProperty("--pad-op", String(this.opacity / 100));
+    this.placeMenu();
     this.wake.want(this.running && this.awake && this.started);
     this.renderTab();
     this.updateRotate();
@@ -120,8 +122,22 @@ export class Touch {
     st.setProperty("--u", `${L.u}px`);
     st.setProperty("--reserve-b", `${L.reserveBottom}px`);
     this.html.dataset.arr = L.arr; this.html.toggleAttribute("data-full", L.full);
+    this.placeMenu();
     this.updateRotate();
     return true;
+  }
+
+  /** Portrait: the Menu button sits centred just under the picture, when the gap above the controls has room for it; else it stays in the left column. */
+  private placeMenu() {
+    this.html.removeAttribute("data-menu");
+    const L = this.layout;
+    if (!L || L.arr !== "below" || this.root.hidden) return;
+    const pic = this.d.canvas.getBoundingClientRect(), menu = $("tMenu");
+    this.html.dataset.menu = "under"; // out of the left column first, so that the column's top is measured without it
+    const top = pic.bottom + 8;
+    const below = Array.from(this.root.querySelectorAll<HTMLElement>(".tside")).map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top);
+    if (!(pic.height > 0) || top + menu.offsetHeight + 8 > Math.min(innerHeight, ...below)) { this.html.removeAttribute("data-menu"); return; }
+    this.html.style.setProperty("--menu-top", `${top}px`);
   }
 
   // ---- the rotate hint: phones in portrait whose picture would be larger sideways (never a block, dismissed for good with OK)

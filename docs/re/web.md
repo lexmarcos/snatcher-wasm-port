@@ -301,7 +301,7 @@ mapping is linear. `Input.track` (mouse) uses the same function.
 
 ### 11.5 Layout (`planLayout`, `touch.ts` `fit()`, CSS section 6 of `system.css`)
 `<html data-touch="pad|game" data-arr="below|sides|overlay">`. The picture gets a whole device-pixel scale, except on a phone held upright (`full`, `<html data-full>`): there it spans the whole width at a fractional scale, edge to edge with no side padding or bezel (in whole device pixels, so it never pokes out by a rounding; with Plain pixels its columns differ by one device pixel at most).
-* Portrait (phones, tablets): picture on top, controls at the bottom (D-pad left, A B C right, Menu / Start above).
+* Portrait (phones, tablets): picture on top, controls at the bottom (D-pad left, A B C right, Start above them); Menu centred just under the picture (`placeMenu`, `<html data-menu="under">`; back in the left column when the gap is too small). While playing the page around the picture is black (`<html data-play>`).
 * Landscape: `sides` = controls in the free space left and right of the picture (the largest scale, not below 3/4 of the largest that fits, whose side columns hold the controls; the buttons shrink
   to the room but never below 48 px); `overlay` = the narrow phones (667x375): the controls are drawn over the picture's edges with 48 px buttons and the picture keeps its larger scale.
 * Safe areas: `env(safe-area-inset-*)` (read from the hidden `#sai` probe for the maths, mirrored in `--sai-*`); controls and picture stay inside (test with the protocol's safe-area override).
