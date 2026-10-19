@@ -19,6 +19,8 @@ const port = Number(process.env.CRT_TEST_PORT ?? 5374);
 let failed = 0, errors = 0;
 const check = (name: string, ok: boolean, extra = "") => { console.log(`${ok ? "PASS" : "FAIL"} ${name}${extra ? " - " + extra : ""}`); if (!ok) failed++; };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** close a page by closing its browser context, never waiting more than 8 s (a page that is reloading after Clear everything can be slow to close) */
+const closeP = (p: Page) => Promise.race([p.browserContext().close().catch(() => undefined), sleep(8000)]);
 
 let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.spawn> | null = null;
@@ -127,7 +129,7 @@ if (PART.includes("A")) {
   const worstRow = warp.reduce((a, r) => (err(r) > err(a) ? r : a), warp[0]);
   const worst = err(worstRow);
   check("a marker drawn by the shader sits where the pointer mapping says (all shapes, curvature 0 / 0.6 / 1, corners and edges)", worst < 1.6, `worst error ${worst.toFixed(2)} device px over ${warp.length} points ${worst >= 1.6 ? JSON.stringify(worstRow) : ""}`);
-  await page.close();
+  await closeP(page);
 }
 
 // A4: line evenness at awkward scales, mask lined up with device pixels, through the real pipeline (flat frames, canvas resized by hand)
@@ -167,7 +169,7 @@ if (PART.includes("A")) {
     if (m.fade > 0) check(`mask at ${m.scale}x: exactly periodic with ${m.pitch} whole device pixels, and visible (${m.varies} variation)`, m.periodDiff === 0 && m.varies > 500);
     else check(`mask at ${m.scale}x (phone sized): faded out, no stripes (${m.varies} variation)`, m.varies === 0);
   }
-  await page.close();
+  await closeP(page);
 }
 
 // A5: settings: defaults, persistence, reset, Clear everything
@@ -175,7 +177,7 @@ if (PART.includes("A")) {
   const a = await open({ query: "" });
   let s = await dstate(a.page);
   check("default for a computer: consumer TV (software GL declines it: the plain picture and a note)", s.preset === "tv" && !s.hasFilter && s.unavailable, `preset ${s.preset}, filter ${s.hasFilter}, note ${s.note}`);
-  await a.page.close();
+  await closeP(a.page);
   // a user choice survives a reload; sliders make it custom
   const b = await open({ query: "?crtsoft=1" });
   await b.page.evaluate(() => { const sel = document.getElementById("crtPreset") as HTMLSelectElement; sel.value = "pvm"; sel.dispatchEvent(new Event("change")); });
@@ -205,12 +207,12 @@ if (PART.includes("A")) {
   check("the style is saved before the wipe", (await b.page.evaluate(() => localStorage.getItem("snatcher.crt"))) === '{"preset":"scan"}');
   await b.page.evaluate(() => { const w = document.getElementById("btnWipe") as HTMLElement; w.click(); w.click(); });
   await b.page.waitForFunction(() => localStorage.getItem("snatcher.crt") === null, { timeout: 15000 }).then(() => check("Clear everything removes snatcher.crt", true), () => check("Clear everything removes snatcher.crt", false));
-  await b.page.close();
+  await closeP(b.page);
   // a phone defaults to scanlines only
   const c = await open({ mobile: true, query: "" });
   s = await dstate(c.page);
   check("default for a phone: scanlines only", s.preset === "scan", s.preset);
-  await c.page.close();
+  await closeP(c.page);
 }
 
 // A6: no WebGL at all, and a context that is lost and comes back
@@ -218,7 +220,7 @@ if (PART.includes("A")) {
   const a = await open({ noGL: true, query: "?crt=tv" });
   const s = await dstate(a.page);
   check("WebGL missing: the plain picture, GL canvas hidden, a note in the Display tab", s.unavailable && s.glHidden && !s.boxCrt && s.note.length > 10 && s.view.par === 1, s.note);
-  await a.page.close();
+  await closeP(a.page);
   const b = await open({ query: "?crt=tv" });
   await b.page.evaluate(() => { const d = (window as any).snatcherDisplay; d.present(new Uint8Array(256 * 224 * 4).fill(200)); });
   let s2 = await dstate(b.page);
@@ -232,7 +234,7 @@ if (PART.includes("A")) {
   await sleep(800);
   s2 = await dstate(b.page);
   check("a restored context brings the filter back", !s2.lost && s2.boxCrt && s2.view.par > 1.14, JSON.stringify({ lost: s2.lost, box: s2.boxCrt }));
-  await b.page.close();
+  await closeP(b.page);
 }
 
 // A7: the picture follows the window and the device pixel ratio, always in whole device pixels
@@ -245,7 +247,7 @@ if (PART.includes("A")) {
     const whole = Math.abs(s.rect.w * dpr - Math.round(s.rect.w * dpr)) < 0.05 && Math.abs(s.rect.h * dpr - Math.round(s.rect.h * dpr)) < 0.05;   // layout units are 1/64 css px (0.04 device px at DPR 2.625)
     check(`${w}x${h} at DPR ${dpr}: box ${s.rect.w.toFixed(2)}x${s.rect.h.toFixed(2)} css, whole device pixels, GL canvas ${s.glW}x${s.glH}`, whole && s.rect.w <= w && s.rect.h <= h && (s.boxCrt ? s.glW === Math.round(s.rect.w * dpr) && s.glH === Math.round(s.rect.h * dpr) : (s.rect.h * dpr) / 224 < 2.01 && s.glHidden));
   }
-  await page.close();
+  await closeP(page);
 }
 }
 // ============================================================ B. with the game (assets/raw)
@@ -286,7 +288,7 @@ else {
     });
     for (const [p, v] of Object.entries(lum.res)) check(`style ${p}: not black, brightness ${(v / lum.base).toFixed(2)} of the plain picture (${v.toFixed(4)} vs ${lum.base.toFixed(4)})`, v > 0.01 && v / lum.base > 0.88 && v / lum.base < 1.12);
     await page.screenshot({ path: join(out, "page-desktop-tv.png") });
-    await page.close();
+    await closeP(page);
   }
 
   // B2: the light gun with a mouse: every combination of pixel shape and curvature lands on the right game pixel
@@ -318,7 +320,7 @@ else {
     await page.mouse.move(p.x, p.y); await waitFrames(page, 3);
     const gun = await page.evaluate(() => { const ix = (window as any).snatcher.game; return JSON.parse(ix.debug_info()); });
     void gun;
-    await page.close();
+    await closeP(page);
   }
 
   // B3: fingers: touch the game with the filter on (phone, 8:7 aspect, with and without curvature)
@@ -352,7 +354,7 @@ else {
       check(`touch the game: a tap on a menu line selects that line (phone, 8:7, curvature ${curve})`, okAll && lines.length >= 3, info);
     }
     await page.screenshot({ path: join(out, "page-phone-scan.png") });
-    await page.close();
+    await closeP(page);
   }
 
   // B4: WebGL missing while the game runs
@@ -364,7 +366,7 @@ else {
     check("no WebGL: the game runs on the plain canvas (no errors, GL hidden, flat pointer view)", s.unavailable && s.glHidden && s.view.par === 1 && s.view.curve === 0);
     const lit = await page.evaluate(() => { const d = (document.getElementById("screen") as HTMLCanvasElement).getContext("2d")!.getImageData(0, 0, 256, 224).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 60) n++; return n; });
     check("no WebGL: the 2D canvas shows the game", lit > 2000, `${lit} lit pixels`);
-    await page.close();
+    await closeP(page);
   }
 }
 
