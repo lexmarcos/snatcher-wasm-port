@@ -65,10 +65,18 @@ export class Display {
     this.tried = true;
     const f = CrtFilter.create(this.d.glCanvas, this.forced !== null || this.d.params.has("crtsoft")); // ?crt=tv asks for it by name: software GL is allowed (tests)
     if (!f) { this.unavailable = true; this.renderTab(); return null; }
-    f.onLost = () => { this.have = false; this.d.glCanvas.hidden = true; this.setBoxState(false); this.d.refit(); this.renderTab(); };
+    f.onLost = () => { this.have = false; this.showGl(false); this.setBoxState(false); this.d.refit(); this.renderTab(); };
     f.onRestored = () => { this.tried = false; this.have = false; this.d.refit(); const fr = this.d.frame(); if (fr) this.present(fr); this.renderTab(); };
     this.filter = f;
     return f;
+  }
+
+  /** Show or hide the GL canvas; while it is shown the 2D canvas underneath is not painted (opacity 0: it still takes the pointer and still holds the frame), so the browser does not draw the picture twice. */
+  private showGl(on: boolean) {
+    const gl = this.d.glCanvas;
+    if (gl.hidden === !on) return;
+    gl.hidden = !on;
+    gl.parentElement?.classList.toggle("crt-on", on);
   }
 
   private setBoxState(crt: boolean) {
@@ -81,13 +89,12 @@ export class Display {
     const ok = b.crt && this.preset !== "off" && !!this.ensure();
     this.noteSmall = this.preset !== "off" && !ok && !this.unavailable;
     this.setBoxState(ok);
-    const gl = this.d.glCanvas;
     if (ok && this.filter) {
       this.devW = Math.max(1, Math.round(b.cssW * b.dpr)); this.devH = Math.max(1, Math.round(b.cssH * b.dpr));
       this.filter.setSize(this.devW, this.devH);
       this.filter.setParams(this.params);
-      if (this.have) { this.filter.draw(this.devH / 224); gl.hidden = false; }
-    } else { gl.hidden = true; }
+      if (this.have) { this.filter.draw(this.devH / 224); this.showGl(true); }
+    } else { this.showGl(false); }
     this.renderTab();
   }
 
@@ -97,7 +104,7 @@ export class Display {
     this.filter.upload(frame);
     this.have = true;
     this.filter.draw(this.devH / 224);
-    if (this.d.glCanvas.hidden) this.d.glCanvas.hidden = false;
+    this.showGl(true);
   }
   /** Redraw the frame the GPU already has (settings changed while paused). */
   redraw() { if (this.active && this.filter) this.filter.draw(this.devH / 224); }

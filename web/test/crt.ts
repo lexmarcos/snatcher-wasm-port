@@ -242,7 +242,7 @@ if (PART.includes("A")) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: dpr, mobile: false });
     await sleep(900);   // the page looks at devicePixelRatio twice a second (not every browser reports a change)
     const s = await dstate(page);
-    const whole = Math.abs(s.rect.w * dpr - Math.round(s.rect.w * dpr)) < 0.02 && Math.abs(s.rect.h * dpr - Math.round(s.rect.h * dpr)) < 0.02;   // layout units are 1/64 css px
+    const whole = Math.abs(s.rect.w * dpr - Math.round(s.rect.w * dpr)) < 0.05 && Math.abs(s.rect.h * dpr - Math.round(s.rect.h * dpr)) < 0.05;   // layout units are 1/64 css px (0.04 device px at DPR 2.625)
     check(`${w}x${h} at DPR ${dpr}: box ${s.rect.w.toFixed(2)}x${s.rect.h.toFixed(2)} css, whole device pixels, GL canvas ${s.glW}x${s.glH}`, whole && s.rect.w <= w && s.rect.h <= h && (s.boxCrt ? s.glW === Math.round(s.rect.w * dpr) && s.glH === Math.round(s.rect.h * dpr) : (s.rect.h * dpr) / 224 < 2.01 && s.glHidden));
   }
   await page.close();
@@ -298,7 +298,8 @@ else {
     for (const shape of ["tv", "square"]) for (const curve of [0, 0.5, 1]) {
       await page.evaluate((shape, curve) => (window as any).snatcherDisplay.setParams({ shape, curve }), shape, curve);
       await sleep(250);
-      for (const [gx, gy] of [[128, 112], [3, 3], [252, 4], [4, 219], [251, 220], [128, 4], [2, 112], [200, 60], [60, 160]]) {
+      // the browser rounds a mouse position to whole CSS pixels: the points stay a little inside the corners (the shader test in part A checks the extreme corners in device pixels)
+      for (const [gx, gy] of [[128, 112], [5, 5], [250, 6], [6, 217], [249, 218], [128, 6], [4, 112], [200, 60], [60, 160]]) {
         const p = await page.evaluate((gx, gy) => {
           const m = (window as any).__crtmath, r = document.getElementById("screen")!.getBoundingClientRect();
           return m.gameToView(gx + 0.5, gy + 0.5, { x: r.left, y: r.top, w: r.width, h: r.height }, 256, 224, { ...m.view });

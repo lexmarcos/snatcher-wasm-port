@@ -108,7 +108,7 @@ async function bench(a: { frame: string; mode: string | Partial<CrtParams>; w: n
   const fr = await frame(a.frame);
   const p: CrtParams = typeof a.mode === "string" ? { ...(PRESETS as any)[a.mode] } : sanitizeParams(a.mode, PRESETS.tv);
   const fit = fitPicture(a.w, a.h, 1, parOf(p.shape), true);
-  filter ??= CrtFilter.create(gl, true);
+  filter ??= CrtFilter.create(gl, true, true);
   if (!filter) throw new Error("no WebGL2");
   filter.setSize(fit.devW, fit.devH); filter.setParams(p);
   const g = filter.gl;

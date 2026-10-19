@@ -61,11 +61,7 @@ function renderNotes() {
 // display filter on: the biggest picture that fits, whole device pixels, 8:7 pixels unless square is chosen) ----------
 function fit() {
   const dpr = window.devicePixelRatio || 1;
-  if (touch.fit()) { // phones and tablets: the touch layout sizes the picture (web/src/touch.ts)
-    const L = touch.layout!;
-    display.setBox({ crt: L.crt, cssW: L.canvasW, cssH: L.canvasH, dpr });
-    return;
-  }
+  if (touch.fit()) return; // phones and tablets: the touch layout sizes the picture (web/src/touch.ts) and tells the display through onLayout
   // the monitor frame (bezel padding) and the toolbar are not part of the canvas: measure them instead of hard-coding
   const mr = monitor.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
   const frameX = mr.width - cr.width, frameY = mr.height - cr.height;
@@ -123,7 +119,8 @@ const isPaused = () => overlayOpen || panelOpen || document.hidden;
 // ---------- input device, button maps, prompts ----------
 const input = new Input(canvas);
 input.enabled = false; // the start overlay is open
-const touch = new Touch({ input, canvas, ls, openPanel: () => openPanel(), crt: () => (display.wants() ? { par: display.par() } : undefined) }); // on-screen pad / touch the game (docs/re/web.md section 11)
+const touch = new Touch({ input, canvas, ls, openPanel: () => openPanel(), crt: () => (display.wants() ? { par: display.par() } : undefined),
+  onLayout: (L) => display.setBox({ crt: L.crt, cssW: L.canvasW, cssH: L.canvasH, dpr: window.devicePixelRatio || 1 }) }); // on-screen pad / touch the game (docs/re/web.md section 11)
 try { input.setMaps(JSON.parse(ls.get("snatcher.padmaps") ?? "null")); } catch { input.setMaps(null); }
 const saveMaps = () => ls.set("snatcher.padmaps", JSON.stringify(input.maps));
 type PromptMode = "auto" | "letters";

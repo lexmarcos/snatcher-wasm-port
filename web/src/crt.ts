@@ -218,9 +218,9 @@ export class CrtFilter {
   private timerExt: any = null;
   private query: WebGLQuery | null = null;
 
-  private constructor(readonly canvas: HTMLCanvasElement, gl: WebGL2RenderingContext) {
+  private constructor(readonly canvas: HTMLCanvasElement, gl: WebGL2RenderingContext, timing: boolean) {
     this.gl = gl;
-    this.timerExt = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+    if (timing) this.timerExt = gl.getExtension("EXT_disjoint_timer_query_webgl2");   // only the perf harness asks for GPU timings
     canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); this.lost = true; this.onLost?.(); });
     canvas.addEventListener("webglcontextrestored", () => { try { this.init(); this.lost = false; this.haveFrame = false; this.onRestored?.(); } catch (e) { console.warn("display filter: could not restore", e); this.lost = true; } });
   }
@@ -229,7 +229,7 @@ export class CrtFilter {
    * `allowSoftware` false (the page's default): a browser that would run WebGL on a software rasterizer (SwiftShader, llvmpipe: no usable GPU) gets null, because the
    * filter would make the game crawl there and the plain picture is the better choice. The harness and the tests allow it (they check pictures, not speed).
    */
-  static create(canvas: HTMLCanvasElement, allowSoftware = false): CrtFilter | null {
+  static create(canvas: HTMLCanvasElement, allowSoftware = false, timing = false): CrtFilter | null {
     let gl: WebGL2RenderingContext | null = null;
     try {
       gl = canvas.getContext("webgl2", { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: false, failIfMajorPerformanceCaveat: !allowSoftware }) as WebGL2RenderingContext | null;
@@ -241,7 +241,7 @@ export class CrtFilter {
       const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
       if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name)) return null;
     }
-    try { const f = new CrtFilter(canvas, gl); f.init(); return f; } catch (e) { console.warn("display filter unavailable:", e); return null; }
+    try { const f = new CrtFilter(canvas, gl, timing); f.init(); return f; } catch (e) { console.warn("display filter unavailable:", e); return null; }
   }
 
   private compile(type: number, src: string): WebGLShader {

@@ -228,7 +228,8 @@ canvas { image-rendering: pixelated; background: #000; display: block; max-width
 canvas.smooth { image-rendering: auto; }
 /* the display filter's canvas (src/crt.ts) lies exactly over the game canvas inside #stage; clicks and touches go to #screen underneath */
 #stage { position: relative; line-height: 0; }
-#crt { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; pointer-events: none; box-shadow: none; }
+#crt { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; pointer-events: none; }   /* same bevel shadow as #screen */
+#stage.crt-on #screen { opacity: 0; }   /* not painted while #crt covers it: it still gets the pointer and still holds the frame */
 #crt[hidden] { display: none; }
 canvas:focus { outline: none; }
 :fullscreen #bar { display: none; }

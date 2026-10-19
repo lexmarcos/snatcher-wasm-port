@@ -20,6 +20,8 @@ export interface TouchDeps {
   openPanel(): void;
   /** the display filter wants the picture laid out for it (pixel aspect, whole device pixels), or undefined when it is off */
   crt?(): { par: number } | undefined;
+  /** the picture box was (re)laid out: the display filter sizes its canvas from it (also when the Touch tab changes the pad size) */
+  onLayout?(L: LayoutOut): void;
 }
 
 const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
@@ -113,6 +115,7 @@ export class Touch {
     const L = planLayout({ vw: innerWidth, vh: innerHeight, dpr: window.devicePixelRatio || 1, safe, mode: this.mode === "pad" ? "pad" : "game", size: this.size, crt: this.d.crt?.() });
     this.layout = L;
     this.d.canvas.style.width = `${L.canvasW}px`; this.d.canvas.style.height = `${L.canvasH}px`;
+    this.d.onLayout?.(L);
     const st = this.html.style;
     st.setProperty("--u", `${L.u}px`);
     st.setProperty("--reserve-b", `${L.reserveBottom}px`);
