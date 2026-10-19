@@ -30,7 +30,7 @@ let server: ReturnType<typeof Bun.serve> | null = null;
 if (!live) {
   const site = join(root, "build/site");
   if (!existsSync(join(site, "index.html"))) { console.log("FAIL build/site missing: run scripts/build-static.sh"); process.exit(1); }
-  const types: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".wasm": "application/wasm", ".woff2": "font/woff2", ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".pack": "application/octet-stream" };
+  const types: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".wasm": "application/wasm", ".woff2": "font/woff2", ".webmanifest": "application/manifest+json", ".png": "image/png", ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".pack": "application/octet-stream" };
   server = Bun.serve({
     port,
     fetch(req) {

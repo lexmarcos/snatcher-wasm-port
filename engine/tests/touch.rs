@@ -244,3 +244,22 @@ fn shooting_stage_is_a_shoot_kind_and_drawing_shows() {
     assert_eq!(u.kind, "shoot");
     assert!(!u.drawn);
 }
+
+#[test]
+fn touch_roles_follow_the_button_configuration_of_the_options_screen() {
+    let Some(mut e) = engine() else { return };
+    // every configuration $78BA 0..5 maps the physical A B C to the logical extra / cancel / confirm differently: the touch buttons must give the logical ones
+    for cfg in 0..6usize {
+        e.input.as_mut().unwrap().config = cfg;
+        let (confirm, cancel, extra) = e.touch_roles();
+        let mut seen = std::collections::HashSet::new();
+        for (phys, logical) in [(confirm, 0x20u8), (cancel, 0x10), (extra, 0x40)] {
+            assert!(phys == 0x10 || phys == 0x20 || phys == 0x40, "config {cfg}: physical bit {phys:#x}");
+            assert!(seen.insert(phys), "config {cfg}: two roles on one button");
+            let i = e.input.as_mut().unwrap();
+            i.update(0); i.update(phys);
+            assert_eq!(i.pressed & 0x70, logical, "config {cfg}: pressing {phys:#x} must give logical {logical:#x}");
+            i.update(0);
+        }
+    }
+}

@@ -17,6 +17,7 @@ the original disc and plays it as the console did, with the same pictures, music
 * English (the original text) or Brazilian Portuguese, switchable at any time
 * Portuguese subtitles for the voiced scenes and the spoken parts of the CD music
 * Keyboard, gamepad (Xbox, PlayStation, Switch) and mouse for the shooting scenes
+* Phones and tablets: an on-screen pad, or touch the picture itself
 * Autosave, so you can pick up where you left off (you can turn it off)
 * Your files never leave your computer: everything happens inside the browser
 
@@ -48,6 +49,21 @@ The copy kept in the browser takes about 1.1 GB. You can remove it at any time f
 
 In the shooting scenes, aim with the mouse and click to fire. Gamepads work as soon as you press a button,
 and their buttons can be changed in the menu.
+
+## On a phone or tablet
+
+The game works on phones and tablets (Android, iPhone, iPad). You can play in two ways, and you pick one in the menu (the **Menu** button, then the **Touch** tab):
+
+* **On-screen pad** (the default on a phone): a Sega CD pad is drawn on the screen, with a direction pad, the buttons A, B and C, Start and Menu. You can hold two buttons at once. In the shooting scenes the direction pad aims at the nine targets, A draws the gun and C fires.
+* **Touch the game**: no pad is drawn. You touch the picture itself. Tap a command or a key to choose it, touch a message to go on (hold it to read faster), and tap a target in the shooting scenes to shoot there. The buttons **Back** and **Start** show up only when they are needed, and a tap with two fingers is also Back. In the dark room, drag your finger to move the light.
+
+Tips:
+
+* The picture is bigger with the phone turned sideways, but both ways work.
+* On iPhone, Safari cannot show the page in full screen. Tap Share, then **Add to Home Screen**, and open Snatcher from its icon: it runs without the browser bars. On Android and iPad the **Fullscreen** button in the Touch tab works.
+* To import your disc, tap **Import disc image** and pick the `.cue` file and its `.bin` file(s) together. On iPhone, tap **Select** first so you can choose more than one file.
+* The copy kept in the browser takes about 1.1 GB. If your phone has little free space, the page tells you before you start (you can untick the CD music to save 490 MB).
+* The screen stays on while you play. You can turn this off, and you can turn vibration on, in the Touch tab.
 
 ## For developers
 

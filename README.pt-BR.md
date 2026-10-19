@@ -17,6 +17,7 @@ e roda o jogo como o console rodava, com as mesmas imagens, músicas e vozes.
 * Inglês (o texto original) ou português do Brasil, com troca a qualquer momento
 * Legendas em português nas cenas com voz e nas falas das músicas do CD
 * Teclado, controle (Xbox, PlayStation, Switch) e mouse nas cenas de tiro
+* Celulares e tablets: controle na tela, ou toque na própria imagem
 * Salvamento automático, para continuar de onde parou (dá para desligar)
 * Seus arquivos nunca saem do seu computador: tudo acontece dentro do navegador
 
@@ -48,6 +49,21 @@ A cópia guardada no navegador ocupa cerca de 1,1 GB. Você pode removê-la quan
 
 Nas cenas de tiro, mire com o mouse e clique para atirar. O controle funciona assim que você aperta um botão,
 e os botões podem ser trocados no menu.
+
+## No celular ou no tablet
+
+O jogo funciona em celulares e tablets (Android, iPhone, iPad). Dá para jogar de dois jeitos, e você escolhe um no menu (botão **Menu**, depois a aba **Toque**):
+
+* **Controle na tela** (o padrão no celular): um controle de Sega CD é desenhado na tela, com o direcional, os botões A, B e C, Start e Menu. Dá para segurar dois botões ao mesmo tempo. Nas cenas de tiro o direcional mira nos nove alvos, A saca a arma e C atira.
+* **Tocar no jogo**: nenhum controle é desenhado. Você toca na própria imagem. Toque num comando ou numa tecla para escolher, toque numa mensagem para continuar (segure para ler mais rápido) e toque num alvo nas cenas de tiro para atirar ali. Os botões **Voltar** e **Start** só aparecem quando são necessários, e um toque com dois dedos também é Voltar. Na sala escura, arraste o dedo para mover a luz.
+
+Dicas:
+
+* A imagem fica maior com o celular na horizontal, mas os dois jeitos funcionam.
+* No iPhone, o Safari não mostra a página em tela cheia. Toque em Compartilhar, depois em **Adicionar à Tela de Início**, e abra o Snatcher pelo ícone: ele roda sem as barras do navegador. No Android e no iPad o botão **Tela cheia** da aba Toque funciona.
+* Para importar o seu disco, toque em **Importar imagem do disco** e escolha o arquivo `.cue` junto com o(s) arquivo(s) `.bin`. No iPhone, toque em **Selecionar** antes, para poder escolher mais de um arquivo.
+* A cópia guardada no navegador ocupa cerca de 1,1 GB. Se o seu celular tiver pouco espaço livre, a página avisa antes de começar (dá para desmarcar a música do CD e economizar 490 MB).
+* A tela fica ligada enquanto você joga. Na aba Toque dá para desligar isso e ligar a vibração.
 
 ## Para desenvolvedores
 

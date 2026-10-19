@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 
 site=build/site
 rm -rf "$site"
-mkdir -p "$site"/{dist,pkg,i18n/pt-BR,styles,fonts}
+mkdir -p "$site"/{dist,pkg,i18n/pt-BR,styles,fonts,icons}
 touch "$site/.nojekyll"   # Pages must not run Jekyll over the folder
 cp web/index.html "$site/index.html"
 cp web/dist/main.js web/dist/import.worker.js "$site/dist/"
@@ -18,6 +18,8 @@ cp i18n/build/pt-BR.pack "$site/i18n/pt-BR.pack"
 cp i18n/pt-BR/ui.json "$site/i18n/pt-BR/ui.json"
 cp web/styles/system.css "$site/styles/"
 cp web/fonts/DotGothic16-subset.woff2 web/fonts/OFL.txt "$site/fonts/"
+cp web/manifest.webmanifest "$site/"                  # home-screen app (display fullscreen / standalone); no service worker: nothing can serve a stale wasm
+cp web/icons/icon-180.png web/icons/icon-192.png web/icons/icon-512.png "$site/icons/"   # drawn by scripts/make-icons.py from the page's own pixel S, no game art
 
 # Version token: a hash of every file of the build. It goes into the URLs of the JS, CSS, wasm, pack and strings (?v=...), so after a deploy the browser
 # (and the 10 minute Pages cache) can never combine an old file with a new one. Fonts do not change and keep plain URLs.

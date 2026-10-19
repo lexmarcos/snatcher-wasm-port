@@ -124,9 +124,17 @@ export function planLayout(i: LayoutIn): LayoutOut {
     const bottom = (i.mode === "pad" ? rowH + PAD_GAP + 3 * u : rowH) + PAD_MARGIN + PAD_GAP;
     return out("below", scaleFor(availW - 2 * PAD_GAP, availH - bottom - TOP_GAP), bottom, 0);
   }
-  const need = (i.mode === "pad" ? 3 * u : 96) + PAD_MARGIN + PAD_GAP;   // one side column: the D-pad (the widest cluster) or a button
+  // landscape: the largest picture scale (not below 3/4 of the largest that fits at all) that leaves each side column wide enough for the controls
+  // at their size (the buttons shrink to the room, never below 48 px); else the controls go over the picture's edges with the smallest buttons
   const full = scaleFor(availW - 2 * PAD_GAP, availH - 2 * TOP_GAP);
-  const sides = scaleFor(availW - 2 * need, availH - 2 * TOP_GAP);
-  if (sides >= 1 && sides >= 0.75 * full) return out("sides", sides, 0, need);
+  const uBase = u;
+  for (let s = full; s >= 1 && s >= 0.75 * full; s--) {
+    const free = (availW - (GAME_W * s) / dpr) / 2;
+    if (i.mode === "pad") {
+      const uFit = (free - PAD_MARGIN - 4) / 3;                // the D-pad (3u) is the widest cluster
+      if (uFit >= BTN_MIN) { u = Math.min(uBase, uFit); return out("sides", s, 0, 3 * u + PAD_MARGIN); }
+    } else if (free >= 96 + PAD_MARGIN + 4) return out("sides", s, 0, 96 + PAD_MARGIN);
+  }
+  u = i.mode === "pad" ? BTN_MIN : u;
   return out("overlay", full, 0, 0);
 }

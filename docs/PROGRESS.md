@@ -29,6 +29,13 @@ Ports: 5300 web port, 5310 asset viewer (`bun web/viewer/server.ts 5310`).
   Web front end: canvas, input, WebAudio (CD/FM/voice/PCM), saves in localStorage.
   Missing: title/intro modules, menu highlight bar, pointer/keypad menus, shooting, audio check.
 
+## Resume here: touch input for phones and tablets (2026-10-19, docs/re/web.md section 11)
+Two ways to play on a touch device, picked in the pause panel (Touch tab, `snatcher.touch.mode`, default `pad` on a finger-first device, `off` on a computer): **on-screen pad** (D-pad, A B C, Start, Menu; multi-touch, sliding, no stuck keys; shooting stages are played with the engine's own pad aiming) and **touch the game** (no pad: tap a menu line / key / slot / title entry, hold a message, tap = aim and fire in the shooting stages through the mouse light-gun path, drag in the dark room, Back and Start buttons only when they do something, two-finger tap = Back). Both feed `Input.poll` like the keyboard (`Input.touch`); desktop unchanged.
+Engine: `engine/src/touch.rs` (`Engine::touch_ui`, `touch_step`, `touch_roles`; `Module::touch` for the title and the intros; `Entry::dest/touch_cells/step_toward`), wasm `touch_ui / touch_step / menu_items / entry_text / peek_reg`. Front end: `touch.ts`, `touchpad.ts`, `touchgame.ts`, `touchmath.ts` (pure, unit-tested), `platform.ts` (wake lock, haptics, fullscreen advice), layouts for portrait / landscape / tablets with safe areas, `manifest.webmanifest` + icons (`scripts/make-icons.py`), iOS audio priming, file picker without extension filter on phones, storage quota warning before the import. No service worker.
+Tests: `cargo test --release -p snengine --test touch` (6), `bun test web/test` (`touchmath.test.ts`, 38), `bun web/test/touch.ts` (device emulation, real multi-touch, 140 checks, screenshots in `work/shots/mobile/`), all in `scripts/test-web.sh`.
+Only checked in emulation (try on a real phone / tablet): iOS Safari audio unlock, wake lock, vibration, the Files picker, fullscreen / Add to Home Screen, real notch insets, thumb comfort (docs/re/web.md 11.9).
+Open: a visible hint in touch mode for the dark room drag; the A B C arrangement is a first guess (A B over C); pinch-zoom of the picture is not offered; the title/slot/options rectangles are measured constants of the USA pictures (the pt-BR pictures share the layout, not re-measured on every redraw).
+
 ## Resume here: public site on GitHub Pages (2026-10-18, docs/re/web.md section 10)
 The page is published at https://markzuel.com/snatcher-wasm-port/ (sub-path of the owner's custom domain; the repo sets no domain). `scripts/build-static.sh` builds `build/site/` (page, wasm, pt-BR pack, styles, font; no game data, no maps); `.github/workflows/pages.yml` deploys it on every push to `main`.
 All page URLs are relative (`web/src/urls.ts`), a build hash goes into the JS, wasm, pack and CSS URLs (no stale pairs after a deploy), and the served-assets probe is switched off in the static page (a meta tag) so a first visit shows only step 1 and no console error. `bun web/test/static.ts` (`FULL=1` imports the local disc and plays) checks the folder under a sub-path with a header-less static server.
@@ -67,7 +74,7 @@ Open items, in suggested order:
 2. Sub-CPU stalls at PCM sound starts (verified on the real BIOS: 2.6 handler-less frames per effect start in stage 0): lost presses while a sound plays are not modelled (docs/re/shooting.md).
 3. Gun Y bias (`GUN_CAL_BIAS_Y` = 31) stays a HYPOTHESIS: the game's own calibration gives value = y + 27 on both oracles (identical cell rows at y 21/61); only a real Justifier can tell (docs/re/shooting.md, oracle2 section 2).
    Trigger flash (full white frame at every shot while the blaster is drawn) confirmed on the real BIOS, intentionally not drawn.
-4. Front end: touch controls, voice pan / music ducking - docs/re/web.md, docs/re/audio.md.
+4. Front end: voice pan / music ducking - docs/re/web.md, docs/re/audio.md (touch controls are done, docs/re/web.md section 11).
 5. YM2612: the real chip model has a DAC noise floor / ladder distortion the engine lacks (high bands 10-30 dB higher in noisy sounds); levels agree, nothing retuned (oracle2 section 5).
 6. Larger engine item left: after the GAME OVER restart the title chain timing (`SP_RELOAD_FRAMES` = 90) is from one real-BIOS measurement; the copyright/logo/title phase of the real restart lasts 840 frames like a cold boot.
 

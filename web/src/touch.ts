@@ -54,6 +54,8 @@ export class Touch {
     $("tMenu").addEventListener("click", () => d.openPanel());
     // pad mode: a finger on the picture is not a mouse (the browser's made-up mouse events would switch the light gun on)
     $("wrap").addEventListener("pointerdown", (e) => { if (this.mode === "pad" && e.pointerType !== "mouse") { d.input.lastTouchAt = performance.now(); e.preventDefault(); } });
+    // iOS Safari: a pinch on the game surface would zoom the page (touch-action is not honoured for pinch there)
+    document.addEventListener("gesturestart", (e) => { if (this.mode !== "off" && this.started && !(e.target as HTMLElement).closest?.(".modal")) e.preventDefault(); } );
     this.wake.onChange = () => this.renderState();
     this.bindTab();
     $("rotateOk").addEventListener("click", () => this.dismissRotate());

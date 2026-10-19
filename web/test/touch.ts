@@ -252,7 +252,8 @@ async function untilMenu(page: Page, f: Fingers, pred: (u: any) => boolean, what
     const u = await ui(page);
     if (u.kind === "menu" && u.ready && pred(u)) return u;
     if (Date.now() - t0 > ms) throw new Error(`timeout waiting for ${what}: ${JSON.stringify({ ...u, rects: u.rects.length })}`);
-    if (u.kind === "message" && u.ready) { const c = await centre(page, "#screen"); await f.tap(c.x, c.y); await sleep(500); } else await sleep(80);
+    if (process.env.TDEBUG && Math.random() < 0.15) console.log("  untilMenu", u.kind, u.ready, JSON.stringify(await page.evaluate(() => JSON.parse((window as any).snatcher.game.debug_info()))));
+    if (u.kind === "message") { const c = await centre(page, "#screen"); await f.tap(c.x, c.y, 120); await sleep(400); } else await sleep(80);
   }
 }
 /** Tap the menu line that holds `text` (flipping the page by tapping its arrow line first when needed). Returns the line tapped. */
@@ -263,6 +264,7 @@ async function tapMenuText(page: Page, f: Fingers, text: string): Promise<any> {
     const vis = u.rects.filter((r: any) => r.k === 0);
     const first = u.page === 2 ? items.length - vis.length : 0;
     const idx = items.findIndex((t) => t.trim() === text);
+    if (idx < 0) throw new Error(`no menu item "${text}" in ${JSON.stringify(items)}`);
     const r = idx >= first && idx < first + vis.length ? vis[idx - first] : u.rects.find((x: any) => (u.page === 1 ? x.k === 2 : x.k === 1));
     const p = await gameXY(page, r.x + r.w / 2, r.y + r.h / 2);
     await f.tap(p.x, p.y);
@@ -388,6 +390,84 @@ async function tapMenuText(page: Page, f: Fingers, text: string): Promise<any> {
   await page.close();
 }
 
+// ---- the dark room: touch and drag moves the free view (B held + the direction of the drag)
+{
+  const d = DEVICES[0];
+  const { page, cdp, ctx } = await open(d, { mode: "game", query: "?scene=SP26:0ba4" });
+  await waitSnatcher(page);
+  const f = new Fingers(cdp);
+  await untilMenu(page, f, () => true, "the dark room's menu", 60000);
+  await tapMenuText(page, f, "USE METAL GEAR");
+  const sm = await untilMenu(page, f, (x) => x.back, "the Metal Gear sub-menu");
+  const items: string[] = await page.evaluate(() => JSON.parse((window as any).snatcher.game.menu_items()));
+  const li = Math.max(0, items.findIndex((t) => /LIGHT/.test(t)));
+  const lr = sm.rects[li];
+  const lp = await gameXY(page, lr.x + lr.w / 2, lr.y + lr.h / 2);
+  await f.tap(lp.x, lp.y);
+  const u = await untilMenu(page, f, (x) => x.pointer, "the menu with the free view (pointer mode)", 90000);
+  check("the dark room's pointer mode is reported (menu + pointer)", u.pointer === true);
+  const view = async () => (await reg(page, 0x96D0)) << 16 >> 16;
+  const x0 = await view();
+  const c = await centre(page, "#screen");
+  await f.start(1, c.x - 40, c.y - 80);
+  await f.move(1, c.x + 20, c.y - 80); await f.move(1, c.x + 40, c.y - 80);
+  await sleep(1200);
+  const x1 = await view();
+  check("dragging right moves the view right (B + RIGHT while the finger stays down)", x1 > x0 + 10, `${x0} -> ${x1}`);
+  await f.move(1, c.x - 60, c.y - 80); await f.move(1, c.x - 120, c.y - 80);
+  await sleep(1500);
+  const x2 = await view();
+  check("dragging back moves it left", x2 < x1 - 10, `${x1} -> ${x2}`);
+  await f.end(1);
+  await sleep(600);
+  const x3 = await view(), x4 = await (async () => { await sleep(500); return view(); })();
+  check("lifting the finger lets go (the view stops, the menu is back)", x3 === x4 && (await ui(page)).kind === "menu", `${x3} ${x4}`);
+  await shot(page, "game-iphone-portrait-darkroom.png");
+  await ctx.close();
+}
+
+// ---- title, settings, intro: reached from power-on, with taps only
+{
+  const d = DEVICES[0];
+  const { page, cdp, ctx } = await open(d, { mode: "game", query: "?autostart" });
+  await waitSnatcher(page);
+  const f = new Fingers(cdp);
+  const tu = await waitUi(page, (x) => x.kind === "title" && x.ready, 120000, "the title menu");
+  check("the title menu is tappable (NEW GAME)", tu.rects.length >= 1 && tu.start);
+  await shot(page, "game-iphone-portrait-title.png");
+  const r0 = tu.rects[0];
+  const pt = await gameXY(page, r0.x + r0.w / 2, r0.y + r0.h / 2);
+  await f.tap(pt.x, pt.y);
+  const ou = await waitUi(page, (x) => x.kind === "options" && x.ready, 40000, "the settings screen");
+  check("tapping NEW GAME opens the settings screen with its rows", ou.rects.length === 4 && ou.cur === 0, JSON.stringify({ n: ou.rects.length, cur: ou.cur }));
+  await shot(page, "game-iphone-portrait-options.png");
+  // CONTROLS row: a tap walks the cursor there and changes the value (one of 6 button configurations); every further tap changes it again
+  const row1 = ou.rects.find((r: any) => r.id === 1);
+  const p1 = await gameXY(page, row1.x + row1.w / 2, row1.y + row1.h / 2);
+  const cfg0 = await reg(page, 0x78BA);
+  await f.tap(p1.x, p1.y);
+  await waitUi(page, (x) => x.kind === "options" && x.cur === 1, 8000, "cursor on CONTROLS");
+  await sleep(1500);
+  const cfg1 = await reg(page, 0x78BA), uc = await ui(page);
+  check("a tap on CONTROLS walks there and changes the button configuration (the touch roles follow: confirm / cancel are physical A B C bits)", cfg1 === ((cfg0 + 1) % 6) && uc.kind === "options", `${cfg0} -> ${cfg1}`);
+  for (let i = 0; i < 5; i++) { await f.tap(p1.x, p1.y); await sleep(1000); }
+  check("six taps cycle through all configurations and come back", (await reg(page, 0x78BA)) === cfg0, String(await reg(page, 0x78BA)));
+  // the QUIT button: walks down (GUN ADJUST is skipped without the gun) and starts the game
+  const quit = ou.rects.find((r: any) => r.id === 4);
+  const pq = await gameXY(page, quit.x + quit.w / 2, quit.y + quit.h / 2);
+  await f.tap(pq.x, pq.y);
+  const su = await waitUi(page, (x) => x.kind === "skip", 60000, "the intro (skip)");
+  check("the intro shows the Start button, and no tap on the picture skips it", su.start && (await page.$eval("#gOk", (e) => (e as HTMLElement).style.visibility)) === "visible");
+  const cc = await centre(page, "#screen");
+  await f.tap(cc.x, cc.y); await sleep(1500);
+  check("a tap on the picture does not skip the intro", (await ui(page)).kind === "skip");
+  await shot(page, "game-iphone-portrait-intro.png");
+  await page.$eval("#gOk", (e) => (e as HTMLElement).click());
+  const gu = await waitUi(page, (x) => x.kind === "message" || x.kind === "menu", 60000, "the game after the intro");
+  check("the Start button skips the intro and the game begins", gu.kind === "message" || gu.kind === "menu");
+  await ctx.close();
+}
+
 // ================================================================= D. settings, defaults, persistence, desktop
 {
   const d = DEVICES[0];
@@ -452,6 +532,8 @@ async function tapMenuText(page: Page, f: Fingers, text: string): Promise<any> {
     accept: document.getElementById("discPick")!.hasAttribute("accept"), touchHelp: !document.getElementById("impTouchHelp")!.hidden && getComputedStyle(document.getElementById("impTouchHelp")!).display !== "none",
   }));
   check("360x640 touch: the start window does not scroll sideways", !r.scroll);
+  const ta = await page.evaluate(() => ({ body: getComputedStyle(document.body).touchAction, canvas: getComputedStyle(document.getElementById("screen")!).touchAction, user: getComputedStyle(document.getElementById("wrap")).userSelect, ob: getComputedStyle(document.documentElement).overscrollBehaviorY }));
+  check("no double-tap zoom (manipulation), no gestures on the picture (none), no text selection, no pull-to-refresh", /manipulation/.test(ta.body) && ta.canvas === "none" && ta.user === "none" && ta.ob === "none", JSON.stringify(ta));
   check("phone: the file picker has no extension filter (iOS Files / Android would grey out .cue and .bin)", !r.accept);
   await shot(page, "overlay-360x640.png");
   const f = new Fingers(cdp);

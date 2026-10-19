@@ -1,6 +1,6 @@
 # WEB workstream – browser front end
 
-Code: `web/index.html`, `web/src/{main,sources,audio,input,pacer,saves}.ts`, `web/server.ts`, wasm API in `engine/src/lib.rs`
+Code: `web/index.html`, `web/src/{main,sources,audio,input,pacer,saves,touch,touchpad,touchgame,touchmath,platform}.ts`, `web/server.ts`, wasm API in `engine/src/lib.rs`
 (`Game`: new, load_file, boot, new_game, debug_jump, set_save, set_voice_len, set_fm_len, set_sfx_len, set_gun, tick,
 framebuffer_ptr, take_events, debug_info). Build `scripts/build-web.sh`, tests `scripts/test-web.sh`.
 
@@ -11,7 +11,8 @@ framebuffer_ptr, take_events, debug_info). Build `scripts/build-web.sh`, tests `
   start overlay (served assets or folder picker), menu (Esc, pauses), volume sliders, fullscreen, mute, pause on hidden tab,
   smoothing and debug toggles, save export/import, save events reach the store and the engine, mono/stereo, FM/PCM stop
   commands, LRU buffer cache, visible notes for missing optional assets, phone-width layout.
-- **Not done**: touch controls (no on-screen pad; phones can only use a Bluetooth gamepad), real-ear check of the mono/stereo option
+- **Touch controls** (phones and tablets): done, section 11 (on-screen pad and touch the game, layouts, Touch tab, wake lock, audio unlock, manifest). Checked in emulation only, see 11.9.
+- **Not done**: real-ear check of the mono/stereo option
   (verified structurally and numerically, see 4), audio of `kind==2` voice music ducking (audio.md §5 says ~1 dB, ignored),
   the RF5C164 voice `pan` nibbles (order unknown, audio.md "Open questions"; voices play centred).
 - **Needs the coordinator / engine owners**: `engine/src/menus.rs` `sfx_1c` emits `Out::Pcm` but its target is the FM effect
@@ -232,6 +233,106 @@ The page is published at https://markzuel.com/snatcher-wasm-port/ (project site 
 **Deploy.** `pages.yml` runs on push to `main` and by hand: Rust stable + wasm32 target, `wasm-bindgen` 0.2.129 (prebuilt release, same version as `Cargo.lock`), Bun, `scripts/build-static.sh` (`cargo build -j 4`), then `upload-pages-artifact` and `deploy-pages`. Repository setting: Pages source "GitHub Actions".
 
 **Check.** `bun web/test/static.ts` serves `build/site` under `/snatcher-wasm-port/` with a plain server (no special header, 404 for the rest) on port 5350 and checks: 0 console errors, 0 failed requests, no `/assets` request, step 1 only on a first visit, pt-BR switch. `FULL=1` also imports the local disc and plays (about 35 s for the import, the pack fetched, frames drawn). `SITE_URL=<url>` checks a live site instead. Screenshots go to `work/shots/pages/` (gitignored: they show the game).
+
+## 11. Touch input for phones and tablets (`touch.ts`, `touchpad.ts`, `touchgame.ts`, `touchmath.ts`, `platform.ts`, `engine/src/touch.rs`)
+Two ways to play on a touch device, chosen in the pause panel (Touch tab) and kept in `localStorage` (`snatcher.touch.mode` = `pad` | `game` | `off`).
+Default: `pad` when the main pointer is a finger (`(pointer: coarse)` and `maxTouchPoints > 0`: phones, tablets, iPadOS), `off` on a computer (also a laptop with a
+touch screen: the player can switch the pad on). `off` leaves the old behaviour (the browser's made-up mouse events still drive the light gun). Nothing changes on a desktop.
+Both modes feed the **existing input path**: `Input.touch` (a `TouchSource`) is ORed into the pad bits of every game tick in `Input.poll()`, exactly like `keys` and the
+gamepads, and replaces the mouse as the light gun while a finger aims (`Input.poll` -> `Game.set_gun`). No new engine input path. A finger makes `Device` = `touch`
+(`Input.touchDevice()`): the game text then keeps the original letters A B C and the word START (`promptFor` -> style 0), which are the letters drawn on the pad.
+
+### 11.1 Mode 1, on-screen pad (`touchpad.ts`)
+D-pad (left), A B C (right, C = confirm carries the yellow), Start and Menu above them. Square beveled blocks of the design system (docs/design-system.md "Touch controls"),
+at least 48 CSS px, 56 px by default (Touch tab: size 90-140 %, opacity 30-100 %).
+* Multi-touch: every finger is tracked (`pointerdown/move/up/cancel`, pointer capture on the pad root); the bits are the union of all fingers.
+* D-pad: a finger that starts on it steers it wherever it goes (like a thumb stick): offset from the centre -> 8 directions of 45 degrees with a dead zone
+  (`dpadBits`, the same sector test as the gamepad stick). Diagonals set two bits (the game's own pad aiming in the shooting stages uses them).
+* Buttons: hit-tested on every move with 6 px of slop, so sliding from C to B presses B and releases C, sliding off releases, a held button stays held.
+* Nothing can stay pressed: `pointerup`, `pointercancel`, `lostpointercapture`, `touchcancel`, `pagehide`, a hidden page, a lost window focus and any modal
+  (`Input.enabled = false`) release everything. A press shorter than one game tick is latched for one tick.
+* Menu is a normal button (opens the pause panel). Start is a held pad bit.
+* **Light-gun sections in this mode**: the pad plays them the way a pad plays (the engine's own pad aiming: the D-pad picks one of the 3 x 3 target cells, A draws or
+  holsters the blaster, C fires; frame-exact against the original, docs/re/shooting.md). No extra code: chosen because it is the original pad behaviour and needs no
+  aim by pixel. Tapping the picture in this mode does nothing (a finger on the picture is not a mouse: `pointerdown` is cancelled so the browser makes no mouse events).
+
+### 11.2 Mode 2, touch the game (`touchgame.ts`)
+No pad is drawn. The picture is the controller. A small bar keeps **Menu** and shows **Back**, **Start/OK** and **Holster** only while they do something.
+The engine tells the page what the game waits for and where the tappable things are (11.4); the page turns taps into presses (2 ticks down, 2 ticks up, one at a time,
+waiting for `ready`, because a press made while the game redraws a menu is lost). Pointer events, `touch-action: none` on the game surface, `-webkit-touch-callout: none`,
+`user-select: none`, `overscroll-behavior: none` (no pull to refresh), `touch-action: manipulation` on the rest of the page (no 300 ms delay, no double-tap zoom), `gesturestart`
+cancelled (iOS pinch), `contextmenu` cancelled.
+
+**Every state found and how it is played** (the list comes from `Engine::game_touch` / `Title::touch` / `Timeline::touch`; each kind has a test):
+| State (engine `kind`) | Where it is | Touch solution |
+|---|---|---|
+| boot screens (copyright, Konami logo), fades, scene loads, scenes that play (`none`) | before the title, between scenes | nothing is needed; a touch holds the confirm button, which is harmless there (and is the safety net for a wait I did not find) |
+| message box, printing or waiting for the button (`message`) | every dialogue, narration, system text | the finger holds the confirm button while it is down: a tap advances, holding prints the text at once (the game's own held-C fast text). Anywhere on the page, the thumb need not aim |
+| command menu, list of lines (`menu`) | Junker HQ, every investigation menu, save slots, the debug menu | tap a line: the cursor walks there (Up/Down presses, waits for `ready`) and the game confirms it. Page arrows of an 8-item menu are lines too: tapping one flips the page. The tap is hit-tested with 5 px of slop between the 9 px lines |
+| menu depth > 0 (`menu`, `back`) | sub-menus | Back button or a two-finger tap = the cancel button. Not shown at depth 0 (the game ignores cancel there) |
+| dark room free view (`menu`, `pointer`; SP26 only, `$79FE == 1`) | "TURN ON LIGHT" in SP26 | touch and drag: B held plus the direction of the drag from the touch point (a stick), the light moves while the finger is down, lifting lets go and the game picks the region under the light. The game text says "press the B button with the direction key": in this mode that is the drag |
+| phone keypad (`entry`, style 2) and alphabet keyboard (style 3) | videophone dialling (SP35), Jordan terminal I.D. file (SP04/SP05) | tap a key: the cursor walks there over the keyboard's own grid (shortest route, `Game.touch_step`) and the key is typed. The keyboard's OK and backspace keys are keys too. Back = backspace (the game's cancel in an entry); the OK button = Start = Enter (not in the dialling keypad, which ends by itself) |
+| shooting stage (`shoot`), also its practice range | the 15 stages | tap = aim at that game pixel and fire (the mouse light-gun path: `Input.touch.gun()` -> `set_gun`); the first tap also draws the blaster (draw, then fire); the Holster button holsters (the gun's second button). The shot lands on the tapped pixel (test: within 2 px) |
+| title menu (`title`: NEW GAME / CONTINUE) | after the logo | tap an entry: the cursor goes there and Start is pressed |
+| slot screen (`slots`) | CONTINUE | tap a slot that has data (empty ones are not tappable): Down/Up to it, then Start. Back (B) returns to the title menu |
+| options screen (`options`) | after NEW GAME / CONTINUE | tap a row: the cursor goes there and the value changes (DEVICE, CONTROLS = the 6 button configurations, SOUND MODE); GUN ADJUST (only with the gun device, never reachable with fingers) and QUIT start the game. `ui.confirm/cancel/extra` give the physical A B C bits that make the game's logical confirm / cancel / extra under the chosen configuration (`Engine::touch_roles`), so the touch roles stay right after the player changes it |
+| gun calibration (`calibrate`) | only reachable with a gun device | tap = trigger at that point, Start button skips |
+| intro (`skip`) and any sequencer wait for Start (`skip`) | the opening sequence | a Start button appears; **no tap on the picture skips** (a stray touch must not skip a scene). The late-game sequence takes no input |
+| GAME OVER, QUIT INVESTIGATION | the game restarts at the title by itself | nothing to do |
+`Back` is also a **two-finger tap** (two fingers down within 450 ms, lifted again without moving).
+Nothing needs the pad in this mode, so no pad is ever shown in it. If the player ever meets a wait this table does not cover, the Touch tab switches to the on-screen pad.
+
+### 11.3 Wasm API added (engine, `engine/src/touch.rs`; read-only, not part of a snapshot)
+* `Game.touch_ui() -> JSON` `{kind, ready, back, start, label, cur, page, confirm, cancel, extra, pointer, drawn, playing, rects:[{x,y,w,h,id,k}]}`. Rectangles are in game pixels
+  (the 256x224 frame buffer). Menu lines: x 8..248, y = `0x8F` (+16 with the portrait layout `$7893`) + 9 per line; keypad keys 16x16, keyboard keys 16x16 with wider BACKSPACE
+  (48), SPACE (64), OK (48), centred on the cursor sprite's cell; title items, the 4 slot panels and the 5 settings rows are measured constants of the baked pictures
+  (`Title::touch`). The Rust tests check them against the screen (text pixels inside each line, glyph centroids on the keypad keys).
+* `Game.touch_step(cell) -> bits` first step of the shortest route of the keypad/keyboard cursor to a cell (breadth first search over the grid codes; `Entry::dest` is the side-effect free
+  form of the original `sub_0119E0` walk, which `mv` now uses too).
+* test helpers: `Game.menu_items()` (texts of the open menu as JSON), `Game.entry_text()` (what is typed), `Game.peek_reg(addr)` (a sub-CPU word register: `$7908` shots, `$798A/B` gun position,
+  `$78F8` blaster drawn, `$96D0` view, `$9716` remembered menu cursor).
+Tests: `cargo test --release -p snengine --test touch` (6 tests against the local disc, skipped without it; overlay pictures go to `work/shots/mobile/engine/`).
+
+### 11.4 Coordinates (`touchmath.ts`)
+`clientToGame(clientX, clientY, canvasBox)` maps a client point to game pixels with `object-fit: contain` semantics (bars when the box is wider or taller than 256:224; a point on a bar is
+`inside: false` and clamped to the picture's edge pixel). The canvas is sized in whole device pixels by `fit()` (crisp pixels also with `image-rendering: auto`, "smooth"), so the
+mapping is linear. `Input.track` (mouse) uses the same function.
+
+### 11.5 Layout (`planLayout`, `touch.ts` `fit()`, CSS section 6 of `system.css`)
+`<html data-touch="pad|game" data-arr="below|sides|overlay">`. The picture always gets a whole device-pixel scale.
+* Portrait (phones, tablets): picture on top, controls at the bottom (D-pad left, A B C right, Menu / Start above).
+* Landscape: `sides` = controls in the free space left and right of the picture (the largest scale, not below 3/4 of the largest that fits, whose side columns hold the controls; the buttons shrink
+  to the room but never below 48 px); `overlay` = the narrow phones (667x375): the controls are drawn over the picture's edges with 48 px buttons and the picture keeps its larger scale.
+* Safe areas: `env(safe-area-inset-*)` (read from the hidden `#sai` probe for the maths, mirrored in `--sai-*`); controls and picture stay inside (test with the protocol's safe-area override).
+* The toolbar and the monitor bezel are not shown in touch layouts. `100%` of a fixed `body` instead of `100vh` (iOS toolbars). Orientation: both work; a phone in portrait whose picture
+  would be larger sideways sees a dismissible hint (never a block, `snatcher.touch.rotate`). Fullscreen: Fullscreen API (Android, iPad); iPhone Safari has none, so the Touch tab
+  says "Share, Add to Home Screen" (`manifest.webmanifest`: `display: fullscreen`, `display_override`, icons made by `scripts/make-icons.py` from the page's own pixel S, no game art). **No service worker**.
+
+### 11.6 Platform pieces (`platform.ts`)
+* Screen wake lock while the game runs (`navigator.wakeLock`), released on pause / menu / hidden page and taken again; default on for touch devices, off on computers (Touch tab).
+* Haptics `navigator.vibrate(8)` on pad presses and touch-mode presses; off by default, Touch tab (shown only where supported).
+* Audio: `primeAudio()` creates and resumes the `AudioContext` inside the click of Play / Continue (before the awaits that load the game) and plays a silent buffer; `AudioOut` takes it over.
+  Later taps (`touchend`, `click`, `pointerup`) resume a context the browser suspended or interrupted, unless the page itself paused the audio. `visibilitychange` still suspends.
+* Import on phones: the file picker has no `accept` filter on touch devices (iOS Files knows no type for `.cue`/`.bin`; the page validates the pick itself, section 8) and a one-line help is shown.
+  The storage line is extended: before any file is picked, `imp.lowquota.*` warns when `navigator.storage.estimate()` leaves less than the import needs (about 1.2 GB with the CD music, 735 MB
+  without). The import format is unchanged.
+
+### 11.7 Settings
+Touch tab: mode (On-screen pad / Touch the game / Off), button size, pad opacity, vibration, keep the screen on, Fullscreen, iPhone advice. Keys: `snatcher.touch.{mode,size,opacity,haptics,awake,rotate}`
+(all `snatcher.*`: "Clear everything" removes them). Strings: `i18n.ts` (`t.*`, `ctl.t.*`) and `i18n/pt-BR/ui.json`. The Sound tab gained a Mute check box (the toolbar is hidden on phones).
+
+### 11.8 Tests
+`bun test web/test` (`touchmath.test.ts`: 38 tests: coordinate transform with letterboxing, D-pad angles, hit-testing of menu rectangles, layouts of 10 device shapes, settings),
+`bun web/test/touch.ts` (headless Chrome, device emulation iPhone / Android / iPad portrait and landscape and a 667x375 phone, real multi-touch through `Input.dispatchTouchEvent`, own server on 5360;
+screenshots of every layout in both modes in `work/shots/mobile/`, gitignored, they show the game). It covers layouts (no horizontal scroll, controls and picture inside the safe area and apart,
+buttons >= 48 px), the pad (multi-touch, diagonals, dead zone, sliding, held, cancel, hidden page, blur, menu, prompts, wake lock, haptics), touch the game (paging arrow, command line, Back by two fingers and by the
+button, a shooting stage by taps with the shot on the tapped pixel, message tap, keyboard key and Back = backspace, dark-room drag, title -> options (value cycling) -> intro skip), the settings (default, persistence,
+desktop unchanged, pad switched on by a desktop player), the 360x640 start window and panel tabs, audio unlock, haptics. `scripts/test-web.sh` runs it.
+
+### 11.9 What was only checked in emulation (try it on a real phone / tablet)
+iOS Safari audio unlock (the context is primed in the tap; emulation cannot prove iOS accepts it), the screen wake lock (stubbed in the test), `navigator.vibrate` (stubbed), the Files picker on iOS and the Android
+picker with several files, Fullscreen on iPad / Android and Add to Home Screen on iPhone (and how `display: fullscreen` behaves), real notch / home-bar insets (protocol override only), thumb comfort of the pad (size,
+the A B C arrangement: A B on top, C below B), the pinch / long-press / pull-to-refresh behaviour of each browser, `storage.estimate()` quotas on phones, performance on a low-end phone.
 
 ## 5. Tests
 (The importer tests are in section 8: `cargo test --release -p sncore --test import` and `bun web/test/import.ts`.)

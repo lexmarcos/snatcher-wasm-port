@@ -86,13 +86,23 @@ Pressed = the two edges swap. Spacing steps are 8, 16, 24, 32 px.
 - **Checkbox**: native `<input type=checkbox>` as a square inset box with a pixel check mark (mask), 24 px, in a 32 px (44 px on phones) label row.
 - **Select**: native `<select>` as an inset well with a pixel arrow.
 - **Drive slot** (`.slot`, id `impBox`): inset dark slot with a dashed `--bevel-mid` outline that turns `--call` (and the text changes to "Release to import") while dragging.
-- **Tabs** (`role=tablist`): Sound, Display, Controls, Gamepad, Saves. Roving tabindex; Left/Right wrap, Home/End jump, selection follows focus. The Saves tab holds Export saves / Import saves, the slot note, then the **Autosave** check box (`#autoBox`, on by default, title text explains the quiet moments and that the four slots are not touched), a status line (`#pnAuto`: the last autosave, or "Autosave is off: nothing new is saved." and "The autosave from ... stays until you delete it.", or the blocked-storage line) and the button "Delete autosave" (`#pnAutoDelete`). The selected tab is pressed in, with a `--call` label and the cursor.
+- **Tabs** (`role=tablist`): Sound, Display, Controls, Touch, Gamepad, Saves. Roving tabindex; Left/Right wrap, Home/End jump, selection follows focus. The Saves tab holds Export saves / Import saves, the slot note, then the **Autosave** check box (`#autoBox`, on by default, title text explains the quiet moments and that the four slots are not touched), a status line (`#pnAuto`: the last autosave, or "Autosave is off: nothing new is saved." and "The autosave from ... stays until you delete it.", or the blocked-storage line) and the button "Delete autosave" (`#pnAutoDelete`). The selected tab is pressed in, with a `--call` label and the cursor.
 - **Disclosure rows** (`<details>`): Saves, Controls, Other ways to load; quiet rows between two `--bevel-mid` rules, collapsed by default.
 - **Status lines** (`.line`, `.notes li`): `.ok` (check), `.err` (cross), `.warn` (exclamation, `--ink`), `.dim`.
 - **Toolbar** (`#bar`, `role=toolbar`): small beveled buttons on a slim strip under the canvas, with the status text.
 - **Monitor frame** (`#monitor`): a raised `--bevel-mid` bezel with a sunken screen around the canvas. `main.ts` `fit()` measures the frame and the toolbar, so the canvas keeps an
   integer scale and `image-rendering: pixelated`. In fullscreen the frame is dropped. No scanlines, no curvature.
 - **Debug overlay** (`#debug`): a small window in the same style, 16 px.
+- **Touch pad** (`#touch`, section 6 of `system.css`; phones and tablets, never on a desktop unless the player turns it on in the Touch tab): the on-screen Sega CD pad.
+  D-pad on the left (four 1 x 1 arms of a 3 x 3 square around a dark hub, each arm carries the pixel cursor glyph turned to its direction), A B C on the right (A and B on top, C below B; 32 px letters),
+  Menu above the D-pad and Start above the buttons. All blocks are `--face` squares with the 2 px bevel, radius 0, no blur; a pressed block is pressed in (the two edges swap, the same as `:active` on
+  a page button) and its glyph or letter turns `--call`. The one yellow outline (inside the edge, like `.btn.primary`) is on **C**, the confirm / fire button: yellow stays "the primary action".
+  Size `--u` = 56 px (at least 48 px, set from the viewport: it shrinks to fit beside the picture or under it, never below 48; the Touch tab scales 90-140 %), gap 8 px, 12 px from the screen edge plus the safe area.
+  The pad blocks use `--pad-op` (default 85 %, Touch tab); Menu and Start stay opaque. Arrangements: `below` (portrait), `sides` (landscape, in the free columns beside the picture), `overlay` (narrow landscape, over the picture's edges).
+  Hover is switched off on touch devices (`@media (hover: none)`), so a tapped button does not stay yellow.
+- **Touch buttons of "touch the game"** (`.tbtn`, 48 px high, 96 px wide): Menu always; Back, Start / OK and Holster only while they do something (hidden without moving the others).
+- **Rotate hint** (`.hint`): a beveled strip under the notch, one sentence and an OK button, never modal.
+- **Touch targets**: every button on a touch layout is at least 48 px; the page's own buttons keep the 44 px rule at 360 px (checked by `test/design.ts`, `test/touch.ts`).
 
 ## 6. Screens
 

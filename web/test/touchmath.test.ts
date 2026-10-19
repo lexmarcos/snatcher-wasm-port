@@ -162,6 +162,10 @@ describe("layout for phones and tablets", () => {
     expect(planLayout({ vw: 667, vh: 375, dpr: 2, safe: none, mode: "pad", size: 100 }).arr).toBe("overlay");
     expect(planLayout({ vw: 915, vh: 412, dpr: 2.625, safe: none, mode: "pad", size: 100 }).arr).toBe("sides");
     expect(planLayout({ vw: 1366, vh: 1024, dpr: 2, safe: none, mode: "pad", size: 100 }).arr).toBe("sides");
+    const ipad = planLayout({ vw: 1024, vh: 768, dpr: 2, safe: { t: 24, r: 0, b: 20, l: 0 }, mode: "pad", size: 100 });
+    expect(ipad.arr).toBe("sides"); expect(ipad.scale).toBe(5); expect(ipad.u).toBeGreaterThanOrEqual(BTN_MIN); // the buttons shrink a little to fit beside the picture
+    const se = planLayout({ vw: 667, vh: 375, dpr: 2, safe: none, mode: "pad", size: 100 });
+    expect(se.u).toBe(BTN_MIN); expect(se.scale).toBe(3); // over the picture: the smallest buttons, so only the picture's black edge is covered
   });
   test("touch the game keeps more room for the picture than the pad does", () => {
     const pad = planLayout({ vw: 390, vh: 844, dpr: 3, safe: none, mode: "pad", size: 100 });
