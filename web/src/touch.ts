@@ -18,6 +18,8 @@ export interface TouchDeps {
   canvas: HTMLCanvasElement;
   ls: { get(k: string): string | null; set(k: string, v: string): void };
   openPanel(): void;
+  /** the display filter wants the picture laid out for it (pixel aspect, whole device pixels), or undefined when it is off */
+  crt?(): { par: number } | undefined;
 }
 
 const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
@@ -108,7 +110,7 @@ export class Touch {
   fit(): boolean {
     if (this.mode === "off") { this.layout = null; this.updateRotate(); return false; }
     const safe = this.safe();
-    const L = planLayout({ vw: innerWidth, vh: innerHeight, dpr: window.devicePixelRatio || 1, safe, mode: this.mode === "pad" ? "pad" : "game", size: this.size });
+    const L = planLayout({ vw: innerWidth, vh: innerHeight, dpr: window.devicePixelRatio || 1, safe, mode: this.mode === "pad" ? "pad" : "game", size: this.size, crt: this.d.crt?.() });
     this.layout = L;
     this.d.canvas.style.width = `${L.canvasW}px`; this.d.canvas.style.height = `${L.canvasH}px`;
     const st = this.html.style;
@@ -125,7 +127,7 @@ export class Touch {
     const L = this.layout;
     let show = false;
     if (L && this.started && !L.landscape && Math.min(innerWidth, innerHeight) < 600 && this.d.ls.get(K.rotate) !== "1") {
-      const alt = planLayout({ vw: innerHeight, vh: innerWidth, dpr: window.devicePixelRatio || 1, safe: { t: 0, r: 0, b: 0, l: 0 }, mode: this.mode === "pad" ? "pad" : "game", size: this.size });
+      const alt = planLayout({ vw: innerHeight, vh: innerWidth, dpr: window.devicePixelRatio || 1, safe: { t: 0, r: 0, b: 0, l: 0 }, mode: this.mode === "pad" ? "pad" : "game", size: this.size, crt: this.d.crt?.() });
       show = alt.scale > L.scale;
     }
     if (show && hint.hidden) { clearTimeout(this.rotateTimer); this.rotateTimer = window.setTimeout(() => { hint.hidden = true; }, 12000); }

@@ -194,6 +194,7 @@ input[type=range]:active::-webkit-slider-thumb { box-shadow: inset 2px 2px 0 var
 /* disclosure rows: quiet lines between two rules; the cursor marks them, the open row shows the down arrow */
 .folds { display: flex; flex-direction: column; margin-top: 8px; border-top: var(--bw) solid var(--bevel-mid); }
 details { border-bottom: var(--bw) solid var(--bevel-mid); }
+details.inner { border-top: var(--bw) solid var(--bevel-mid); }
 summary { position: relative; display: flex; align-items: center; min-height: 40px; padding: 8px 16px 8px 40px; cursor: pointer; list-style: none; color: var(--ink); }
 summary::-webkit-details-marker { display: none; }
 summary::before { visibility: visible; left: 12px; color: var(--dim); }
@@ -225,6 +226,10 @@ kbd { font: inherit; color: var(--ink); background: var(--face); padding: 0 8px;
 #monitor { background: var(--bevel-mid); padding: 16px; line-height: 0; }
 canvas { image-rendering: pixelated; background: #000; display: block; max-width: 100%; box-shadow: 0 0 0 2px var(--bevel-lo), 1px 1px 0 3px var(--bevel-hi); }
 canvas.smooth { image-rendering: auto; }
+/* the display filter's canvas (src/crt.ts) lies exactly over the game canvas inside #stage; clicks and touches go to #screen underneath */
+#stage { position: relative; line-height: 0; }
+#crt { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; pointer-events: none; box-shadow: none; }
+#crt[hidden] { display: none; }
 canvas:focus { outline: none; }
 :fullscreen #bar { display: none; }
 :fullscreen #monitor { padding: 0; border: 0; box-shadow: none; background: none; }

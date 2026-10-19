@@ -5,6 +5,7 @@
 //   * the layout of the picture and the touch controls for a viewport (phones and tablets, portrait and landscape, safe areas)
 //   * the saved touch mode and its default
 import { PAD, stickDirs } from "./gamepads";
+import { crtScale, CRT_MIN_SCALE, pictureSize, view as pageView, viewToGame, gameToView, type View } from "./crtmath";
 
 export interface Box { x: number; y: number; w: number; h: number }
 
@@ -15,21 +16,16 @@ export const GAME_W = 256, GAME_H = 224;
  * (`object-fit: contain`): when the box is wider or taller than 256:224 there are bars, and a point on a bar is `inside: false`
  * (its x / y are still extrapolated, clamped to the picture's edge pixels, so a drag that leaves the picture keeps working).
  * `x`/`y` are whole game pixels 0..255 / 0..223; `fx`/`fy` the exact (unclamped) position.
+ * `v` is how the picture is displayed (pixel aspect 8:7 and the barrel warp of the display filter, crtmath.ts); the default is the page's current view,
+ * which is flat (square pixels, no warp) whenever the filter is off.
  */
-export function clientToGame(cx: number, cy: number, el: Box, gw = GAME_W, gh = GAME_H): { x: number; y: number; fx: number; fy: number; inside: boolean } {
-  const s = Math.min(el.w / gw, el.h / gh);
-  if (!(s > 0)) return { x: 0, y: 0, fx: 0, fy: 0, inside: false };
-  const ox = el.x + (el.w - gw * s) / 2, oy = el.y + (el.h - gh * s) / 2;
-  const fx = (cx - ox) / s, fy = (cy - oy) / s;
-  const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi - 1, Math.floor(v)));
-  return { x: clamp(fx, gw), y: clamp(fy, gh), fx, fy, inside: fx >= 0 && fx < gw && fy >= 0 && fy < gh };
+export function clientToGame(cx: number, cy: number, el: Box, gw = GAME_W, gh = GAME_H, v: View = pageView): { x: number; y: number; fx: number; fy: number; inside: boolean } {
+  return viewToGame(cx, cy, el, gw, gh, v);
 }
 
 /** Inverse: a game pixel to the client position of its centre (tests, overlays). */
-export function gameToClient(gx: number, gy: number, el: Box, gw = GAME_W, gh = GAME_H): { x: number; y: number } {
-  const s = Math.min(el.w / gw, el.h / gh);
-  const ox = el.x + (el.w - gw * s) / 2, oy = el.y + (el.h - gh * s) / 2;
-  return { x: ox + (gx + 0.5) * s, y: oy + (gy + 0.5) * s };
+export function gameToClient(gx: number, gy: number, el: Box, gw = GAME_W, gh = GAME_H, v: View = pageView): { x: number; y: number } {
+  return gameToView(gx + 0.5, gy + 0.5, el, gw, gh, v);
 }
 
 /** Pad bits (UP 1, DOWN 2, LEFT 4, RIGHT 8) for an offset from the D-pad centre: dead zone, then 8 sectors of 45 degrees (diagonals set two bits). */
@@ -81,6 +77,8 @@ export interface LayoutIn {
   mode: "pad" | "game";
   /** user size, percent (PAD_SIZE_RANGE) */
   size: number;
+  /** the display filter wants the picture: pixels `par` wide, a fractional scale is fine. Falls back to the plain layout when the picture would be under CRT_MIN_SCALE. */
+  crt?: { par: number };
 }
 export interface LayoutOut {
   arr: Arrangement;
@@ -89,6 +87,8 @@ export interface LayoutOut {
   u: number;
   /** picture size in CSS px and the scale it was derived from (device pixels per game pixel) */
   canvasW: number; canvasH: number; scale: number;
+  /** the picture is laid out for the display filter (pixel aspect, whole device pixels); false = the plain layout */
+  crt: boolean;
   /** space reserved under the picture (below) or at each side (sides) for the controls, CSS px */
   reserveBottom: number; reserveSide: number;
 }
@@ -106,17 +106,26 @@ const TOP_GAP = 8;
  * The picture always gets a whole device-pixel scale (crisp pixels) except below 1x.
  */
 export function planLayout(i: LayoutIn): LayoutOut {
+  if (i.crt) {
+    const o = planPicture(i, i.crt.par, true);
+    if (o.scale >= CRT_MIN_SCALE) return o;
+  }
+  return planPicture(i, 1, false);
+}
+
+function planPicture(i: LayoutIn, par: number, crt: boolean): LayoutOut {
   const { vw, vh, dpr } = i;
   const availW = vw - i.safe.l - i.safe.r, availH = vh - i.safe.t - i.safe.b;
   const landscape = vw > vh;
   const tablet = Math.min(vw, vh) >= 600;
   let u = (BASE_U * i.size) / 100 * (tablet ? 1.15 : 1);
   const scaleFor = (w: number, h: number) => {
-    const raw = Math.min((w * dpr) / GAME_W, (h * dpr) / GAME_H);
-    return raw >= 1 ? Math.floor(raw) : Math.max(0.25, raw);
+    const raw = Math.min((w * dpr) / (GAME_W * par), (h * dpr) / GAME_H);
+    return crt ? crtScale(raw) : raw >= 1 ? Math.floor(raw) : Math.max(0.25, raw);
   };
+  const size = (s: number) => (crt ? (({ devW, devH }) => ({ w: devW / dpr, h: devH / dpr }))(pictureSize(s, par)) : { w: (GAME_W * s) / dpr, h: (GAME_H * s) / dpr });
   const out = (arr: Arrangement, s: number, reserveBottom: number, reserveSide: number): LayoutOut =>
-    ({ arr, landscape, u, canvasW: (GAME_W * s) / dpr, canvasH: (GAME_H * s) / dpr, scale: s, reserveBottom, reserveSide });
+    ({ arr, landscape, u, canvasW: size(s).w, canvasH: size(s).h, scale: s, crt, reserveBottom, reserveSide });
   const rowH = BTN_MIN;                                   // the Menu / Start / Back row
   if (!landscape) {
     // the two clusters (3u and 2u + gap wide) plus a gap and the margins must fit the width
@@ -128,8 +137,8 @@ export function planLayout(i: LayoutIn): LayoutOut {
   // at their size (the buttons shrink to the room, never below 48 px); else the controls go over the picture's edges with the smallest buttons
   const full = scaleFor(availW - 2 * PAD_GAP, availH - 2 * TOP_GAP);
   const uBase = u;
-  for (let s = full; s >= 1 && s >= 0.75 * full; s--) {
-    const free = (availW - (GAME_W * s) / dpr) / 2;
+  for (let s = full; s >= 1 && s >= 0.75 * full; s = Math.ceil(s) - 1) {   // full, then the whole scales below it
+    const free = (availW - size(s).w) / 2;
     if (i.mode === "pad") {
       const uFit = (free - PAD_MARGIN - 4) / 3;                // the D-pad (3u) is the widest cluster
       if (uFit >= BTN_MIN) { u = Math.min(uBase, uFit); return out("sides", s, 0, 3 * u + PAD_MARGIN); }

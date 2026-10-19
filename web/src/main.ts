@@ -18,12 +18,14 @@ import { clearCache, fmtBytes, opfsAvailable, readMeta, requestPersist, storageI
 import { ImportedSource, ImportWorker, resolvePick, type Pick } from "./imported";
 import { T, applyStatic, getLang, parseLang, setUiDict, type Lang, type UiKey } from "./i18n";
 import { Touch } from "./touch";
+import { Display } from "./display";
+import { CRT_MIN_SCALE, fitPicture, view as crtView } from "./crtmath";
 import { isCoarsePrimary, isIOS, toggleFullscreen as platformFullscreen } from "./platform";
 
 const W = 256, H = 224;
 const params = new URLSearchParams(location.search);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const msg = $("msg"), canvas = $<HTMLCanvasElement>("screen"), ctx = canvas.getContext("2d")!, debugEl = $("debug");
+const msg = $("msg"), canvas = $<HTMLCanvasElement>("screen"), crtCanvas = $<HTMLCanvasElement>("crt"), ctx = canvas.getContext("2d")!, debugEl = $("debug");
 const bar = $("bar"), overlay = $("overlay"), panel = $("panel"), monitor = $("monitor");
 const smoothBox = $<HTMLInputElement>("smooth"), dbgBox = $<HTMLInputElement>("dbg");
 
@@ -32,6 +34,9 @@ const ls = {
   get(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } },
   set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
 };
+
+// ---------- the display filter (picture styles): settings, the GL canvas over the game canvas, pointer geometry (docs/re/web.md section 12) ----------
+const display = new Display({ canvas, glCanvas: crtCanvas, ls, params, coarse: isCoarsePrimary(), refit: () => fit(), frame: () => frameView() });
 
 // ---------- notes (visible degradation messages) ----------
 type Level = "warn" | "err" | "ok";
@@ -48,29 +53,47 @@ function renderNotes() {
   }
 }
 
-// ---------- canvas scaling (integer scale in device pixels; fractional only when the window is smaller than 1x) ----------
+// ---------- canvas scaling (plain picture: integer scale in device pixels, fractional only when the window is smaller than 1x;
+// display filter on: the biggest picture that fits, whole device pixels, 8:7 pixels unless square is chosen) ----------
 function fit() {
-  if (touch.fit()) return; // phones and tablets: the touch layout sizes the picture (web/src/touch.ts)
   const dpr = window.devicePixelRatio || 1;
+  if (touch.fit()) { // phones and tablets: the touch layout sizes the picture (web/src/touch.ts)
+    const L = touch.layout!;
+    display.setBox({ crt: L.crt, cssW: L.canvasW, cssH: L.canvasH, dpr });
+    return;
+  }
   // the monitor frame (bezel padding) and the toolbar are not part of the canvas: measure them instead of hard-coding
   const mr = monitor.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
   const frameX = mr.width - cr.width, frameY = mr.height - cr.height;
   const fs = !!document.fullscreenElement;
   const availW = innerWidth - (fs ? 0 : 32) - frameX;
   const availH = innerHeight - (fs ? 0 : bar.offsetHeight + 24) - frameY;
+  if (display.wants()) {
+    const f = fitPicture(availW, availH, dpr, display.par(), true);
+    if (f.scale >= CRT_MIN_SCALE) {
+      canvas.style.width = `${f.cssW}px`; canvas.style.height = `${f.cssH}px`;
+      display.setBox({ crt: true, cssW: f.cssW, cssH: f.cssH, dpr });
+      return;
+    }
+  }
   const raw = Math.min((availW * dpr) / W, (availH * dpr) / H);
   const s = raw >= 1 ? Math.floor(raw) : Math.max(0.25, raw);
   canvas.style.width = `${(W * s) / dpr}px`;
   canvas.style.height = `${(H * s) / dpr}px`;
+  display.setBox({ crt: false, cssW: (W * s) / dpr, cssH: (H * s) / dpr, dpr });
 }
 addEventListener("resize", fit);
 addEventListener("orientationchange", () => setTimeout(fit, 120));
 window.visualViewport?.addEventListener("resize", fit);
 document.addEventListener("fullscreenchange", fit);
+// moving the window to another monitor changes devicePixelRatio: the picture and the mask are sized in whole device pixels, so lay out again
+function watchDpr() { const mq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`); mq.addEventListener("change", () => { fit(); watchDpr(); }, { once: true }); }
+watchDpr();
 
 smoothBox.checked = ls.get("snatcher.smooth") === "1";
 const applySmooth = () => { canvas.classList.toggle("smooth", smoothBox.checked); ls.set("snatcher.smooth", smoothBox.checked ? "1" : "0"); };
 smoothBox.onchange = applySmooth; applySmooth();
+display.bindUi();
 dbgBox.checked = params.has("debug");
 const applyDbg = () => { debugEl.style.display = dbgBox.checked ? "block" : "none"; };
 dbgBox.onchange = applyDbg; applyDbg();
@@ -93,7 +116,7 @@ const isPaused = () => overlayOpen || panelOpen || document.hidden;
 // ---------- input device, button maps, prompts ----------
 const input = new Input(canvas);
 input.enabled = false; // the start overlay is open
-const touch = new Touch({ input, canvas, ls, openPanel: () => openPanel() }); // on-screen pad / touch the game (docs/re/web.md section 11)
+const touch = new Touch({ input, canvas, ls, openPanel: () => openPanel(), crt: () => (display.wants() ? { par: display.par() } : undefined) }); // on-screen pad / touch the game (docs/re/web.md section 11)
 try { input.setMaps(JSON.parse(ls.get("snatcher.padmaps") ?? "null")); } catch { input.setMaps(null); }
 const saveMaps = () => ls.set("snatcher.padmaps", JSON.stringify(input.maps));
 type PromptMode = "auto" | "letters";
@@ -271,7 +294,7 @@ async function syncEngineLanguage(g: any) {
   g.set_voice_subtitles(pt && vsubBox.checked);
 }
 function renderDynamic() {
-  applyMute(); refreshSaves(); renderControls(); renderPadMap(); renderNotes(); updateSoundMode(); touch.renderTab();
+  applyMute(); refreshSaves(); renderControls(); renderPadMap(); renderNotes(); updateSoundMode(); touch.renderTab(); display.renderTab();
   if (msgState) msg.textContent = T(msgState.key, msgState.vars);
   if (srcLines) showSource(srcLines(), srcCls);
   if (impLine) showImp(impLine, impCls);
@@ -812,7 +835,7 @@ async function start(src: Source, resume?: AutoRecord) {
     touch.attach(g);
     autosaver.adopt(g, !!resume);
     src.start?.();
-    (window as any).snatcher = { game, audio, input, touch, store, autosaver, autoStore, autoRecord: () => autoRec, memory, started: { frame: JSON.parse(g.debug_info()).frame, fb: fbHash(g), resumed: !!resume }, notes, source: src, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
+    (window as any).snatcher = { game, audio, input, touch, display, view: crtView, store, autosaver, autoStore, autoRecord: () => autoRec, memory, started: { frame: JSON.parse(g.debug_info()).frame, fb: fbHash(g), resumed: !!resume }, notes, source: src, handleEvent, applyPrompt, setLanguage: applyLanguage, language: () => wantLang, prompt: () => lastPrompt, resolveIcon: (cfg: number, fn: any) => resolveIcon(cfg, fn, input.device, input.maps) };
     applyPrompt();
     overlayOpen = false; overlay.hidden = true;
     note("wasm", "ok", null);
@@ -852,9 +875,20 @@ function frame(now: number) {
   }
   audio?.syncCd(game.cd_position()); // CD-DA audio follows the engine's CD clock (the subtitles use it)
   autosaver.poll();
-  img.data.set(new Uint8Array(memory!.buffer, game.framebuffer_ptr(), W * H * 4));
-  ctx.putImageData(img, 0, 0);
+  const fb = frameView()!;
+  img.data.set(fb);
+  ctx.putImageData(img, 0, 0);   // always: tests and the plain picture read this canvas
+  display.present(fb);
   if (dbgBox.checked) debugEl.textContent = game.debug_info() + "\n" + (audio?.debugInfo() ?? "") + "\n" + autosaveDebug();
+}
+
+/** The engine's frame buffer as a view of the wasm memory, made once (again only when the memory grew or the buffer moved): no allocation per frame. */
+let fbBuf: ArrayBufferLike | null = null, fbPtr = -1, fbView: Uint8Array | null = null;
+function frameView(): Uint8Array | null {
+  if (!game || !memory) return null;
+  const ptr = game.framebuffer_ptr();
+  if (!fbView || fbBuf !== memory.buffer || ptr !== fbPtr) { fbView = new Uint8Array(memory.buffer, ptr, W * H * 4); fbBuf = memory.buffer; fbPtr = ptr; }
+  return fbView;
 }
 
 /** FNV-1a of the engine's frame buffer (tests compare the screen a restore brings back with the screen at the time of the save). */

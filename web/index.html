@@ -21,7 +21,11 @@
 <body>
 <div id="wrap">
   <div id="monitor">
-    <canvas id="screen" width="256" height="224" tabindex="0" role="img" aria-label="Snatcher game screen" data-i18n-label="canvas.label"></canvas>
+    <div id="stage">
+      <canvas id="screen" width="256" height="224" tabindex="0" role="img" aria-label="Snatcher game screen" data-i18n-label="canvas.label"></canvas>
+      <!-- the display filter (src/crt.ts) draws here, exactly over #screen, while a CRT style is on; pointer events go to #screen -->
+      <canvas id="crt" aria-hidden="true" hidden></canvas>
+    </div>
   </div>
   <div id="bar" role="toolbar" aria-label="Game controls" data-i18n-label="bar.label">
     <button id="btnMenu" class="btn" type="button" title="Settings, controls, saves (Esc)" data-i18n-title="bar.menu.title" data-i18n="bar.menu">Menu (Esc)</button>
@@ -183,7 +187,32 @@
         <p class="note" id="soundMode"></p>
       </div>
       <div id="tpDisplay" class="tabpanel" role="tabpanel" aria-labelledby="tabDisplay" hidden>
-        <label class="check"><input type="checkbox" id="smooth"> <span data-i18n="pn.smooth">Smooth scaling</span></label>
+        <div class="row"><label for="crtPreset" data-i18n="crt.style">Picture style</label>
+          <select id="crtPreset">
+            <option value="off" data-i18n="crt.off">Plain pixels</option>
+            <option value="tv" data-i18n="crt.tv">CRT: consumer TV</option>
+            <option value="pvm" data-i18n="crt.pvm">CRT: studio monitor</option>
+            <option value="scan" data-i18n="crt.scan">Scanlines only</option>
+            <option value="custom" id="crtOptCustom" hidden data-i18n="crt.custom">Custom</option>
+          </select></div>
+        <p id="crtHelp" class="note"></p>
+        <p id="crtNote" class="line warn" hidden></p>
+        <label id="smoothRow" class="check"><input type="checkbox" id="smooth"> <span data-i18n="pn.smooth">Smooth scaling</span></label>
+        <div id="crtShapeRow" class="row"><label for="crtShape" data-i18n="crt.shape">Pixel shape</label>
+          <select id="crtShape"><option value="tv" data-i18n="crt.shape.tv">TV (8:7, wider pixels)</option><option value="square" data-i18n="crt.shape.square">Square</option></select></div>
+        <details id="crtAdjust" class="inner"><summary data-i18n="crt.adjust">Adjust</summary>
+          <div class="fold-body">
+          <div class="sl"><label for="crtScan" data-i18n="crt.s.scan">Scanlines</label><input id="crtScan" type="range" min="0" max="100" step="5"><output id="crtScanO"></output></div>
+          <div class="sl"><label for="crtMask" data-i18n="crt.s.mask">Mask</label><input id="crtMask" type="range" min="0" max="100" step="5"><output id="crtMaskO"></output></div>
+          <div class="sl"><label for="crtGlow" data-i18n="crt.s.glow">Glow</label><input id="crtGlow" type="range" min="0" max="100" step="5"><output id="crtGlowO"></output></div>
+          <div class="sl"><label for="crtSharp" data-i18n="crt.s.sharp">Sharpness</label><input id="crtSharp" type="range" min="0" max="100" step="5"><output id="crtSharpO"></output></div>
+          <div class="sl"><label for="crtComp" data-i18n="crt.s.comp">Composite blend</label><input id="crtComp" type="range" min="0" max="100" step="5"><output id="crtCompO"></output></div>
+          <div class="sl"><label for="crtCurve" data-i18n="crt.s.curve">Curvature</label><input id="crtCurve" type="range" min="0" max="100" step="5"><output id="crtCurveO"></output></div>
+          <div class="row"><label for="crtMaskKind" data-i18n="crt.maskkind">Mask type</label>
+            <select id="crtMaskKind"><option value="aperture" data-i18n="crt.mask.aperture">Aperture grille</option><option value="slot" data-i18n="crt.mask.slot">Slot mask</option><option value="shadow" data-i18n="crt.mask.shadow">Shadow mask</option></select></div>
+          <div class="row"><button id="crtReset" class="btn" type="button" data-i18n="crt.reset">Reset to default style</button></div>
+          </div>
+        </details>
         <label class="check"><input type="checkbox" id="vsub"> <span data-i18n="pn.vsub" data-i18n-title="pn.vsub.title">Voice subtitles</span></label>
         <label class="check"><input type="checkbox" id="dbg"> <span data-i18n="pn.debug">Debug overlay (F1)</span></label>
         <div class="row"><button id="pnFull" class="btn" type="button" data-i18n="bar.full">Fullscreen (F)</button></div>
