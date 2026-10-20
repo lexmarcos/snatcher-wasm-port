@@ -380,7 +380,7 @@ for (const id of ["btnFull", "pnFull"]) { const b = $(id); if (!canFull) b.hidde
 // ---------- menu panel ----------
 /** A finger that lets go right after the sheet opened (a second tap on Menu, a pad button released late) must not press what is now under it. */
 let panelOpenedAt = 0;
-panel.addEventListener("click", (e) => { if (touch.sheet && performance.now() - panelOpenedAt < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
+panel.addEventListener("click", (e) => { if (touch.sheet && touch.mode !== "off" && performance.now() - panelOpenedAt < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
 function openPanel() {
   if (overlayOpen || panelOpen || !game) return;
   panelOpen = true; panel.hidden = false; input.enabled = false; panelOpenedAt = performance.now();
@@ -426,9 +426,10 @@ function syncPanel() {
   const touchUi = touch.mode !== "off", sheet = touchUi && touch.sheet;
   $("pnResumeRow").hidden = sheet; $("pnDoneRow").hidden = !sheet;
   tabById("Controls").hidden = touchUi;
-  tabById("Gamepad").hidden = touchUi && !input.pads().length;
+  const pad = touchUi && !input.pads().length; if (tabById("Gamepad").hidden !== pad) tabById("Gamepad").hidden = pad;
   const order = touchUi ? ["Display", "Sound", "Touch", "Saves", "Controls", "Gamepad"] : ["Sound", "Display", "Controls", "Touch", "Gamepad", "Saves"];
-  tablist.append(...order.map(tabById));
+  const want = order.map(tabById);
+  if (want.some((t, i) => tablist.children[i] !== t)) tablist.append(...want); // only when the order really changes: moving a node under a finger cancels its click
   const cur = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   if (touchUi && !tabChosen) selectTab(tabById("Display")); // a first look at the menu on a phone starts at the picture
   else if (!cur || cur.hidden) selectTab(shown()[0]);
