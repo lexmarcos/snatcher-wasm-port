@@ -155,3 +155,53 @@ function planPicture(i: LayoutIn, par: number, crt: boolean): LayoutOut {
   u = i.mode === "pad" ? BTN_MIN : u;
   return out("overlay", full, 0, 0);
 }
+
+// ---------------------------------------------------------------- the menu sheet
+
+export interface SheetOut {
+  /** top: the picture above the sheet (portrait); left: the picture left of the sheet (landscape) */
+  arr: "top" | "left";
+  canvasW: number; canvasH: number; scale: number; crt: boolean;
+  /** the box the picture is centred in, and the box of the menu sheet, CSS px (both inside the safe area) */
+  stage: Box; sheet: Box;
+}
+export const SHEET_GAP = 8;
+/** the smallest sheet: its height in portrait, its width in landscape (the tabs, one control and the Back button must fit) */
+export const SHEET_MIN_H = 320, SHEET_MIN_W = 340;
+
+/**
+ * The menu on a phone or tablet is a sheet next to the picture, never over it, so a picture style can be judged while it is changed.
+ * Portrait: the picture on top, the sheet below it. Landscape: the picture at the left, the sheet at the right.
+ * The picture keeps the size it has while playing (the same scale, so the preview is what the game will look like) whenever it leaves the sheet its minimum
+ * room; on a tablet or a small phone that would squeeze the sheet, the picture takes the next smaller scale that does (never larger than while playing).
+ */
+export function planSheet(i: LayoutIn): SheetOut {
+  const { vw, vh, dpr } = i;
+  const availW = vw - i.safe.l - i.safe.r, availH = vh - i.safe.t - i.safe.b;
+  const landscape = vw > vh;
+  const normal = planLayout(i);
+  const stageW = landscape ? availW - Math.max(SHEET_MIN_W, 0.38 * availW) - SHEET_GAP : availW;
+  const stageH = landscape ? availH : availH - Math.max(SHEET_MIN_H, 0.42 * availH) - SHEET_GAP;
+  let pic = { canvasW: normal.canvasW, canvasH: normal.canvasH, scale: normal.scale, crt: normal.crt };
+  if (normal.canvasW > stageW + 0.5 || normal.canvasH > stageH + 0.5) {
+    const fit = (par: number, crt: boolean) => {
+      const raw = Math.min((stageW * dpr) / (GAME_W * par), (stageH * dpr) / GAME_H);
+      const scale = crt ? crtScale(raw) : raw >= 1 ? Math.floor(raw) : Math.max(0.25, raw);
+      const sz = crt ? (({ devW, devH }) => ({ w: devW / dpr, h: devH / dpr }))(pictureSize(scale, par)) : { w: (GAME_W * scale) / dpr, h: (GAME_H * scale) / dpr };
+      return { canvasW: sz.w, canvasH: sz.h, scale, crt };
+    };
+    const c = i.crt ? fit(i.crt.par, true) : null;
+    pic = c && c.scale >= CRT_MIN_SCALE ? c : fit(1, false);
+  }
+  if (!landscape) {
+    const stage = { x: i.safe.l, y: i.safe.t, w: availW, h: pic.canvasH };
+    const top = i.safe.t + pic.canvasH + SHEET_GAP;
+    return { arr: "top", ...pic, stage, sheet: { x: i.safe.l, y: top, w: availW, h: Math.max(0, vh - i.safe.b - top) } };
+  }
+  const left = i.safe.l + pic.canvasW + 2 * SHEET_GAP;
+  return {
+    arr: "left", ...pic,
+    stage: { x: i.safe.l, y: i.safe.t, w: pic.canvasW + 2 * SHEET_GAP, h: availH },
+    sheet: { x: left, y: i.safe.t, w: Math.max(0, vw - i.safe.r - left), h: availH },
+  };
+}

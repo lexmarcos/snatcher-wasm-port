@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { PAD } from "../src/gamepads";
 import {
-  BTN_MIN, clampNum, clientToGame, defaultTouchMode, dpadBits, gameToClient, hitRect, parseTouchMode, planLayout, type Insets, type Rect,
+  BTN_MIN, clampNum, clientToGame, defaultTouchMode, dpadBits, gameToClient, hitRect, parseTouchMode, planLayout, planSheet, SHEET_MIN_H, SHEET_MIN_W, type Insets, type Rect,
 } from "../src/touchmath";
 
 describe("client -> game pixel transform", () => {
@@ -180,5 +180,50 @@ describe("layout for phones and tablets", () => {
     const small = planLayout({ vw: 844, vh: 390, dpr: 3, safe: none, mode: "pad", size: 90 });
     const big = planLayout({ vw: 844, vh: 390, dpr: 3, safe: none, mode: "pad", size: 140 });
     expect(small.u).toBeGreaterThanOrEqual(48); expect(big.u).toBeGreaterThan(small.u);
+  });
+});
+
+describe("the menu sheet (picture next to the menu, never under it)", () => {
+  const none = { t: 0, r: 0, b: 0, l: 0 };
+  const devices: [string, number, number, number, Insets][] = [
+    ["iPhone SE portrait", 375, 667, 2, { t: 20, r: 0, b: 0, l: 0 }],
+    ["360x640 Android portrait", 360, 640, 3, none],
+    ["iPhone 14 portrait", 390, 844, 3, { t: 47, r: 0, b: 34, l: 0 }],
+    ["Pixel 412x915 portrait", 412, 915, 2.625, { t: 24, r: 0, b: 0, l: 0 }],
+    ["iPhone 14 landscape", 844, 390, 3, { t: 0, r: 47, b: 21, l: 47 }],
+    ["iPhone SE landscape", 667, 375, 2, none],
+    ["Pixel 915x412 landscape", 915, 412, 2.625, none],
+    ["iPad portrait", 768, 1024, 2, { t: 24, r: 0, b: 20, l: 0 }],
+    ["iPad landscape", 1024, 768, 2, { t: 24, r: 0, b: 20, l: 0 }],
+    ["iPad Pro 12.9 landscape", 1366, 1024, 2, { t: 24, r: 0, b: 20, l: 0 }],
+  ];
+  for (const crt of [undefined, { par: 8 / 7 }]) for (const [name, vw, vh, dpr, safe] of devices) {
+    test(`${crt ? "filter" : "plain"}: ${name}`, () => {
+      const S = planSheet({ vw, vh, dpr, safe, mode: "pad", size: 100, crt });
+      const N = planLayout({ vw, vh, dpr, safe, mode: "pad", size: 100, crt });
+      expect(S.arr).toBe(vw > vh ? "left" : "top");
+      expect(S.canvasW).toBeLessThanOrEqual(N.canvasW + 1e-6);   // never larger than while playing
+      expect(S.canvasH).toBeLessThanOrEqual(N.canvasH + 1e-6);
+      const box = (b: { x: number; y: number; w: number; h: number }) => b.x >= safe.l - 1e-6 && b.y >= safe.t - 1e-6 && b.x + b.w <= vw - safe.r + 1e-6 && b.y + b.h <= vh - safe.b + 1e-6;
+      expect(box(S.stage)).toBe(true); expect(box(S.sheet)).toBe(true);
+      // the picture lies inside its stage, the stage and the sheet do not overlap
+      expect(S.canvasW).toBeLessThanOrEqual(S.stage.w + 1e-6); expect(S.canvasH).toBeLessThanOrEqual(S.stage.h + 1e-6);
+      const overlap = S.stage.x < S.sheet.x + S.sheet.w && S.stage.x + S.stage.w > S.sheet.x && S.stage.y < S.sheet.y + S.sheet.h && S.stage.y + S.stage.h > S.sheet.y;
+      expect(overlap).toBe(false);
+      // the sheet has room: at least its minimum, or (a short phone) everything that is left after a picture of at least 1x
+      if (S.arr === "top") expect(S.sheet.h).toBeGreaterThanOrEqual(Math.min(SHEET_MIN_H, vh - safe.t - safe.b - (224 * Math.max(1, S.scale)) / dpr - 8) - 1e-6);
+      else expect(S.sheet.w).toBeGreaterThanOrEqual(SHEET_MIN_W - 1e-6);
+      expect(S.canvasW / S.canvasH).toBeCloseTo(S.crt ? (256 * (8 / 7)) / 224 : 256 / 224, 1);
+    });
+  }
+  test("a phone that has the room keeps the playing size of the picture (same scale: the preview is the game)", () => {
+    for (const [, vw, vh, dpr, safe] of devices.filter((d) => ["iPhone 14 portrait", "iPhone 14 landscape", "Pixel 915x412 landscape", "iPad portrait"].includes(d[0]))) {
+      const S = planSheet({ vw, vh, dpr, safe, mode: "pad", size: 100 }), N = planLayout({ vw, vh, dpr, safe, mode: "pad", size: 100 });
+      expect(S.canvasW).toBeCloseTo(N.canvasW, 6); expect(S.scale).toBe(N.scale);
+    }
+  });
+  test("a tablet in landscape takes a smaller whole scale so the sheet is wide enough", () => {
+    const S = planSheet({ vw: 1024, vh: 768, dpr: 2, safe: { t: 24, r: 0, b: 20, l: 0 }, mode: "pad", size: 100 });
+    expect(S.scale).toBe(4); expect(S.sheet.w).toBeGreaterThan(450);
   });
 });
