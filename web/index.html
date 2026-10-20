@@ -167,7 +167,7 @@
       </div>
     </header>
     <div class="win-body">
-      <div class="row">
+      <div id="pnResumeRow" class="row">
         <button id="pnResume" class="btn primary big" type="button" data-i18n="pn.resume">Resume</button>
       </div>
       <ul id="pnNotes" class="notes"></ul>
@@ -187,50 +187,57 @@
         <p class="note" id="soundMode"></p>
       </div>
       <div id="tpDisplay" class="tabpanel" role="tabpanel" aria-labelledby="tabDisplay" hidden>
-        <div class="row"><label for="crtPreset" data-i18n="crt.style">Picture style</label>
+        <div class="row"><label id="crtPresetL" for="crtPreset" data-i18n="crt.style">Picture style</label>
           <select id="crtPreset">
             <option value="off" data-i18n="crt.off">Plain pixels</option>
             <option value="tv" data-i18n="crt.tv">CRT: consumer TV</option>
             <option value="pvm" data-i18n="crt.pvm">CRT: studio monitor</option>
             <option value="scan" data-i18n="crt.scan">Scanlines only</option>
             <option value="custom" id="crtOptCustom" hidden data-i18n="crt.custom">Custom</option>
-          </select></div>
+          </select>
+          <div id="crtPresetSeg" class="seg" role="group" aria-labelledby="crtPresetL"></div></div>
         <p id="crtHelp" class="note"></p>
+        <p class="note live" data-i18n="pn.live">The picture changes as you choose.</p>
         <p id="crtNote" class="line warn" hidden></p>
         <label id="smoothRow" class="check"><input type="checkbox" id="smooth"> <span data-i18n="pn.smooth">Smooth scaling</span></label>
-        <div id="crtShapeRow" class="row"><label for="crtShape" data-i18n="crt.shape">Pixel shape</label>
-          <select id="crtShape"><option value="tv" data-i18n="crt.shape.tv">TV (8:7, wider pixels)</option><option value="square" data-i18n="crt.shape.square">Square</option></select></div>
+        <div id="crtShapeRow" class="row"><label id="crtShapeL" for="crtShape" data-i18n="crt.shape">Pixel shape</label>
+          <select id="crtShape"><option value="tv" data-i18n="crt.shape.tv">TV (8:7, wider pixels)</option><option value="square" data-i18n="crt.shape.square">Square</option></select>
+          <div id="crtShapeSeg" class="seg two" role="group" aria-labelledby="crtShapeL"></div></div>
         <details id="crtAdjust" class="inner"><summary data-i18n="crt.adjust">Adjust</summary>
           <div class="fold-body">
-          <div class="sl"><label for="crtScan" data-i18n="crt.s.scan">Scanlines</label><input id="crtScan" type="range" min="0" max="100" step="5"><output id="crtScanO"></output></div>
-          <div class="sl"><label for="crtMask" data-i18n="crt.s.mask">Mask</label><input id="crtMask" type="range" min="0" max="100" step="5"><output id="crtMaskO"></output></div>
-          <div class="sl"><label for="crtGlow" data-i18n="crt.s.glow">Glow</label><input id="crtGlow" type="range" min="0" max="100" step="5"><output id="crtGlowO"></output></div>
-          <div class="sl"><label for="crtSharp" data-i18n="crt.s.sharp">Sharpness</label><input id="crtSharp" type="range" min="0" max="100" step="5"><output id="crtSharpO"></output></div>
-          <div class="sl"><label for="crtComp" data-i18n="crt.s.comp">Composite blend</label><input id="crtComp" type="range" min="0" max="100" step="5"><output id="crtCompO"></output></div>
-          <div class="sl"><label for="crtCurve" data-i18n="crt.s.curve">Curvature</label><input id="crtCurve" type="range" min="0" max="100" step="5"><output id="crtCurveO"></output></div>
+          <div class="sl"><label for="crtScan" data-i18n="crt.s.scan">Scanlines</label><input id="crtScan" type="range" min="0" max="100" step="5"><output id="crtScanO"></output><p class="sl-hint" data-i18n="crt.h.scan"></p></div>
+          <div class="sl"><label for="crtMask" data-i18n="crt.s.mask">Mask</label><input id="crtMask" type="range" min="0" max="100" step="5"><output id="crtMaskO"></output><p class="sl-hint" data-i18n="crt.h.mask"></p></div>
+          <div class="sl"><label for="crtGlow" data-i18n="crt.s.glow">Glow</label><input id="crtGlow" type="range" min="0" max="100" step="5"><output id="crtGlowO"></output><p class="sl-hint" data-i18n="crt.h.glow"></p></div>
+          <div class="sl"><label for="crtSharp" data-i18n="crt.s.sharp">Sharpness</label><input id="crtSharp" type="range" min="0" max="100" step="5"><output id="crtSharpO"></output><p class="sl-hint" data-i18n="crt.h.sharp"></p></div>
+          <div class="sl"><label for="crtComp" data-i18n="crt.s.comp">Composite blend</label><input id="crtComp" type="range" min="0" max="100" step="5"><output id="crtCompO"></output><p class="sl-hint" data-i18n="crt.h.comp"></p></div>
+          <div class="sl"><label for="crtCurve" data-i18n="crt.s.curve">Curvature</label><input id="crtCurve" type="range" min="0" max="100" step="5"><output id="crtCurveO"></output><p class="sl-hint" data-i18n="crt.h.curve"></p></div>
           <div class="row"><label for="crtMaskKind" data-i18n="crt.maskkind">Mask type</label>
             <select id="crtMaskKind"><option value="aperture" data-i18n="crt.mask.aperture">Aperture grille</option><option value="slot" data-i18n="crt.mask.slot">Slot mask</option><option value="shadow" data-i18n="crt.mask.shadow">Shadow mask</option></select></div>
           <div class="row"><button id="crtReset" class="btn" type="button" data-i18n="crt.reset">Reset to default style</button></div>
           </div>
         </details>
         <label class="check"><input type="checkbox" id="vsub"> <span data-i18n="pn.vsub" data-i18n-title="pn.vsub.title">Voice subtitles</span></label>
-        <label class="check"><input type="checkbox" id="dbg"> <span data-i18n="pn.debug">Debug overlay (F1)</span></label>
-        <div class="row"><button id="pnFull" class="btn" type="button" data-i18n="bar.full">Fullscreen (F)</button></div>
+        <label id="dbgRow" class="check"><input type="checkbox" id="dbg"> <span data-i18n="pn.debug">Debug overlay (F1)</span></label>
+        <div id="pnFullRow" class="row"><button id="pnFull" class="btn" type="button" data-i18n="bar.full">Fullscreen (F)</button></div>
       </div>
       <div id="tpControls" class="tabpanel" role="tabpanel" aria-labelledby="tabControls" hidden>
         <div class="controls"></div>
       </div>
       <div id="tpTouch" class="tabpanel" role="tabpanel" aria-labelledby="tabTouch" hidden>
-        <div class="row"><label for="touchMode" data-i18n="t.mode.label">Touch controls</label>
-          <select id="touchMode"><option value="pad" data-i18n="t.mode.pad">On-screen pad</option><option value="game" data-i18n="t.mode.game">Touch the game</option><option value="off" data-i18n="t.mode.off">Off</option></select></div>
+        <div class="row"><label id="touchModeL" for="touchMode" data-i18n="t.mode.label">Touch controls</label>
+          <select id="touchMode"><option value="pad" data-i18n="t.mode.pad">On-screen pad</option><option value="game" data-i18n="t.mode.game">Touch the game</option><option value="off" data-i18n="t.mode.off">Off</option></select>
+          <div id="touchModeSeg" class="seg" role="group" aria-labelledby="touchModeL"></div></div>
         <p id="touchHelp" class="note"></p>
         <div id="touchSizeRow" class="sl"><label for="touchSize" data-i18n="t.size">Button size</label><input id="touchSize" type="range" min="90" max="140" step="5"><output id="touchSizeO"></output></div>
         <div id="touchOpacityRow" class="sl"><label for="touchOpacity" data-i18n="t.opacity">Pad opacity</label><input id="touchOpacity" type="range" min="30" max="100" step="5"><output id="touchOpacityO"></output></div>
         <label id="touchHapticsRow" class="check"><input type="checkbox" id="touchHaptics"> <span data-i18n="t.haptics">Vibrate when a button is pressed</span></label>
         <label id="touchAwakeRow" class="check"><input type="checkbox" id="touchAwake"> <span data-i18n="t.awake">Keep the screen on while playing</span></label>
-        <div class="row"><button id="touchFull" class="btn" type="button" data-i18n="bar.full">Fullscreen (F)</button></div>
+        <div class="row"><button id="touchFull" class="btn" type="button" data-i18n="t.full">Fullscreen</button></div>
         <p id="touchAdvice" class="note"></p>
         <p id="touchState" class="note"></p>
+        <details id="touchHow" class="inner"><summary data-i18n="t.how">How the buttons work</summary>
+          <div class="fold-body"><div class="controls"></div></div>
+        </details>
       </div>
       <div id="tpGamepad" class="tabpanel" role="tabpanel" aria-labelledby="tabGamepad" hidden>
         <p id="padInfo" class="note"></p>
@@ -251,6 +258,10 @@
         <label class="check"><input type="checkbox" id="autoBox" checked> <span data-i18n="pn.autosave" data-i18n-title="pn.autosave.title">Autosave</span></label>
         <div id="pnAuto" class="line dim" role="status"></div>
         <div class="row"><button id="pnAutoDelete" class="btn" type="button" data-i18n="auto.delete">Delete autosave</button></div>
+      </div>
+      <!-- phones and tablets: the menu is a sheet beside the picture; its way back to the game is at the bottom, where the thumb is (the top Resume is hidden there) -->
+      <div id="pnDoneRow" class="row" hidden>
+        <button id="pnDone" class="btn primary big" type="button" data-i18n="pn.done">Back to the game</button>
       </div>
     </div>
   </section>

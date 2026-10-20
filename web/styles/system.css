@@ -343,3 +343,63 @@ html:not([data-touch]) .touch, html:not([data-touch]) .hint { display: none; }
 .hint { position: fixed; z-index: 6; left: calc(var(--sai-l) + 16px); right: calc(var(--sai-r) + 16px); top: calc(var(--sai-t) + 8px); margin: 0 auto; width: max-content; max-width: calc(100vw - 32px - var(--sai-l) - var(--sai-r)); display: flex; gap: 16px; align-items: center; background: var(--field); padding: 8px 8px 8px 16px; }
 .hint .btn { min-height: 40px; padding: 4px 16px; flex: none; }
 @media (hover: none) { .btn:hover:not(:disabled) { color: var(--ink); } .btn:hover:not(:disabled)::before { visibility: hidden; } .btn.primary:hover:not(:disabled) { color: var(--call); } .btn.primary::before { visibility: visible; } }
+
+/* ---------------------------------------------------------------- 7 menus on phones and tablets
+   Everything here is scoped to html[data-touch] (touch controls are on: phones and tablets), so a computer keeps the centred window of sections 3 and 4.
+   Targets are 48 px. The pause menu is a SHEET beside the picture instead of a window over it (src/touch.ts setSheet / touchmath.ts planSheet):
+   html[data-sheet="top"] = portrait, the picture above the sheet; "left" = landscape, the picture at the left and the sheet at the right.
+   JS sets the boxes: --st-* for the picture's stage (#wrap) and --sh-* for the sheet (#panel), in CSS px, inside the safe area. */
+.sl-hint { grid-column: 1 / -1; color: var(--dim); margin: 0 0 8px; }
+.seg { display: none; }
+.live { display: none; }
+html[data-touch] .btn, html[data-touch] .tab, html[data-touch] select, html[data-touch] summary, html[data-touch] .lang button { min-height: 48px; }
+html[data-touch] .lang button { min-width: 48px; }
+html[data-touch] .check { min-height: 48px; }
+html[data-touch] input[type=range] { height: 48px; }
+html[data-touch] input[type=range]::-webkit-slider-thumb { width: 24px; height: 40px; margin-top: -14px; }   /* a thumb a finger can find: 28 x 44 with its edge */
+html[data-touch] input[type=range]::-moz-range-thumb { width: 20px; height: 36px; }
+html[data-touch] #dbgRow, html[data-touch] #pnFullRow, html[data-touch] #soundMode { display: none; }   /* an F1 overlay and an (F) key mean nothing on a phone */
+
+/* choice buttons (src/seg.ts): one tap chooses, so the picture changes while the sheet stays open; the native lists stay for a computer */
+html[data-touch] .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); gap: 8px; flex: 1 1 100%; }
+html[data-touch] #crtPreset, html[data-touch] #crtShape, html[data-touch] #touchMode { display: none; }
+.seg .btn { padding: 8px 12px 8px 28px; }
+.seg .btn[aria-pressed="true"] { --tl: var(--bevel-lo); --br: var(--bevel-hi); color: var(--call); background: var(--bevel-lo); }
+.seg .btn[aria-pressed="true"]::before { visibility: visible; }
+@media (hover: none) { .seg .btn[aria-pressed="true"]:hover:not(:disabled) { color: var(--call); } .seg .btn[aria-pressed="true"]:hover:not(:disabled)::before { visibility: visible; } }
+
+/* windows keep out of the notch and the home bar */
+html[data-touch] .modal { padding: calc(16px + var(--sai-t)) calc(16px + var(--sai-r)) calc(16px + var(--sai-b)) calc(16px + var(--sai-l)); }
+
+/* start window: no drop slot (a phone has nothing to drop from), the instruction in full colour, steps with air between their parts, and the window
+   sits at the bottom of the screen in portrait, where the thumb is */
+html[data-touch] #impTouchHelp { color: var(--ink); }
+html[data-touch] #ovStep1, html[data-touch] #ovAfter { display: flex; flex-direction: column; gap: 16px; }
+@media (orientation: portrait) { html[data-touch] #overlay .win { margin: auto auto 0; } }
+@media (max-height: 500px) { html[data-touch] .wordmark { font-size: 32px; line-height: 32px; } html[data-touch] #overlay .win-body { gap: 8px; } }
+
+/* the menu sheet */
+html[data-touch][data-sheet] .touch, html[data-touch][data-sheet] #rotateHint { display: none; }
+html[data-touch][data-sheet] #wrap { position: fixed; left: var(--st-x); top: var(--st-y); width: var(--st-w); height: var(--st-h); min-height: 0; padding: 0; pointer-events: none; }
+html[data-touch][data-sheet] #panel { inset: auto; left: var(--sh-x); top: var(--sh-y); width: var(--sh-w); height: var(--sh-h); padding: 0; background: none; overflow: hidden; display: block; }
+html[data-touch][data-sheet] #panel .win { max-width: none; height: 100%; margin: 0; display: flex; flex-direction: column; }
+html[data-touch][data-sheet] #panel .win-title { flex: none; padding: 0 8px 0 16px; }
+html[data-touch][data-sheet] #panel .win-body { flex: 1; min-height: 0; padding: 8px 12px; gap: 8px; }
+html[data-touch][data-sheet] #panel .tabs { flex: none; gap: 8px; }
+html[data-touch][data-sheet] #panel .tab { flex: 1 1 auto; min-width: 64px; padding: 4px; }
+html[data-touch][data-sheet] #panel .tab::before { display: none; }   /* the pressed-in, yellow tab already says "here"; no room for the cursor */
+html[data-touch][data-sheet] #panel .tabpanel { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; gap: 12px; touch-action: pan-y; }
+html[data-touch][data-sheet] #panel .live { display: block; }
+html[data-touch][data-sheet] #pnNotes { flex: none; }
+html[data-touch][data-sheet] #pnNotes li.idle { display: none; }
+html[data-touch][data-sheet] #pnNotes:not(:has(li:not(.idle))) { display: none; }
+html[data-touch][data-sheet] #pnDoneRow { flex: none; }
+html[data-touch][data-sheet] #pnDoneRow .btn { flex: 1 1 auto; }
+@media (max-height: 500px) {
+  /* a phone held sideways: Back to the game replaces the title in the title strip (main.ts placeDone) */
+  html[data-touch][data-sheet] #panel[data-done="title"] .win-title { padding: 4px 8px; gap: 8px; }
+  html[data-touch][data-sheet] #panel[data-done="title"] .win-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html[data-touch][data-sheet] #panel[data-done="title"] #pnDoneRow { flex: 1; min-width: 0; }
+  html[data-touch][data-sheet] #panel .win-body { padding: 4px 8px; gap: 4px; }
+  html[data-touch][data-sheet] #panel .tabpanel { padding: 8px; gap: 8px; }
+}

@@ -6,7 +6,8 @@ import {
   CRT_MIN_SCALE, defaultPreset, fitPicture, parOf, parsePreset, parseSaved, PRESETS, presetOf, sanitizeParams, serializeSaved, setView,
   type CrtParams, type CrtPreset, type CrtSaved, type MaskKind, type Shape,
 } from "./crtmath";
-import { T } from "./i18n";
+import { T, type UiKey } from "./i18n";
+import { makeSeg, type Seg } from "./seg";
 
 const KEY = "snatcher.crt";
 const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
@@ -42,6 +43,8 @@ export class Display {
   private devW = 0; private devH = 0;
   private have = false;
   private noteSmall = false;
+  private presetSeg: Seg | null = null;
+  private shapeSeg: Seg | null = null;
 
   constructor(private d: DisplayDeps) {
     const dflt = defaultPreset(d.coarse);
@@ -158,6 +161,10 @@ export class Display {
     sel.onchange = () => { const p = parsePreset(sel.value); if (p && p !== "custom") this.setPreset(p); };
     shape.onchange = () => this.setParams({ shape: shape.value === "square" ? "square" : "tv" as Shape });
     kind.onchange = () => this.setParams({ maskKind: kind.value as MaskKind });
+    // phones and tablets: the same choices as one-tap buttons (the native list would cover the picture)
+    const PRESETS_UI: [Exclude<CrtPreset, "custom">, UiKey][] = [["off", "crt.off"], ["tv", "crt.tv"], ["pvm", "crt.pvm"], ["scan", "crt.scan"]];
+    this.presetSeg = makeSeg($("crtPresetSeg"), PRESETS_UI.map(([value, k]) => ({ value, label: () => T(k) })), (v) => this.setPreset(v as Exclude<CrtPreset, "custom">));
+    this.shapeSeg = makeSeg($("crtShapeSeg"), [{ value: "tv", label: () => T("crt.shape.tv") }, { value: "square", label: () => T("crt.shape.square") }], (v) => this.setParams({ shape: v === "square" ? "square" : "tv" as Shape }));
     for (const s of SLIDERS) $<HTMLInputElement>(s.id).oninput = (e) => this.setParams({ [s.key]: Number((e.target as HTMLInputElement).value) / 100 });
     $("crtReset").onclick = () => this.reset();
     this.renderTab();
@@ -172,6 +179,8 @@ export class Display {
     ($<HTMLOptionElement>("crtOptCustom")).hidden = pre !== "custom";
     $("crtHelp").textContent = T(`crt.help.${pre}` as any);
     $<HTMLSelectElement>("crtShape").value = p.shape;
+    this.presetSeg?.set(pre === "custom" ? null : pre); this.presetSeg?.relabel();
+    this.shapeSeg?.set(p.shape); this.shapeSeg?.relabel();
     $<HTMLSelectElement>("crtMaskKind").value = p.maskKind;
     for (const s of SLIDERS) {
       const el = $<HTMLInputElement>(s.id), v = Math.round(p[s.key] * 100);

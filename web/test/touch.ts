@@ -569,12 +569,12 @@ async function tapMenuText(page: Page, f: Fingers, text: string): Promise<any> {
   // the pause panel at 360 wide with every tab: no sideways scroll, targets
   await page.evaluate(() => (document.getElementById("tMenu") as HTMLElement).click());
   await sleep(300);
-  for (const tab of ["Sound", "Display", "Controls", "Touch", "Gamepad", "Saves"]) {
+  for (const tab of ["Sound", "Display", "Touch", "Saves"]) {   // Controls is folded into Touch and Gamepad appears with a pad, on a touch device
     await page.click(`#tab${tab}`); await sleep(120);
     const ok = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.getElementById("panel")!.scrollWidth <= innerWidth);
     check(`360x640 touch: panel tab ${tab} has no sideways scroll`, ok);
     if (tab === "Touch") await shot(page, "panel-touch-360x640.png");
-    if (tab === "Controls") await shot(page, "panel-controls-360x640.png");
+    if (tab === "Display") await shot(page, "panel-display-360x640.png");
   }
   // haptics on: a press vibrates
   await page.click("#tabTouch");
@@ -586,6 +586,167 @@ async function tapMenuText(page: Page, f: Fingers, text: string): Promise<any> {
   const after = await page.evaluate(() => (window as any).__vib.length);
   check("haptics (when switched on) vibrate on a pad press", after > before, `${before} -> ${after}`);
   await page.close();
+}
+
+// ================================================================= F. the menu on phones and tablets: a sheet beside the picture (docs/re/web.md section 11.10)
+const tapEl = async (page: Page, f: Fingers, sel: string) => {
+  await page.$eval(sel, (e) => (e as HTMLElement).scrollIntoView({ block: "center" }));
+  await sleep(60);
+  const c = await centre(page, sel);
+  await f.tap(c.x, c.y);
+  await sleep(120);
+};
+/** Everything a finger can use in the open menu, with its size (only what is on screen: not hidden, not in a closed fold or another tab). */
+const sheetTargets = (page: Page) => page.evaluate(() => {
+  const out: { id: string; w: number; h: number }[] = [];
+  for (const e of Array.from(document.querySelectorAll<HTMLElement>("#panel button, #panel summary, #panel select, #panel input[type=range], #panel label.check, #panel [role=tab]"))) {
+    if (!e.getClientRects().length || getComputedStyle(e).visibility === "hidden") continue;
+    if ((e as HTMLButtonElement).disabled) continue;
+    const r = e.getBoundingClientRect();
+    out.push({ id: e.id || e.className || e.tagName, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 });
+  }
+  return out;
+});
+for (const d of process.env.SKIP_SHEET ? [] : DEVICES) {
+  const tag = `menu/${d.name}`;
+  const { page, cdp, ctx } = await open(d, { mode: "pad", query: "?scene=SP01:0&crtsoft" });
+  await waitSnatcher(page);
+  const f = new Fingers(cdp);
+  await toMenu(page, f, "pad", 30000);
+  await sleep(300);
+  const before = await rectOf(page, "#screen");
+  // the Menu button opens it
+  await tapEl(page, f, "#tMenu");
+  await sleep(300);
+  const o = await page.evaluate(() => {
+    const p = document.getElementById("panel")!, h = document.documentElement;
+    const r = p.getBoundingClientRect(), cs = getComputedStyle(document.getElementById("sai")!);
+    return { open: !p.hidden, sheet: h.dataset.sheet, panel: { x: r.left, y: r.top, w: r.width, h: r.height }, iw: innerWidth, ih: innerHeight, safe: { t: parseFloat(cs.paddingTop), r: parseFloat(cs.paddingRight), b: parseFloat(cs.paddingBottom), l: parseFloat(cs.paddingLeft) },
+      pad: getComputedStyle(document.getElementById("touch")).display, resume: !!document.getElementById("pnResume")!.offsetParent, done: !!document.getElementById("pnDone")!.offsetParent,
+      tabs: Array.from(document.querySelectorAll<HTMLElement>("[role=tab]")).filter((t) => t.offsetParent !== null).map((t) => t.id), sel: document.querySelector("[role=tab][aria-selected=true]")?.id,
+      focus: document.activeElement?.closest("#panel") !== null };
+  });
+  const s = safeInsetsWork ? o.safe : { t: 0, r: 0, b: 0, l: 0 };
+  check(`${tag}: the Menu button opens the menu as a sheet (${o.sheet})`, o.open && (o.sheet === "top" || o.sheet === "left") && o.sheet === (d.w > d.h ? "left" : "top"), JSON.stringify({ open: o.open, sheet: o.sheet }));
+  check(`${tag}: the sheet lies inside the safe area and the viewport`, o.panel.x >= s.l - 0.5 && o.panel.y >= s.t - 0.5 && o.panel.x + o.panel.w <= o.iw - s.r + 0.5 && o.panel.y + o.panel.h <= o.ih - s.b + 0.5, JSON.stringify({ panel: o.panel, s }));
+  check(`${tag}: the pad is out of the way, the way back to the game is the bottom button (no Resume at the top), focus is in the menu`, o.pad === "none" && o.done && !o.resume && o.focus, JSON.stringify({ pad: o.pad, done: o.done, resume: o.resume }));
+  check(`${tag}: touch tabs: Display first and open, Controls folded into Touch, Gamepad only with a pad`, o.tabs.join() === "tabDisplay,tabSound,tabTouch,tabSaves" && o.sel === "tabDisplay", o.tabs.join());
+  // the picture stays visible: the same size as in play (or one scale down on a tablet / small phone), not under the sheet
+  const vis = async (what: string) => {
+    const v = await page.evaluate(() => {
+      const gl = document.getElementById("crt") as HTMLCanvasElement, sc = document.getElementById("screen") as HTMLCanvasElement;
+      const el = !gl.hidden ? gl : sc, r = el.getBoundingClientRect(), pr = document.getElementById("panel")!.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const hit = document.elementFromPoint(cx, cy);
+      const cs = getComputedStyle(el), wrap = getComputedStyle(document.getElementById("wrap"));
+      return { filter: !gl.hidden, r: { x: r.left, y: r.top, w: r.width, h: r.height }, pr: { x: pr.left, y: pr.top, w: pr.width, h: pr.height }, under: !!hit && document.getElementById("panel")!.contains(hit), op: cs.opacity, vis: cs.visibility, wrapVis: wrap.visibility, iw: innerWidth, ih: innerHeight };
+    });
+    const apart = v.r.x + v.r.w <= v.pr.x + 0.5 || v.pr.x + v.pr.w <= v.r.x + 0.5 || v.r.y + v.r.h <= v.pr.y + 0.5 || v.pr.y + v.pr.h <= v.r.y + 0.5;
+    const inside = v.r.x >= -0.5 && v.r.y >= -0.5 && v.r.x + v.r.w <= v.iw + 0.5 && v.r.y + v.r.h <= v.ih + 0.5;
+    check(`${tag}: the picture stays visible, clear of the sheet, ${what}`, v.r.w >= 200 && v.r.h >= 175 && apart && !v.under && inside && v.vis === "visible" && v.wrapVis === "visible" && Number(v.op) > 0 && v.r.w <= before.w + 0.5, JSON.stringify(v));
+    return v;
+  };
+  await vis("menu just opened");
+  // the picture style: one tap chooses, the picture is redrawn at once
+  const box = async () => { const v = await page.evaluate(() => { const gl = document.getElementById("crt") as HTMLCanvasElement, sc = document.getElementById("screen") as HTMLCanvasElement, el = !gl.hidden ? gl : sc, r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }); return v; };
+  const pic = (b: { x: number; y: number; w: number; h: number }) => page.screenshot({ clip: { x: b.x, y: b.y, width: b.w, height: b.h }, encoding: "binary" }) as Promise<Uint8Array>;
+  await tapEl(page, f, '#crtPresetSeg [data-value="off"]');
+  await sleep(500);
+  const bOff = await box(), imgOff = await pic(bOff);
+  await tapEl(page, f, '#crtPresetSeg [data-value="pvm"]');
+  await sleep(700);
+  const st = await page.evaluate(() => ({ preset: (window as any).snatcherDisplay.preset, pressed: document.querySelector('#crtPresetSeg [aria-pressed=true]')?.getAttribute("data-value"), sel: (document.getElementById("crtPreset") as HTMLSelectElement).value }));
+  check(`${tag}: one tap on a picture style chooses it (button pressed, saved, the list agrees)`, st.preset === "pvm" && st.pressed === "pvm" && st.sel === "pvm", JSON.stringify(st));
+  const v1 = await vis("a picture style chosen");
+  const bPvm = await box(), imgPvm = await pic(bPvm);
+  check(`${tag}: the picture changes at once while the sheet is open (filter ${v1.filter ? "on" : "fell back to plain here"})`, !!v1.filter && Buffer.compare(Buffer.from(imgOff), Buffer.from(imgPvm)) !== 0, `${imgOff.length} / ${imgPvm.length} bytes`);
+  // the sliders: open Adjust, drag one with a finger; the picture follows and stays in view
+  if (v1.filter) {
+    await tapEl(page, f, "#crtAdjust > summary");
+    await page.$eval("#crtScan", (e) => (e as HTMLElement).scrollIntoView({ block: "center" }));
+    await sleep(100);
+    const sl = await rectOf(page, "#crtScan");
+    const v0 = await page.$eval("#crtScan", (e) => Number((e as HTMLInputElement).value));
+    const y = sl.y + sl.h / 2;
+    await f.start(1, sl.x + sl.w * 0.5, y);
+    await f.move(1, sl.x + sl.w * 0.8, y); await f.move(1, sl.x + sl.w * 0.15, y);
+    await f.end(1); await sleep(200);
+    const vs = await page.evaluate(() => ({ v: Number((document.getElementById("crtScan") as HTMLInputElement).value), p: Math.round((window as any).snatcherDisplay.params.scan * 100), preset: (window as any).snatcherDisplay.preset }));
+    check(`${tag}: a finger drags a slider, the picture style follows (Scanlines ${v0} -> ${vs.v}, now ${vs.preset})`, vs.v < v0 - 20 && vs.p === vs.v && vs.preset === "custom", JSON.stringify(vs));
+    await vis("a slider moved");
+  }
+  // sizes: every control that can be tapped is at least 48 px, tab by tab
+  const small: string[] = [];
+  for (const tab of ["Display", "Sound", "Touch", "Saves"]) {
+    await tapEl(page, f, `#tab${tab}`);
+    if (tab === "Touch") await page.$eval("#touchHow", (e) => ((e as HTMLDetailsElement).open = true));
+    for (const t of await sheetTargets(page)) if (t.h < 47.5 || (t.w < 47.5)) small.push(`${tab}:${t.id} ${t.w}x${t.h}`);
+    const ov = await page.evaluate(() => {
+      const p = document.getElementById("panel")!, pr = p.getBoundingClientRect(), tp = document.querySelector<HTMLElement>(".tabpanel:not([hidden])")!;
+      const wide = Array.from(tp.querySelectorAll<HTMLElement>("*")).filter((e) => e.getClientRects().length && e.getBoundingClientRect().right > pr.right + 0.5).map((e) => e.id || e.className || e.tagName);
+      return { doc: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight, sideways: tp.scrollWidth > tp.clientWidth + 1, wide: wide.slice(0, 3), win: p.scrollWidth > p.clientWidth + 1 };
+    });
+    check(`${tag}: ${tab} tab: nothing overflows the viewport or the sheet`, !ov.doc && !ov.sideways && ov.wide.length === 0 && !ov.win, JSON.stringify(ov));
+    if (tab === "Display" || tab === "Touch") await shot(page, `menu-${d.name}-${tab.toLowerCase()}.png`);
+  }
+  check(`${tag}: every control in the menu is at least 48 px`, small.length === 0, small.slice(0, 4).join("; "));
+  // the start of the Touch tab: the mode is one tap, the table of controls is in the same tab
+  const how = await page.evaluate(() => ({ table: !!document.querySelector("#touchHow table.keys"), seg: document.querySelectorAll("#touchModeSeg button").length, sel: getComputedStyle(document.getElementById("touchMode")!).display }));
+  check(`${tag}: the Touch tab has the mode buttons (the list is not shown) and the "How the buttons work" table`, how.table && how.seg === 3 && how.sel === "none", JSON.stringify(how));
+  // closing: the bottom button, the layout returns to what it was
+  await tapEl(page, f, "#pnDone");
+  await sleep(400);
+  const c = await page.evaluate(() => ({ closed: document.getElementById("panel")!.hidden, sheet: document.documentElement.dataset.sheet ?? null, pad: getComputedStyle(document.getElementById("touch")).display, wrap: getComputedStyle(document.getElementById("wrap")).position }));
+  const pl = await rectOf(page, "#screen");
+  check(`${tag}: Back to the game closes the sheet; the pad returns and the picture is the size it was in play`, c.closed && c.sheet === null && c.pad !== "none" && c.wrap !== "fixed" && Math.abs(pl.w - before.w) < 1 && Math.abs(pl.x - before.x) < 1 && Math.abs(pl.y - before.y) < 1, JSON.stringify({ c, before, pl }));
+  const f0 = await frame(page); await sleep(500);
+  check(`${tag}: the game runs again after the menu`, (await frame(page)) > f0 + 5);
+  // and the menu opens again, and Escape (an external keyboard) closes it too
+  await tapEl(page, f, "#tMenu");
+  await sleep(250);
+  const again = await page.evaluate(() => !document.getElementById("panel")!.hidden && document.documentElement.dataset.sheet !== undefined);
+  await page.keyboard.press("Escape"); await sleep(250);
+  check(`${tag}: it opens again, and Escape closes it`, again && (await page.evaluate(() => document.getElementById("panel")!.hidden && document.documentElement.dataset.sheet === undefined)));
+  await ctx.close();
+}
+// the start window on every device shape: inside the safe area, no sideways scroll, targets of 48 px, no drop slot
+for (const d of process.env.SKIP_SHEET ? [] : DEVICES) {
+  const { page, ctx } = await open(d, { mode: "pad" });
+  await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 30000 });
+  await sleep(500);
+  const r = await page.evaluate(() => {
+    document.getElementById("overlay")!.scrollTop = 0;   // the focus on Play may have scrolled a tall window
+    const w = document.getElementById("ovWin")!.getBoundingClientRect(), sai = getComputedStyle(document.getElementById("sai")!);
+    const small = Array.from(document.querySelectorAll<HTMLElement>("#overlay button, #overlay summary, #overlay label.check")).filter((e) => e.getClientRects().length && !(e as HTMLButtonElement).disabled).map((e) => ({ id: e.id || e.tagName, w: e.getBoundingClientRect().width, h: e.getBoundingClientRect().height })).filter((e) => e.h < 47.5 || e.w < 47.5);
+    return { top: w.top, left: w.left, right: w.right, iw: innerWidth, scroll: document.documentElement.scrollWidth > innerWidth || document.getElementById("overlay")!.scrollWidth > innerWidth, slot: getComputedStyle(document.getElementById("impBox")!).display, small, safeT: parseFloat(sai.paddingTop), safeL: parseFloat(sai.paddingLeft), safeR: parseFloat(sai.paddingRight) };
+  });
+  const sT = safeInsetsWork ? r.safeT : 0, sL = safeInsetsWork ? r.safeL : 0, sR = safeInsetsWork ? r.safeR : 0;
+  check(`start/${d.name}: the window keeps out of the notch and the sides, no sideways scroll`, r.top >= sT - 0.5 && r.left >= sL - 0.5 && r.right <= r.iw - sR + 0.5 && !r.scroll, JSON.stringify(r));
+  check(`start/${d.name}: no drop slot on a touch device, touch targets are 48 px`, r.slot === "none" && r.small.length === 0, JSON.stringify({ slot: r.slot, small: r.small.slice(0, 3) }));
+  if (d.name === "iphone-portrait" || d.name === "ipad-landscape") await shot(page, `start-${d.name}.png`);
+  await ctx.close();
+}
+// phones keep Gamepad out of the way until a pad is connected; a connected pad brings its tab
+{
+  const { page, ctx } = await open(DEVICES[0], { mode: "pad", query: "?scene=SP01:0" });
+  await waitSnatcher(page);
+  const hidden0 = await page.$eval("#tabGamepad", (e) => (e as HTMLElement).hidden);
+  await page.evaluate(() => { const i = (window as any).snatcher.input; i.pads = () => [{ family: "xbox", id: "Xbox 360 Controller (STANDARD GAMEPAD)", mapping: "standard" }]; i.onPads?.(); });
+  const hidden1 = await page.$eval("#tabGamepad", (e) => (e as HTMLElement).hidden);
+  check("a phone shows the Gamepad tab only while a pad is connected", hidden0 === true && hidden1 === false, `${hidden0} -> ${hidden1}`);
+  await ctx.close();
+}
+// a computer is unchanged: the centred window with Resume at the top, six tabs in the old order, the lists, no sheet
+{
+  const dctx = await browser!.createBrowserContext();   // fresh storage: the pad that an earlier check turned on must not be saved here
+  const page = await dctx.newPage();
+  await page.setViewport({ width: 1000, height: 760 });
+  await page.goto(`http://localhost:${port}/?scene=SP01:0`, { waitUntil: "load" });
+  await waitSnatcher(page);
+  await page.keyboard.press("Escape"); await sleep(250);
+  const r = await page.evaluate(() => ({ sheet: document.documentElement.dataset.sheet ?? null, resume: !!document.getElementById("pnResume")!.offsetParent, done: !!document.getElementById("pnDone")!.offsetParent, tabs: Array.from(document.querySelectorAll<HTMLElement>("[role=tab]")).filter((t) => t.offsetParent !== null).map((t) => t.id.slice(3)).join(), sel: getComputedStyle(document.getElementById("crtPreset")!).display, seg: getComputedStyle(document.getElementById("crtPresetSeg")!).display, wrap: getComputedStyle(document.getElementById("wrap")).position, panelBg: getComputedStyle(document.getElementById("panel")).backgroundColor }));
+  check("desktop: the menu is the centred window as before (Resume on top, six tabs in the old order, lists, no sheet)", r.sheet === null && r.resume && !r.done && r.tabs === "Sound,Display,Controls,Touch,Gamepad,Saves" && r.sel !== "none" && r.seg === "none" && r.wrap !== "fixed" && r.panelBg !== "rgba(0, 0, 0, 0)", JSON.stringify(r));
+  await dctx.close();
 }
 
 console.log(`console / page errors: ${errors}`);

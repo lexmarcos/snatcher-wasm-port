@@ -8,9 +8,10 @@ import type { Input } from "./input";
 import { TouchPad } from "./touchpad";
 import { TouchGame, type GameApi } from "./touchgame";
 import {
-  clampNum, defaultTouchMode, PAD_OPACITY_RANGE, PAD_SIZE_RANGE, parseTouchMode, planLayout, type Insets, type LayoutOut, type TouchMode,
+  clampNum, defaultTouchMode, PAD_OPACITY_RANGE, PAD_SIZE_RANGE, parseTouchMode, planLayout, planSheet, type Insets, type LayoutOut, type TouchMode,
 } from "./touchmath";
 import { T, type UiKey } from "./i18n";
+import { makeSeg, type Seg } from "./seg";
 import { canVibrate, canWakeLock, chromeAdvice, haptic, isCoarsePrimary, toggleFullscreen, WakeLock } from "./platform";
 
 export interface TouchDeps {
@@ -21,7 +22,9 @@ export interface TouchDeps {
   /** the display filter wants the picture laid out for it (pixel aspect, whole device pixels), or undefined when it is off */
   crt?(): { par: number } | undefined;
   /** the picture box was (re)laid out: the display filter sizes its canvas from it (also when the Touch tab changes the pad size) */
-  onLayout?(L: LayoutOut): void;
+  /** the touch mode changed (the menu panel adapts its tabs to a touch layout) */
+  onMode?(): void;
+  onLayout?(L: Pick<LayoutOut, "crt" | "canvasW" | "canvasH">): void;
 }
 
 const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
@@ -37,10 +40,13 @@ export class Touch {
   readonly game: TouchGame;
   readonly wake = new WakeLock();
   layout: LayoutOut | null = null;
+  /** the menu is open as a sheet next to the picture (phones and tablets with touch controls on) */
+  sheet = false;
   /** the game has started (the controls are shown from then on) and is running (not paused) */
   started = false;
   private running = false;
   private rotateTimer = 0;
+  private modeSeg: Seg | null = null;
   private root = $("touch");
   private html = document.documentElement;
 
@@ -83,6 +89,7 @@ export class Touch {
     this.pad.releaseAll(); this.game.releaseAll();
     this.apply();
     this.fit();
+    this.d.onMode?.();
   }
 
   private apply() {
@@ -112,20 +119,37 @@ export class Touch {
    * Size the picture and place the controls for the viewport. Returns false when touch controls are off, so the caller keeps its own (desktop) layout.
    */
   fit(): boolean {
-    if (this.mode === "off") { this.layout = null; this.updateRotate(); return false; }
+    if (this.mode === "off") { this.layout = null; this.clearSheet(); this.updateRotate(); return false; }
     const safe = this.safe();
-    const L = planLayout({ vw: innerWidth, vh: innerHeight, dpr: window.devicePixelRatio || 1, safe, mode: this.mode === "pad" ? "pad" : "game", size: this.size, crt: this.d.crt?.() });
+    const inp = { vw: innerWidth, vh: innerHeight, dpr: window.devicePixelRatio || 1, safe, mode: (this.mode === "pad" ? "pad" : "game") as "pad" | "game", size: this.size, crt: this.d.crt?.() };
+    const L = planLayout(inp);
     this.layout = L;
-    this.d.canvas.style.width = `${L.canvasW}px`; this.d.canvas.style.height = `${L.canvasH}px`;
-    this.d.onLayout?.(L);
     const st = this.html.style;
     st.setProperty("--u", `${L.u}px`);
     st.setProperty("--reserve-b", `${L.reserveBottom}px`);
     this.html.dataset.arr = L.arr; this.html.toggleAttribute("data-full", L.full);
+    // the menu is open: the picture is laid out in its own box next to the sheet (docs/re/web.md section 11.10)
+    const S = this.sheet ? planSheet(inp) : null;
+    const P = S ?? L;
+    this.d.canvas.style.width = `${P.canvasW}px`; this.d.canvas.style.height = `${P.canvasH}px`;
+    if (S) {
+      const v = (k: string, b: { x: number; y: number; w: number; h: number }) => { for (const [n, x] of [["x", b.x], ["y", b.y], ["w", b.w], ["h", b.h]] as const) st.setProperty(`--${k}-${n}`, `${x}px`); };
+      v("st", S.stage); v("sh", S.sheet);
+      this.html.dataset.sheet = S.arr;
+    } else this.html.removeAttribute("data-sheet");
+    this.d.onLayout?.(P);
     this.placeMenu();
     this.updateRotate();
     return true;
   }
+
+  /** The menu opens (true) or closes: the picture moves beside the menu sheet and the controls give way, or everything returns. */
+  setSheet(on: boolean) {
+    if (on === this.sheet) return;
+    this.sheet = on;
+    this.fit();
+  }
+  private clearSheet() { this.html.removeAttribute("data-sheet"); }
 
   /** Portrait: the Menu button sits centred just under the picture, when the gap above the controls has room for it; else it stays in the left column. */
   private placeMenu() {
@@ -160,6 +184,8 @@ export class Touch {
     const hap = $<HTMLInputElement>("touchHaptics"), awake = $<HTMLInputElement>("touchAwake");
     sel.value = this.mode;
     sel.onchange = () => this.setMode(parseTouchMode(sel.value) ?? "off");
+    const MODES: [TouchMode, UiKey][] = [["pad", "t.mode.pad"], ["game", "t.mode.game"], ["off", "t.mode.off"]];
+    this.modeSeg = makeSeg($("touchModeSeg"), MODES.map(([value, k]) => ({ value, label: () => T(k) })), (v) => this.setMode(parseTouchMode(v) ?? "off"));
     const paint = (el: HTMLInputElement, out: string) => { $(out).textContent = `${el.value}%`; el.style.setProperty("--v", `${((Number(el.value) - Number(el.min)) / (Number(el.max) - Number(el.min))) * 100}%`); };
     size.value = String(this.size); paint(size, "touchSizeO");
     size.oninput = () => { this.size = Number(size.value); this.d.ls.set(K.size, size.value); paint(size, "touchSizeO"); this.fit(); };
@@ -177,6 +203,7 @@ export class Touch {
   /** Texts that depend on the language and on the state; called after a language change and whenever the mode changes. */
   renderTab() {
     $<HTMLSelectElement>("touchMode").value = this.mode;
+    this.modeSeg?.set(this.mode); this.modeSeg?.relabel();
     const help: Record<TouchMode, UiKey> = { pad: "t.help.pad", game: "t.help.game", off: "t.help.off" };
     $("touchHelp").textContent = T(help[this.mode]);
     $("touchSizeRow").hidden = this.mode !== "pad";

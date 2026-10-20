@@ -53,7 +53,7 @@ function renderNotes() {
   for (const id of ["notes", "pnNotes"]) {
     const ul = $(id); ul.replaceChildren();
     for (const n of notes.values()) { const li = document.createElement("li"); li.className = n.level; li.textContent = n.text; ul.append(li); }
-    if (!notes.size && id === "pnNotes") { const li = document.createElement("li"); li.className = "ok"; li.textContent = T("note.ok"); ul.append(li); }
+    if (!notes.size && id === "pnNotes") { const li = document.createElement("li"); li.className = "ok idle"; li.textContent = T("note.ok"); ul.append(li); }
   }
 }
 
@@ -120,7 +120,7 @@ const isPaused = () => overlayOpen || panelOpen || document.hidden;
 const input = new Input(canvas);
 input.enabled = false; // the start overlay is open
 const touch = new Touch({ input, canvas, ls, openPanel: () => openPanel(), crt: () => (display.wants() ? { par: display.par() } : undefined),
-  onLayout: (L) => display.setBox({ crt: L.crt, cssW: L.canvasW, cssH: L.canvasH, dpr: window.devicePixelRatio || 1 }) }); // on-screen pad / touch the game (docs/re/web.md section 11)
+  onLayout: (L) => { display.setBox({ crt: L.crt, cssW: L.canvasW, cssH: L.canvasH, dpr: window.devicePixelRatio || 1 }); placeDone(); }, onMode: () => syncPanel() }); // on-screen pad / touch the game (docs/re/web.md section 11)
 try { input.setMaps(JSON.parse(ls.get("snatcher.padmaps") ?? "null")); } catch { input.setMaps(null); }
 const saveMaps = () => ls.set("snatcher.padmaps", JSON.stringify(input.maps));
 type PromptMode = "auto" | "letters";
@@ -245,7 +245,7 @@ input.onPads = () => {
   setMsg(p.length ? "msg.pad" : "msg.nopad", p.length ? { name: FAMILY_LABEL[p[p.length - 1].family] } : undefined);
   const cur = input.device;
   if (cur.kind === "pad") padFamily.value = cur.family;
-  renderPadMap();
+  renderPadMap(); syncPanel();
 };
 renderControls();
 
@@ -378,36 +378,75 @@ function toggleFullscreen() { if (canFull) platformFullscreen(); }
 for (const id of ["btnFull", "pnFull"]) { const b = $(id); if (!canFull) b.hidden = true; b.onclick = () => { toggleFullscreen(); if (id === "btnFull") canvas.focus(); }; }
 
 // ---------- menu panel ----------
+/** A finger that lets go right after the sheet opened (a second tap on Menu, a pad button released late) must not press what is now under it. */
+let panelOpenedAt = 0;
+panel.addEventListener("click", (e) => { if (touch.sheet && performance.now() - panelOpenedAt < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
 function openPanel() {
   if (overlayOpen || panelOpen || !game) return;
-  panelOpen = true; panel.hidden = false; input.enabled = false;
+  panelOpen = true; panel.hidden = false; input.enabled = false; panelOpenedAt = performance.now();
+  touch.setSheet(true); // phones and tablets: the picture moves beside the menu, it is never covered
+  syncPanel();
   refreshSaves(); updateSoundMode(); renderPadMap();
-  $("pnResume").focus();
+  if (touch.sheet && touch.mode !== "off") (tabs.find((t) => t.getAttribute("aria-selected") === "true") ?? $("pnDone")).focus({ preventScroll: true });
+  else $("pnResume").focus();
 }
 function closePanel() {
   if (!panelOpen) return;
   cancelCapture(); panelOpen = false; panel.hidden = true; input.enabled = true;
+  touch.setSheet(false);
   canvas.focus();
 }
 function updateSoundMode() {
   $("soundMode").textContent = audio ? T("pn.sound", { fm: audio.mono.fm ? T("pn.mono") : T("pn.stereo"), pcm: audio.mono.pcm ? T("pn.mono") : T("pn.stereo") }) : "";
 }
 // tabs of the pause panel (WAI-ARIA tabs: arrow keys, Home and End move and select, only the selected tab is in the tab order)
+const tablist = document.querySelector<HTMLElement>("[role=tablist]")!;
 const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>("[role=tab]"));
+const tabById = (id: string) => $<HTMLButtonElement>("tab" + id);
+const shown = () => tabs.filter((t) => !t.hidden);
 function selectTab(t: HTMLButtonElement, focus = false) {
   for (const x of tabs) { const on = x === t; x.setAttribute("aria-selected", String(on)); x.tabIndex = on ? 0 : -1; $(x.getAttribute("aria-controls")!).hidden = !on; }
   if (focus) t.focus();
 }
+let tabChosen = false;
 for (const t of tabs) {
-  t.onclick = () => selectTab(t);
+  t.onclick = () => { tabChosen = true; selectTab(t); };
   t.onkeydown = (e) => {
-    const i = tabs.indexOf(t);
-    const n = e.key === "ArrowRight" ? (i + 1) % tabs.length : e.key === "ArrowLeft" ? (i + tabs.length - 1) % tabs.length : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
-    if (n >= 0) { e.preventDefault(); selectTab(tabs[n], true); }
+    const list = shown(), i = list.indexOf(t);
+    const n = e.key === "ArrowRight" ? (i + 1) % list.length : e.key === "ArrowLeft" ? (i + list.length - 1) % list.length : e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : -1;
+    if (n >= 0) { e.preventDefault(); tabChosen = true; selectTab(list[n], true); }
   };
 }
+/**
+ * The pause panel on a phone or tablet with touch controls on (docs/re/web.md section 11.10): a sheet beside the picture. Its tabs are the ones a touch player
+ * needs, picture first (Controls is folded into Touch; Gamepad only appears when a pad is connected), and its way back to the game is the button at the bottom.
+ * With touch controls off (a computer) everything stays as it was.
+ */
+function syncPanel() {
+  const touchUi = touch.mode !== "off", sheet = touchUi && touch.sheet;
+  $("pnResumeRow").hidden = sheet; $("pnDoneRow").hidden = !sheet;
+  tabById("Controls").hidden = touchUi;
+  tabById("Gamepad").hidden = touchUi && !input.pads().length;
+  const order = touchUi ? ["Display", "Sound", "Touch", "Saves", "Controls", "Gamepad"] : ["Sound", "Display", "Controls", "Touch", "Gamepad", "Saves"];
+  tablist.append(...order.map(tabById));
+  const cur = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  if (touchUi && !tabChosen) selectTab(tabById("Display")); // a first look at the menu on a phone starts at the picture
+  else if (!cur || cur.hidden) selectTab(shown()[0]);
+}
+/**
+ * A phone held sideways has little height: there the sheet's "Back to the game" button takes the place of the title in the title strip (the title stays
+ * for screen readers) instead of a row of its own at the bottom. Portrait and tablets keep it at the bottom, under the thumb.
+ */
+function placeDone() {
+  const row = $("pnDoneRow"), strip = panel.querySelector<HTMLElement>(".win-title")!, body = panel.querySelector<HTMLElement>(".win-body")!;
+  const inStrip = touch.sheet && touch.mode !== "off" && matchMedia("(max-height: 500px)").matches;
+  panel.dataset.done = inStrip ? "title" : "bottom";
+  if (inStrip) { if (row.parentElement !== strip) strip.insertBefore(row, strip.querySelector(".lang")); }
+  else if (row.parentElement !== body) body.append(row);
+}
+syncPanel();
 $("btnMenu").onclick = () => openPanel();
-$("pnResume").onclick = closePanel;
+$("pnResume").onclick = closePanel; $("pnDone").onclick = closePanel;
 panel.addEventListener("mousedown", (e) => { if (e.target === panel) closePanel(); });
 
 addEventListener("keydown", (e) => {
@@ -682,6 +721,7 @@ btnImport.onclick = () => { discPick.value = ""; discPick.click(); };
 // phones and tablets: the picker's extension filter can grey out .cue / .bin (iOS Files knows no type for them, Android maps them to a MIME type of its own):
 // no filter there, the page checks the picked files itself (resolvePick: one .cue and the .bin files it names) and says what is wrong
 if (isCoarsePrimary() || isIOS()) { discPick.removeAttribute("accept"); $("impTouchHelp").hidden = false; }
+if (isCoarsePrimary()) impBox.hidden = true; // a phone has nothing to drop files from: the instruction above the button is all it needs
 impCd.addEventListener("change", () => { if (lastQuota) renderQuota(lastQuota); });
 discPick.onchange = () => { void runImport(Array.from(discPick.files ?? [])); };
 btnCancel.onclick = async () => { importer.cancel(); try { await clearCache(); } catch { /* ignore */ } };
