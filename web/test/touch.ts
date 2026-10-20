@@ -30,7 +30,8 @@ if (!(await listening())) {
 }
 const base = join(homedir(), ".cache/puppeteer/chrome-headless-shell");
 const chrome = join(base, readdirSync(base).sort().pop()!, "chrome-headless-shell-linux64/chrome-headless-shell");
-browser = await puppeteer.launch({ executablePath: chrome, args: ["--autoplay-policy=no-user-gesture-required"] });
+// headless Chrome hides scroll bars by default; a phone does not, and the menu sheet relies on a visible one: keep them
+browser = await puppeteer.launch({ executablePath: chrome, args: ["--autoplay-policy=no-user-gesture-required"], ignoreDefaultArgs: ["--hide-scrollbars"] });
 
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 const ANDROID = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36";
@@ -607,7 +608,7 @@ const sheetTargets = (page: Page) => page.evaluate(() => {
   }
   return out;
 });
-for (const d of process.env.SKIP_SHEET ? [] : DEVICES) {
+for (const d of process.env.SKIP_SHEET ? [] : [...DEVICES, PHONE360]) {
   const tag = `menu/${d.name}`;
   const { page, cdp, ctx } = await open(d, { mode: "pad", query: "?scene=SP01:0&crtsoft" });
   await waitSnatcher(page);
@@ -629,6 +630,11 @@ for (const d of process.env.SKIP_SHEET ? [] : DEVICES) {
   const s = safeInsetsWork ? o.safe : { t: 0, r: 0, b: 0, l: 0 };
   check(`${tag}: the Menu button opens the menu as a sheet (${o.sheet})`, o.open && (o.sheet === "top" || o.sheet === "left") && o.sheet === (d.w > d.h ? "left" : "top"), JSON.stringify({ open: o.open, sheet: o.sheet }));
   check(`${tag}: the sheet lies inside the safe area and the viewport`, o.panel.x >= s.l - 0.5 && o.panel.y >= s.t - 0.5 && o.panel.x + o.panel.w <= o.iw - s.r + 0.5 && o.panel.y + o.panel.h <= o.ih - s.b + 0.5, JSON.stringify({ panel: o.panel, s }));
+  // the sheet is a whole window: its frame is the panel's box (nothing cut), it touches the safe edges it is meant to and the margins on both sides agree
+  const wb = await page.evaluate(() => { const w = document.querySelector("#panel .win")!.getBoundingClientRect(), p = document.getElementById("panel")!; return { x: w.left, y: w.top, r: w.right, b: w.bottom, sw: p.scrollWidth, cw: p.clientWidth, sh: p.scrollHeight, ch: p.clientHeight }; });
+  const R = o.panel.x + o.panel.w, B = o.panel.y + o.panel.h;
+  const evenly = o.sheet === "top" ? Math.abs((o.panel.x - s.l) - (o.iw - s.r - R)) < 0.5 && Math.abs(B - (o.ih - s.b)) < 0.5 : Math.abs(o.panel.y - s.t) < 0.5 && Math.abs(B - (o.ih - s.b)) < 0.5 && Math.abs(R - (o.iw - s.r)) < 0.5;
+  check(`${tag}: the sheet fills its side of the safe area evenly and its window frame is not cut`, evenly && Math.abs(wb.x - o.panel.x) < 0.5 && Math.abs(wb.r - R) < 0.5 && Math.abs(wb.b - B) < 0.5 && wb.sw <= wb.cw + 1 && wb.sh <= wb.ch + 1, JSON.stringify({ panel: o.panel, win: wb, s }));
   check(`${tag}: the pad is out of the way, the way back to the game is the bottom button (no Resume at the top), focus is in the menu`, o.pad === "none" && o.done && !o.resume && o.focus, JSON.stringify({ pad: o.pad, done: o.done, resume: o.resume }));
   check(`${tag}: touch tabs: Display first and open, Controls folded into Touch, Gamepad only with a pad`, o.tabs.join() === "tabDisplay,tabSound,tabTouch,tabSaves" && o.sel === "tabDisplay", o.tabs.join());
   // the picture stays visible: the same size as in play (or one scale down on a tablet / small phone), not under the sheet
@@ -687,12 +693,38 @@ for (const d of process.env.SKIP_SHEET ? [] : DEVICES) {
       return { doc: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight, sideways: tp.scrollWidth > tp.clientWidth + 1, wide: wide.slice(0, 3), win: p.scrollWidth > p.clientWidth + 1 };
     });
     check(`${tag}: ${tab} tab: nothing overflows the viewport or the sheet`, !ov.doc && !ov.sideways && ov.wide.length === 0 && !ov.win, JSON.stringify(ov));
+    // what scrolls shows that it does (a bar that takes room, a phone's own bar hides after a second), and no text is cut at its sides or runs out of its box
+    const sc = await page.evaluate(() => {
+      const tp = document.querySelector<HTMLElement>(".tabpanel:not([hidden])")!, pr = document.getElementById("panel")!.getBoundingClientRect();
+      const cut: string[] = [];
+      for (const e of Array.from(document.querySelectorAll<HTMLElement>("#panel button, #panel label, #panel p, #panel summary, #panel output, #panel .tab, #panel h1, #panel h2"))) {
+        if (!e.getClientRects().length || !(e.textContent ?? "").trim() || getComputedStyle(e).visibility === "hidden" || e.closest("[hidden]")) continue;
+        const r = e.getBoundingClientRect();
+        if (r.width < 2) continue;   // the title kept for screen readers only, when Back to the game takes its place
+        if (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== "visible" || r.left < pr.left - 0.5 || r.right > pr.right + 0.5) cut.push(e.id || e.textContent!.trim().slice(0, 20));
+      }
+      return { scrolls: tp.scrollHeight > tp.clientHeight + 1, bar: tp.offsetWidth - tp.clientWidth - 4, overflow: getComputedStyle(tp).overflowY, cut: cut.slice(0, 3) };
+    });
+    check(`${tag}: ${tab} tab: ${sc.scrolls ? "it scrolls and shows a scroll bar" : "it fits, nothing to scroll"}, no text cut at the sides`, (!sc.scrolls || (sc.overflow !== "hidden" && sc.bar >= 12)) && sc.cut.length === 0, JSON.stringify(sc));
     if (tab === "Display" || tab === "Touch") await shot(page, `menu-${d.name}-${tab.toLowerCase()}.png`);
   }
   check(`${tag}: every control in the menu is at least 48 px`, small.length === 0, small.slice(0, 4).join("; "));
   // the start of the Touch tab: the mode is one tap, the table of controls is in the same tab
   const how = await page.evaluate(() => ({ table: !!document.querySelector("#touchHow table.keys"), seg: document.querySelectorAll("#touchModeSeg button").length, sel: getComputedStyle(document.getElementById("touchMode")!).display }));
   check(`${tag}: the Touch tab has the mode buttons (the list is not shown) and the "How the buttons work" table`, how.table && how.seg === 3 && how.sel === "none", JSON.stringify(how));
+  // semantics for assistive technology: a tab list whose selected tab controls a labelled panel; choice buttons are a labelled group of toggle buttons, one pressed
+  const aria = await page.evaluate(() => {
+    const tabs = Array.from(document.querySelectorAll<HTMLElement>("#panel [role=tab]")).filter((t) => !t.hidden);
+    const sel = tabs.filter((t) => t.getAttribute("aria-selected") === "true");
+    const tabsOk = !!document.querySelector("#panel [role=tablist][aria-label]") && sel.length === 1 && tabs.every((t) => { const p = document.getElementById(t.getAttribute("aria-controls") ?? ""); return !!p && p.getAttribute("role") === "tabpanel" && p.getAttribute("aria-labelledby") === t.id && (t.tabIndex === 0) === (t === sel[0]) && p.hidden === (t !== sel[0]); });
+    const segs = Array.from(document.querySelectorAll<HTMLElement>("#panel .seg")).map((g) => {
+      const lab = document.getElementById(g.getAttribute("aria-labelledby") ?? ""), bs = Array.from(g.querySelectorAll("button"));
+      return { id: g.id, group: g.getAttribute("role") === "group" && !!lab && !!(lab.textContent ?? "").trim(), pressed: bs.filter((b) => b.getAttribute("aria-pressed") === "true").length, all: bs.every((b) => b.hasAttribute("aria-pressed")), n: bs.length };
+    });
+    const dlg = document.getElementById("panel")!;
+    return { tabsOk, segs, dialog: dlg.getAttribute("role") === "dialog" && !!document.getElementById(dlg.getAttribute("aria-labelledby") ?? "") };
+  });
+  check(`${tag}: aria: tabs and panels are linked, the choice groups are labelled with one pressed button, the panel is a named dialog`, aria.tabsOk && aria.dialog && aria.segs.length === 3 && aria.segs.every((g: any) => g.group && g.all && g.n >= 2 && (g.id === "crtPresetSeg" ? g.pressed <= 1 : g.pressed === 1)), JSON.stringify(aria));
   // closing: the bottom button, the layout returns to what it was
   await tapEl(page, f, "#pnDone");
   await sleep(400);
@@ -724,6 +756,37 @@ for (const d of process.env.SKIP_SHEET ? [] : DEVICES) {
   check(`start/${d.name}: the window keeps out of the notch and the sides, no sideways scroll`, r.top >= sT - 0.5 && r.left >= sL - 0.5 && r.right <= r.iw - sR + 0.5 && !r.scroll, JSON.stringify(r));
   check(`start/${d.name}: no drop slot on a touch device, touch targets are 48 px`, r.slot === "none" && r.small.length === 0, JSON.stringify({ slot: r.slot, small: r.small.slice(0, 3) }));
   if (d.name === "iphone-portrait" || d.name === "ipad-landscape") await shot(page, `start-${d.name}.png`);
+  await ctx.close();
+}
+// "Off" chosen in the open sheet: the sheet stays (no sudden change to the centred window under the finger, focus stays in the menu); the choice takes effect when the menu closes
+{
+  const { page, cdp, ctx } = await open(DEVICES[0], { mode: "pad", query: "?scene=SP01:0" });
+  await waitSnatcher(page);
+  const f = new Fingers(cdp);
+  await toMenu(page, f, "pad", 30000);
+  await tapEl(page, f, "#tMenu"); await sleep(300);
+  await tapEl(page, f, "#tabTouch");
+  await tapEl(page, f, '#touchModeSeg [data-value="off"]'); await sleep(300);
+  const r = await page.evaluate(() => ({ sheet: document.documentElement.dataset.sheet ?? null, touch: document.documentElement.dataset.touch ?? null, pressed: document.querySelector("#touchModeSeg [aria-pressed=true]")?.getAttribute("data-value"), saved: localStorage.getItem("snatcher.touch.mode"), help: document.getElementById("touchHelp")!.textContent, rows: [document.getElementById("touchSizeRow")!.hidden, document.getElementById("touchOpacityRow")!.hidden], focus: document.activeElement?.closest("#panel") !== null, done: !!document.getElementById("pnDone")!.offsetParent }));
+  check("Off chosen in the sheet: the sheet stays, Off is pressed and saved, the help says when it takes effect, focus stays in the menu", r.sheet !== null && r.touch === "pad" && r.pressed === "off" && r.saved === "off" && /back to the game/i.test(r.help) && r.rows[0] && r.rows[1] && r.focus && r.done, JSON.stringify(r));
+  await tapEl(page, f, '#touchModeSeg [data-value="game"]'); await sleep(300);
+  const g = await page.evaluate(() => ({ touch: document.documentElement.dataset.touch ?? null, pressed: document.querySelector("#touchModeSeg [aria-pressed=true]")?.getAttribute("data-value"), saved: localStorage.getItem("snatcher.touch.mode"), help: document.getElementById("touchHelp")!.textContent }));
+  check("choosing another mode after Off takes the Off back", g.touch === "game" && g.pressed === "game" && g.saved === "game" && !/back to the game/i.test(g.help ?? ""), JSON.stringify(g));
+  await tapEl(page, f, '#touchModeSeg [data-value="off"]'); await sleep(200);
+  await tapEl(page, f, "#pnDone"); await sleep(400);
+  const c = await page.evaluate(() => ({ closed: document.getElementById("panel")!.hidden, sheet: document.documentElement.dataset.sheet ?? null, touch: document.documentElement.dataset.touch ?? null, bar: getComputedStyle(document.getElementById("bar")!).display, saved: localStorage.getItem("snatcher.touch.mode") }));
+  check("Back to the game applies the Off: no touch layout, the toolbar is back, the choice is kept", c.closed && c.sheet === null && c.touch === null && c.bar !== "none" && c.saved === "off", JSON.stringify(c));
+  await ctx.close();
+}
+// start window with an autosave: Continue is the one yellow call to action, Play is a plain button; without an autosave Play is the primary one
+{
+  const { page, ctx } = await open(DEVICES[0], { mode: "pad" });
+  await page.waitForSelector("#btnPlay:not([disabled])", { timeout: 30000 });
+  const look = () => page.evaluate(() => { const o = (id: string) => getComputedStyle(document.getElementById(id)!).outlineStyle; return { play: o("btnPlay"), cont: o("btnContinue"), contShown: !document.getElementById("btnContinue")!.hidden }; });
+  const a = await look();
+  await page.evaluate(() => { (document.getElementById("btnContinue") as HTMLElement).hidden = false; });
+  const b = await look();
+  check("start: Play is the yellow primary button alone; with Continue shown only Continue is", a.play === "solid" && !a.contShown && b.cont === "solid" && b.play === "none", JSON.stringify({ a, b }));
   await ctx.close();
 }
 // phones keep Gamepad out of the way until a pad is connected; a connected pad brings its tab
