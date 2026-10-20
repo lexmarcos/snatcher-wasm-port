@@ -323,12 +323,34 @@ Touch tab: mode (On-screen pad / Touch the game / Off), button size, pad opacity
 (all `snatcher.*`: "Clear everything" removes them). Strings: `i18n.ts` (`t.*`, `ctl.t.*`) and `i18n/pt-BR/ui.json`. The Sound tab gained a Mute check box (the toolbar is hidden on phones).
 
 ### 11.8 Tests
-`bun test web/test` (`touchmath.test.ts`: 38 tests: coordinate transform with letterboxing, D-pad angles, hit-testing of menu rectangles, layouts of 10 device shapes, settings),
+`bun test web/test` (`touchmath.test.ts`: 60 tests, 38 of them the first part: coordinate transform with letterboxing, D-pad angles, hit-testing of menu rectangles, layouts of 10 device shapes, settings),
 `bun web/test/touch.ts` (headless Chrome, device emulation iPhone / Android / iPad portrait and landscape and a 667x375 phone, real multi-touch through `Input.dispatchTouchEvent`, own server on 5360;
 screenshots of every layout in both modes in `work/shots/mobile/`, gitignored, they show the game). It covers layouts (no horizontal scroll, controls and picture inside the safe area and apart,
 buttons >= 48 px), the pad (multi-touch, diagonals, dead zone, sliding, held, cancel, hidden page, blur, menu, prompts, wake lock, haptics), touch the game (paging arrow, command line, Back by two fingers and by the
 button, a shooting stage by taps with the shot on the tapped pixel, message tap, keyboard key and Back = backspace, dark-room drag, title -> options (value cycling) -> intro skip), the settings (default, persistence,
-desktop unchanged, pad switched on by a desktop player), the 360x640 start window and panel tabs, audio unlock, haptics. `scripts/test-web.sh` runs it.
+desktop unchanged, pad switched on by a desktop player), the 360x640 start window and panel tabs, audio unlock, haptics, and the menu sheet (11.10). `scripts/test-web.sh` runs it.
+
+### 11.10 The menu on phones and tablets: a sheet beside the picture (`touchmath.ts` `planSheet`, `touch.ts` `setSheet`, `main.ts` `syncPanel` / `placeDone`, `seg.ts`, CSS section 7)
+Problem it solves: the pause panel was a centred modal at 92 % opacity that covered the whole picture, so a picture style could not be judged while it was changed, and on a phone its six wrapping tabs and long scroll
+hid the settings. With touch controls on (`html[data-touch]`) the panel is now a **sheet** laid out next to the picture:
+- `planSheet(LayoutIn)` returns the picture size, the picture's stage box and the sheet box, all inside the safe area. Portrait: the picture on top (`data-sheet="top"`), the sheet below it. Landscape: the picture at the left, the sheet at the right (`"left"`).
+  The picture keeps its playing size (same scale, so the preview is what the game will look like) whenever the sheet keeps at least 320 px of height (portrait) or 340 px / 38 % of the width (landscape); otherwise it takes the next smaller scale that
+  does (an iPad in landscape goes from scale 5 to 4; a 360x640 phone from full width to a smaller whole scale). It is never larger than in play. The display filter is told through the same `onLayout` hook, so the CRT picture is redrawn at the
+  sheet's size at once and `Display.setBox` / `present` run as in play. `Touch.fit()` sets `--st-*` (stage, for `#wrap`) and `--sh-*` (sheet, for `#panel`); `Touch.setSheet(on)` is called by `openPanel` / `closePanel`.
+- While the sheet is open the pad, the Menu button and the rotate hint are hidden and `#wrap` takes no pointer events (a finger on the picture does nothing). A click in the first 400 ms after opening is swallowed (a finger that lets go
+  right after the sheet opened must not press what is now under it: a second tap on Menu, a pad button released late).
+- Contents (`syncPanel`): tabs **Display, Sound, Touch, Saves** in that order and Display selected the first time (the DOM order is changed with the layout, so arrow keys and focus follow what is seen). Controls is folded into the Touch tab
+  (fold "How the buttons work", a second `.controls` host); Gamepad appears only while a pad is connected (`input.onPads`); the F1 debug overlay row, the "(F)" Fullscreen button of the Display tab and the sound-mode line are not shown.
+  The top "Resume" row is replaced by **Back to the game** (`#pnDone`) at the bottom of the sheet, in the thumb zone. A phone held sideways (`max-height: 500px`) has too little height: there the button replaces the title in the title strip
+  (`placeDone`, the title stays for screen readers, `#panel[data-done]`). Initial focus is the selected tab. Esc and the gamepad Select button still close it.
+- **One-tap choices** (`seg.ts`, `.seg`): the native lists for Picture style (4 presets), Pixel shape and Touch controls are replaced on touch by toggle buttons (`aria-pressed`, 48 px, 2 or more columns) that mirror the `<select>`; the select
+  stays in the DOM (it holds the value, a computer and the tests use it) and is only hidden by CSS on touch. A native list opens over the picture on Android and needs two taps.
+- Picture style tab: each slider has a plain one-line explanation (`crt.h.*`, also shown on a computer), thumbs are 28 x 44 px, tracks 48 px high; a dim line says the picture changes as you choose (`pn.live`).
+- The start window on touch: no drop slot (a phone has nothing to drop from), the instruction in full colour, air between the parts, kept out of the notch (the modals pad with `--sai-*`), and in portrait the window sits at the bottom of the
+  screen, near the thumb. Every button, tab, fold row and check box row on a touch layout is at least 48 px.
+- If the touch mode is switched to Off while the sheet is open (a computer player, or a phone player who does not want the pad), the panel falls back to the centred window; nothing changes on a computer by default.
+Tests: `touchmath.test.ts` (`planSheet`, 10 device shapes, plain and filter), `bun web/test/touch.ts` section F (7 device shapes: opens as a sheet, picture visible and clear of the sheet, a preset tap changes the picture live, a finger drags a slider,
+every control >= 48 px tab by tab, nothing overflows, Back to the game closes and the picture returns to its playing size, reopen, Esc; the start window in the safe area; Gamepad tab with and without a pad; the computer's menu unchanged).
 
 ### 11.9 What was only checked in emulation (try it on a real phone / tablet)
 iOS Safari audio unlock (the context is primed in the tap; emulation cannot prove iOS accepts it), the screen wake lock (stubbed in the test), `navigator.vibrate` (stubbed), the Files picker on iOS and the Android
