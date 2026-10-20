@@ -42,6 +42,8 @@ export class Touch {
   layout: LayoutOut | null = null;
   /** the menu is open as a sheet next to the picture (phones and tablets with touch controls on) */
   sheet = false;
+  /** "Off" was chosen while the sheet is open: it takes effect when the sheet closes */
+  private pendingOff = false;
   /** the game has started (the controls are shown from then on) and is running (not paused) */
   started = false;
   private running = false;
@@ -85,6 +87,10 @@ export class Touch {
 
   // ---- mode and prefs
   setMode(m: TouchMode) {
+    // "Off" chosen in the open sheet: the menu stays a sheet until it closes (the whole window would otherwise change into the centred one under the finger, and
+    // the choice would turn into a native list); the choice is saved now and takes effect when the game comes back
+    if (m === "off" && this.sheet && this.mode !== "off") { this.pendingOff = true; this.d.ls.set(K.mode, m); this.renderTab(); return; }
+    this.pendingOff = false;
     this.mode = m; this.d.ls.set(K.mode, m);
     this.pad.releaseAll(); this.game.releaseAll();
     this.apply();
@@ -147,6 +153,7 @@ export class Touch {
   setSheet(on: boolean) {
     if (on === this.sheet) return;
     this.sheet = on;
+    if (!on && this.pendingOff) { this.setMode("off"); return; }
     this.fit();
   }
   private clearSheet() { this.html.removeAttribute("data-sheet"); }
@@ -202,12 +209,13 @@ export class Touch {
 
   /** Texts that depend on the language and on the state; called after a language change and whenever the mode changes. */
   renderTab() {
-    $<HTMLSelectElement>("touchMode").value = this.mode;
-    this.modeSeg?.set(this.mode); this.modeSeg?.relabel();
+    const shown: TouchMode = this.pendingOff ? "off" : this.mode;
+    $<HTMLSelectElement>("touchMode").value = shown;
+    this.modeSeg?.set(shown); this.modeSeg?.relabel();
     const help: Record<TouchMode, UiKey> = { pad: "t.help.pad", game: "t.help.game", off: "t.help.off" };
-    $("touchHelp").textContent = T(help[this.mode]);
-    $("touchSizeRow").hidden = this.mode !== "pad";
-    $("touchOpacityRow").hidden = this.mode !== "pad";
+    $("touchHelp").textContent = T(help[shown]) + (this.pendingOff ? " " + T("t.off.later") : "");
+    $("touchSizeRow").hidden = shown !== "pad";
+    $("touchOpacityRow").hidden = shown !== "pad";
     const adv = chromeAdvice();
     $("touchFull").hidden = adv !== "fullscreen";
     $("touchAdvice").textContent = adv === "homescreen" ? T("t.advice.home") : "";

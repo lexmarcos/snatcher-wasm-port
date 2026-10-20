@@ -435,12 +435,14 @@ function syncPanel() {
   else if (!cur || cur.hidden) selectTab(shown()[0]);
 }
 /**
- * A phone held sideways has little height: there the sheet's "Back to the game" button takes the place of the title in the title strip (the title stays
- * for screen readers) instead of a row of its own at the bottom. Portrait and tablets keep it at the bottom, under the thumb.
+ * A short sheet (a phone held sideways, or a small phone upright: under 440 px high) has little room: there the sheet's "Back to the game" button
+ * takes the place of the title in the title strip (the title stays for screen readers) instead of a row of its own at the bottom. A tall sheet and tablets
+ * keep it at the bottom, under the thumb.
  */
 function placeDone() {
   const row = $("pnDoneRow"), strip = panel.querySelector<HTMLElement>(".win-title")!, body = panel.querySelector<HTMLElement>(".win-body")!;
-  const inStrip = touch.sheet && touch.mode !== "off" && matchMedia("(max-height: 500px)").matches;
+  const short = matchMedia("(max-height: 500px)").matches || parseFloat(getComputedStyle(panel).height) < 440 /* a short sheet, CSS px */;
+  const inStrip = touch.sheet && touch.mode !== "off" && short;
   panel.dataset.done = inStrip ? "title" : "bottom";
   if (inStrip) { if (row.parentElement !== strip) strip.insertBefore(row, strip.querySelector(".lang")); }
   else if (row.parentElement !== body) body.append(row);

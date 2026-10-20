@@ -185,6 +185,7 @@ export const UI_EN = {
   "t.help.pad": "A pad is drawn on the screen: the D-pad on the left, A, B and C on the right, Start and Menu above them. In the shooting scenes the D-pad aims at the 3 by 3 targets, A draws the blaster and C fires.",
   "t.help.game": "No pad is drawn. Touch the picture: tap a command, a key or a slot to choose it, hold a message to read faster, tap a target in the shooting scenes to fire there. Back is the button that shows when it is needed, or a tap with two fingers. In the dark room, drag to move the light.",
   "t.help.off": "No touch controls. Use a keyboard, a gamepad or a mouse.",
+  "t.off.later": "They turn off when you go back to the game.",
   "t.size": "Button size",
   "t.opacity": "Pad opacity",
   "t.haptics": "Vibrate when a button is pressed",
@@ -195,7 +196,6 @@ export const UI_EN = {
   "t.rotate.ok": "OK",
   // menu sheet on phones and tablets (docs/re/web.md section 11.10)
   "pn.done": "Back to the game",
-  "pn.live": "The picture changes as you choose.",
   "t.full": "Fullscreen",
   "t.how": "How the buttons work",
   "crt.h.scan": "Dark lines between the rows of the picture.",
